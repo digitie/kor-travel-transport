@@ -9,7 +9,7 @@
 | 1 | 추가 전용 통계 모델·migration·멱등 backfill·삭제 및 legacy 덮어쓰기 차단 | PR156 main8bc 머지, 운영 미적용. c7/관측 증분·CI/두 리뷰는 해당 고정 소스 범위로 수용 |
 | 2A | 전국 동시각 충분통계·coverage/seal/보류·작은 최신 상태와 backfill P2 해소 | PR161 c763 CI/두 SOURCE 리뷰 수용. 새 main3f 통합·결합 검증/리뷰·운영 수용은 별도 |
 | 2B | 모든 분석/전망/현재/내부 export 읽기 전환, API 해상도·coverage·48시간 history 계약 | PR162 pure reader/163 단일snapshot 입력 후보·CI/집중 성공, 실제 API/cache/outlook 전환·두 리뷰 미완 |
-| 3 | 기존 원본 backfill·공항/주차장별 수량·hash·값·이벤트 대조 후 48시간 정리와 운영 상태 표시 | 미구현 |
+| 3 | 기존 원본 backfill·공항/주차장별 수량·hash·값·이벤트 대조 후 48시간 정리와 운영 상태 표시 | 미구현. 적재(backfill)만 2026-11-24부터 주 1회 정기 실행 — 정리는 미구현 |
 
 2A의 구체 모델은 [전국 통계·보류·현재 요약](parking-archive-coverage.md), 실제 파일·함수·소비 경로와
 18개 반례 수용 항목은 [읽기 전환 조사](../reports/2026-10-28-parking-reader-transition-review.md)에 둔다.
@@ -75,29 +75,43 @@ metadata는 이 scalar 필드만 허용하며 원문이나 provider 비밀값을
 "`parking_statistics_archive_job`이 코드에 있으나 40일간 실행 0"을 지적했다. 처음(#259)에는 첫 단계를 수동 backfill까지로
 보고 schedule을 두지 않았다. 소유자 결정(2026-11-24): **보관 적재만 주 1회 자동**으로 켜고, 정리·원본 삭제는 수동으로 둔다
 (`prune_parking_raw`는 계속 항상 예외 — 정리 자동화는 reader 전환·후속 수용 목록 1~6 뒤의 별개 소유자 결정이다).
-영구 통계를 읽는 화면·API는 아직 없지만(후속 수용 목록 1~3), 적재를 미리 쌓아 두면 reader 전환 때 수동 backfill로
-수십 일치를 한꺼번에 따라잡을 필요가 없다.
+영구 통계를 읽는 화면·API는 아직 없지만(후속 수용 목록 1~3), 적재를 미리 쌓아 두면 reader 전환 때 수십 일치를 한꺼번에
+따라잡을 필요가 없다.
+
+**첫 정기 실행은 운영 최초 backfill이다.** 원본이 남아 있는 가장 오래된 날부터 format v1 sealed 버킷을 쌓고, 쌓인 통계는
+자동 교체·force 경로가 없으며 통계가 있으면 downgrade를 거절한다(이 문서 "멱등성과 보류"). 2A 행의 "결합 검증/리뷰·운영
+수용은 별도"는 그대로 남는다 — 정기 적재가 그 수용을 대신하지 않는다.
 
 정기 실행의 모양(`backend/app/dagster/definitions.py`의 `PARKING_ARCHIVE_*`):
 
-- 시각: 매주 월요일 05:10 KST(`coalescing_schedule`, `default_status=RUNNING`). 유가 브라우저 수집(00:00 시작, 최대 3.5시간)과
-  새벽 기준정보 job(02:30~04:45)이 끝난 뒤, 06:00 KRIC 시간표 전이다.
-- `dagster/priority` 0(실시간 공항·고속도로 10 뒤), 실행 상한 `dagster/max_runtime` 2,700초. 새 배치는 30분 안에서만 시작한다.
-- 배치: 하루 공항 수집은 2,016 버킷(공항 14곳 x 10분 144)이라 수동 기본값(144)으로는 한 주 분량을 따라가지 못한다. 정기 실행은
-  배치 하나에 하루 범위를 끝내고(`max_buckets=2016`) 최대 100배치를 잇는다. 같은 하루를 144씩 나누면 배치마다 그날의 기존 버킷을
-  다시 검산하므로 2016이 전체 비용도 작다. 따라잡으면 `no_new_rows`, 가장 오래된 대상이 아직 늦은 수신 보류면 `deferred`로 멈춘다.
-- 공항 수집과의 관계: 보관 job은 공항 수집과 다른 run group(`parking_archive`)이다 — 같은 `parking` group(상한 1)이면 보관 run 동안
-  5분 공항 수집이 Dagster 대기열에 묶인다. DB 직렬화는 같은 advisory lease가 맡는다. 정기 실행은 공항 수집 run이 대기·진행 중이면
-  배치를 시작하지 않고 기다리며(공항 run 안의 사전집계 갱신도 같은 lease를 쓴다), 공항 수집은 lease를 쥔 보관 배치를 최대 90초
-  기다린다(`AIRPORT_LEASE_WAIT_SECONDS`, 예전에는 즉시 건너뛰었다). 배치 하나가 45초를 넘기면 더 시작하지 않는다(`slow_batch`).
-  lease 경합(`busy`)은 10초 간격 30회까지 다시 시도한다. 수동 실행의 기본값(배치 1개·144·busy 즉시 종료)은 예전 그대로다.
-- 끝남: `stop_reason`(`no_new_rows`·`deferred`·`max_batches`·`slow_batch`·`time_budget`·`busy`·`blocked`). 따라잡지 못하고 멈추면
-  (`max_batches`·`slow_batch`·`time_budget`·`busy`) 남은 가장 오래된 대상(`oldest_pending_at`)을 경고 로그로 남기고 run은 성공이다 —
-  적재한 배치는 commit했고 남은 분량은 다음 주나 수동 실행이 이어 한다.
-- `blocked` 경보 경로: 검산 보류는 run **실패**로 끝난다(보류 상태 commit 뒤, 마지막 배치 metadata + 합계). 주 1회라 매 tick 실패 run이
-  쌓이지 않고, 보류가 풀리지 않으면 매주 한 번 실패 run이 보인다(관리 콘솔 Dagster 실행 목록과, Manager가 실패 run을 경보하는 규칙이 있다면 그 규칙이
-같은 신호를 본다).
-  보류를 운영자가 보고 푸는 절차(후속 수용 목록 4)는 아직 없다 — 그때까지 `parking_archive_issues`를 직접 확인한다.
+- 시각: 매주 월요일 05:10 KST(`coalescing_schedule`, `default_status=RUNNING`). 유가 브라우저 수집(00:00 시작, 보통 1~2시간·
+  최대 3.5시간)과 새벽 기준정보 job(02:30~04:45)이 끝난 뒤다. 그 시각에도 5분 공항·고속도로와 매시 정각 KRIC 시간표는 돈다.
+- `dagster/priority` 0(실시간 공항·고속도로 10 뒤), `dagster/max_runtime` 900초.
+- run group: 공항 수집과 같은 `parking`(상한 1, standalone·운영 Manager 공용 설정 모두)이다. Dagster가 둘을 직렬화하므로 보관 run
+  동안 공항 run은 대기열에서 기다린다. 그래서 정기 실행은 **새 배치를 240초 안에서만** 시작한다(공항 5분 주기 한 번 안) —
+  공항 run은 늦어질 뿐 tick을 잃지 않는다. DB 쪽 직렬화는 예전처럼 같은 advisory lease다. 공항 수집 코드는 바꾸지 않았다.
+- 배치: 하루 공항 수집은 2,016 버킷(공항 14곳 x 10분 144)이라 수동 기본값(144)으로는 한 주 분량의 1/14도 못 한다. 정기 실행은
+  배치 하나에 하루 범위를 끝내고(`max_buckets=2016`) 최대 50배치를 잇는다. 같은 하루를 144씩 나누면 배치마다 그날의 기존 버킷을
+  다시 검산하므로 2016이 전체 비용도 작다(공항이 14곳보다 늘면 하루가 배치 둘 이상으로 나뉠 뿐 결과는 같다). 배치의 취소 시한은
+  run에 남은 실행 상한으로 잰다. lease 경합(`busy`, HTTP 수동 수집 등)은 10초 간격 3회까지 다시 본다.
+- 수동 실행: 설정 기본값(배치 1개·144·busy 즉시 종료)은 예전과 같다. 달라진 것은 실행 상한 태그(14,400 → 900초 — 긴 수동
+  backfill은 실행할 때 `dagster/max_runtime` 태그를 바꾼다)와 결과 metadata에 합계 필드가 붙은 것이다.
+- 끝남(`stop_reason`): `no_new_rows`(따라잡음)·`deferred`(남은 가장 오래된 대상이 아직 늦은 수신 보류)는 녹색이다.
+  `time_budget`·`max_batches`·`busy`로 멈추면 남은 보관분이 있다는 뜻이라 run은 성공이지만 **부분 완료 태그**
+  (`kortravel/collection-outcome=partial`, 관리 콘솔 "자료 확인 필요 · 부분 완료")와 경고 로그(남은 `oldest_pending_at`)를 남긴다.
+  `blocked`(검산 보류)는 run 실패다.
+
+처리량은 아직 측정하지 않았다. 첫 월요일 run의 `batches`·`max_batch_seconds`·`stop_reason`·`oldest_pending_at`이 기준이다.
+배치당 비용에는 "가장 오래된 미보관 행" 탐색(공항·전국 각 두 번)이 들어가고, 이 탐색은 보관한 이력에 비례해 늘어난다
+(원본 정리가 막혀 있으므로). 매주 `time_budget`·부분 완료로 끝나고 `oldest_pending_at`이 앞으로 가지 않으면 주 1회 예산이 쌓이는
+양을 따라가지 못하는 것이다 — 주기(예: 매일)나 탐색 시작점(연속 보관 완료 watermark)을 다시 정한다(tasks.md
+PARKING-ARCHIVE-SCHEDULE-20261124). 탐색이 수집 엔진의 문장 상한(60초)을 넘으면 배치가 예외로 끝나 run이 실패로 보인다.
+
+`blocked` 경보 경로: 검산 보류는 보류 상태 commit 뒤 run **실패**로 끝난다(마지막 배치 metadata + 합계). 주 1회라 매 tick 실패 run이
+쌓이지 않는다. 지금 이 실패를 보는 곳은 관리 콘솔 Dagster 실행 목록과 Manager watchdog의 `schedule_no_success`인데, 주 1회
+schedule은 마지막 tick 뒤 하루 정도만 활성으로 잡혀 그 경보가 다음 날 저절로 풀린다(Manager 규칙 후속). 보류를 운영자가 보고
+푸는 절차(후속 수용 목록 4)는 아직 없다 — 그때까지 `parking_archive_issues`를 직접 확인한다. 정기 seal이 생기면 이미 seal된 범위
+(48시간 이전)에 새 원본 id가 들어올 때 `late_source_rows` 보류가 실제로 걸릴 수 있다(대량 이관·옛 시각 재수신).
 
 신규 행 탐색은 append-only 수집의 `max_snapshot_id`와 UTC `date_bin`의 PK 등가 조회를 사용한다. **이 탐색은 전체 과거 검산이 아니다.** 새 id가 없으면 `no_new_rows`/`coverage_status=not_audited`를 반환하고 전체 coverage 완료나 삭제 가능 상태로 표시하지 않는다. 같은 id의 값·JSON 수정이나 원본 누락은 이 탐색으로 발견하지 못한다. 실제 선택된 하루 범위에서 만난 기존 버킷만 원본 지문·행 수·통계를 다시 계산해, 다르면 `ParkingArchiveConflict`로 전체 transaction을 rollback한다. 신규 버킷 발행은 `batch_complete`/`coverage_status=partial`이며 전체 수용이 아니다. 삭제 전에는 후보 버킷마다 `verify_bucket`로 원본 전체·직전 상태를 다시 검산해야 한다.
 

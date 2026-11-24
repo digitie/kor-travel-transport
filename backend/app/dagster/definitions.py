@@ -26,9 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 from kortravelcommon.deadline import call_with_deadline
-from kortravelcommon.dagster import (
-    RecoveryPolicy, coalescing_schedule, has_active_run, infrastructure_retry_sensor, reconciliation_sensor,
-)
+from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
 from kortravelcommon.scheduling import staggered_cron
 
 from app.dagster import recovery
@@ -77,13 +75,14 @@ MAX_RUNTIME_SECONDS = 14400
 #: 늦어도 run monitoring보다 먼저 끝나 실패를 직접 기록한다.
 #: - 기준정보 파생 본문 준비: 180초(기존 값).
 #: 그 밖의 job은 주기가 4시간 이상이거나(유가 브라우저 수집 3.5시간 포함) 이어 하기 backfill이라 `MAX_RUNTIME_SECONDS`를 둔다.
-#: - 주차 통계 보관(주 1회 정기 실행): 새 배치는 `PARKING_ARCHIVE_TIME_BUDGET_SECONDS`(30분) 안에서만 시작하고, 배치 하나와
-#:   공항 수집 양보 대기를 더해 45분 = 2,700초.
+#: - 주차 통계 보관: provider 호출 없는 DB 작업. 정기 실행은 새 배치를 `PARKING_ARCHIVE_TIME_BUDGET_SECONDS`(240초) 안에서만
+#:   시작한다. 배치 하나가 예상보다 길어도 공항 수집(같은 run group)을 오래 막지 않게 900초에서 끊는다(수동 실행도 같다 —
+#:   긴 수동 backfill은 실행할 때 `dagster/max_runtime` 태그를 바꿔 준다).
 JOB_MAX_RUNTIME_SECONDS = {
     "airport_collection_job": 1800,
     "highway_collection_job": 1200,
     "reference_export_prepare_job": 180,
-    "parking_statistics_archive_job": 2700,
+    "parking_statistics_archive_job": 900,
 }
 #: `dagster/priority`(클수록 큐에서 먼저 시작). 공용 run 큐(odroid `max_concurrent_runs` 5, location 상한)가 찰 때 사용자에게
 #: 바로 보이는 실시간 현황(공항 주차·고속도로 소통)을 먼저 띄운다. 이 태그는 공용 instance 전체의 큐 순서라 다른 테넌트(기본 0)와도
@@ -373,15 +372,8 @@ def _settings() -> Settings:
     return settings
 
 
-#: 공항 수집이 DB lease를 다른 보유자(주차 통계 보관 배치)가 쥐고 있을 때 기다리는 상한(초). 보관 배치는
-#: `PARKING_ARCHIVE_SLOW_BATCH_SECONDS`를 넘으면 더 시작하지 않으므로 보통 그 안에 풀린다. 넘으면 지금처럼 이번 주기를 건너뛴다.
-AIRPORT_LEASE_WAIT_SECONDS = 90
-
-
 async def _collect_airport_with_analytics(session, *, settings: Settings, trigger: str) -> dict[str, Any]:
-    result = await CollectionService(settings).collect(
-        session, trigger=trigger, lease_wait_seconds=AIRPORT_LEASE_WAIT_SECONDS,
-    )
+    result = await CollectionService(settings).collect(session, trigger=trigger)
     if result.get("snapshot_count", 0) > 0 or result.get("status") == "success":
         try:
             # collect는 성공분과 실행 상태를 이미 commit했다. 파생 결과 실패로 원본을 되돌리지 않는다.
@@ -1194,22 +1186,20 @@ def airport_collection_job() -> None:
 
 
 #: 주차 통계 보관 적재의 정기 실행(소유자 결정 2026-11-24: **적재만** 주 1회 자동, 정리·원본 삭제는 수동 유지 —
-#: `prune_parking_raw`는 계속 항상 거부). 매주 월요일 05:10 KST: 유가 브라우저 수집(00:00 시작, 최대 3.5시간)과 새벽
-#: 기준정보 job(02:30~04:45)이 끝난 뒤, 06:00 KRIC 시간표 전이다. 공항 하루 수집은 2,016 버킷(공항 14곳 x 10분 144)이라
-#: 수동 기본값(배치 1개·144 버킷)으로는 한 주 분량을 따라가지 못한다. 정기 실행은 배치 하나에 하루 범위를 끝내고
-#: (`max_buckets=2016`) 시간 예산 안에서 배치를 이어 한다(`PARKING_ARCHIVE_SCHEDULED_CONFIG`).
+#: `prune_parking_raw`는 계속 항상 거부). 매주 월요일 05:10 KST: 유가 브라우저 수집(00:00 시작, 보통 1~2시간·최대 3.5시간)과
+#: 새벽 기준정보 job(02:30~04:45)이 끝난 뒤다. 늘 도는 것은 5분 공항·고속도로와 매시 정각 KRIC 시간표뿐이다.
 PARKING_ARCHIVE_SCHEDULE_CRON = "10 5 * * 1"
-#: 수동 실행 기본값(예전 동작 그대로: 배치 1개, 공항 버킷 144, busy면 바로 끝냄).
+#: 수동 실행 기본값(예전 동작: 배치 1개, 공항 버킷 144, busy면 바로 끝냄).
 PARKING_ARCHIVE_DEFAULT_BUCKETS = 144
-PARKING_ARCHIVE_SCHEDULED_CONFIG = {"max_batches": 100, "max_buckets": 2016, "busy_retries": 30}
-#: 이 시간이 지나면 새 배치를 시작하지 않는다(run 상한 `JOB_MAX_RUNTIME_SECONDS` 2,700초 안).
-PARKING_ARCHIVE_TIME_BUDGET_SECONDS = 1800
-#: 배치 하나가 이보다 오래 걸리면 더 시작하지 않는다. 배치는 공항 수집과 같은 DB lease를 쥐므로 공항 수집의 lease 대기
-#: (`AIRPORT_LEASE_WAIT_SECONDS`)보다 충분히 짧아야 5분 수집 한 주기를 잃지 않는다.
-PARKING_ARCHIVE_SLOW_BATCH_SECONDS = 45
-#: lease 경합(`busy`) 뒤 다시 시도하는 간격, 공항 수집 run이 대기·진행 중일 때 다시 보는 간격(초).
+#: 정기 실행 설정. 하루 공항 수집은 2,016 버킷(공항 14곳 x 10분 144)이라 기본값(144)으로는 한 주 분량의 1/14도 못 한다.
+#: 배치 하나에 하루 범위를 끝내고(`max_buckets=2016` — 같은 하루를 144씩 나누면 배치마다 그날 기존 버킷을 다시 검산한다)
+#: 시간 예산 안에서 배치를 잇는다. busy(같은 lease를 HTTP 수동 수집 등이 쥠)는 짧게 몇 번만 다시 본다.
+PARKING_ARCHIVE_SCHEDULED_CONFIG = {"max_batches": 50, "max_buckets": 2016, "busy_retries": 3}
+#: 이 시간이 지나면 새 배치를 시작하지 않는다. 보관 job은 공항 수집과 같은 run group(`parking`, 상한 1)이라 보관 run 동안
+#: 공항 run은 Dagster 대기열에서 기다린다 — 5분 수집 한 주기 안에서 끝내 공항 run은 늦어질 뿐 tick을 잃지 않게 한다.
+PARKING_ARCHIVE_TIME_BUDGET_SECONDS = 240
+#: lease 경합(`busy`) 뒤 다시 시도하는 간격(초).
 PARKING_ARCHIVE_BUSY_WAIT_SECONDS = 10
-PARKING_ARCHIVE_YIELD_POLL_SECONDS = 5
 #: 결과 metadata에 싣는 서비스 결과 필드(마지막 배치 기준). 원문·비밀값은 없다.
 PARKING_ARCHIVE_METADATA_FIELDS = frozenset({
     "status", "coverage_status", "archived_buckets", "deferred_buckets", "pruned_snapshots",
@@ -1225,29 +1215,18 @@ PARKING_ARCHIVE_METADATA_FIELDS = frozenset({
     "global_verification_scope", "global_verified_min_bucket_at", "global_verified_max_bucket_at",
     "global_archived_min_bucket_at", "global_archived_max_bucket_at",
 })
+#: 따라잡지 못하고 멈춘 사유. 실패는 아니지만(적재한 배치는 commit했다) run을 부분 완료로 표시한다.
+PARKING_ARCHIVE_BACKLOG_STOPS = frozenset({"max_batches", "time_budget", "busy"})
 
 
 def _archive_clock() -> float:
-    """정기 보관의 시간 예산·배치 시간 측정(시험이 바꿔 낀다)."""
+    """보관 실행의 시간 예산·배치 시간 측정(시험이 바꿔 낀다)."""
     return time.monotonic()
 
 
 def _archive_sleep(seconds: float) -> None:
-    """정기 보관의 대기(시험이 바꿔 낀다)."""
+    """보관 실행의 busy 재시도 대기(시험이 바꿔 낀다)."""
     time.sleep(seconds)
-
-
-def _airport_collection_active(context) -> bool:
-    """공항 수집 run이 대기·진행 중인가. 정기 보관은 그동안 배치를 시작하지 않는다.
-
-    같은 DB lease를 쓰므로 겹치면 한쪽이 기다리거나 건너뛴다. 공항 run 안의 수집 뒤 사전집계 갱신도 같은 lease를
-    try-lock으로 잡아, 보관 배치와 겹치면 그 주기의 갱신을 건너뛴다. 확인에 실패하면 진행 중으로 본다(양보 쪽).
-    """
-    try:
-        return has_active_run(context.instance, job_name=airport_collection_job.name, project="transport",
-                              location_name="kor-travel-transport")
-    except Exception:  # noqa: BLE001 — 확인 실패로 보관을 실패시키지 않고 양보한다(시간 예산이 끝을 낸다).
-        return True
 
 
 def _log_archive_batch(context, result: dict[str, Any], batch_seconds: float) -> None:
@@ -1283,26 +1262,21 @@ def archive_airport_parking_statistics(context) -> dict[str, Any]:
                                   "(max_batches 1~500, max_buckets 1~2016, busy_retries 0~100).",
                       allow_retries=False)
     settings = _settings()
+    runtime = job_max_runtime_seconds("parking_statistics_archive_job")
     started = _archive_clock()
     totals: dict[str, Any] = {"batches": 0, "total_archived_buckets": 0, "total_global_buckets": 0,
                               "busy_retries_used": 0, "max_batch_seconds": 0.0, "stop_reason": ""}
     result: dict[str, Any] = {}
 
-    def out_of_time() -> bool:
-        return _archive_clock() - started >= PARKING_ARCHIVE_TIME_BUDGET_SECONDS
+    def elapsed() -> float:
+        return _archive_clock() - started
 
     while True:
-        # 공항 수집 run이 대기·진행 중이면 배치를 시작하지 않는다(수동 실행도 — 보관 job은 공항 수집과 다른 run group이라
-        # Dagster가 둘을 더는 직렬화하지 않는다).
-        while _airport_collection_active(context) and not out_of_time():
-            _archive_sleep(PARKING_ARCHIVE_YIELD_POLL_SECONDS)
-        if out_of_time():
-            totals["stop_reason"] = "time_budget"
-            break
         batch_started = _archive_clock()
+        # 배치의 취소 시한은 이 run에 남은 실행 상한으로 잰다(run monitoring보다 먼저 끝내 rollback한다).
         result = asyncio.run(_run_with_session(
             settings, archive_parking_with_coverage, max_buckets=max_buckets,
-            max_runtime_seconds=job_max_runtime_seconds("parking_statistics_archive_job"),
+            max_runtime_seconds=max(int(runtime - elapsed()), RUN_DEADLINE_MARGIN_SECONDS + MIN_RUN_DEADLINE_SECONDS),
         ))
         batch_seconds = _archive_clock() - batch_started
         totals["max_batch_seconds"] = round(max(totals["max_batch_seconds"], batch_seconds), 3)
@@ -1315,8 +1289,8 @@ def archive_airport_parking_statistics(context) -> dict[str, Any]:
                           metadata={**{key: value for key, value in result.items()
                                        if key in PARKING_ARCHIVE_METADATA_FIELDS}, **totals})
         if status == "busy":
-            # 다른 보유자(공항 수집·수동 보관)가 lease를 쥐고 있다. 변경 0으로 돌아왔다.
-            if totals["busy_retries_used"] < busy_retries and not out_of_time():
+            # 다른 보유자(HTTP 수동 수집·수동 보관 실행)가 lease를 쥐고 있다. 변경 0으로 돌아왔다.
+            if totals["busy_retries_used"] < busy_retries and elapsed() < PARKING_ARCHIVE_TIME_BUDGET_SECONDS:
                 totals["busy_retries_used"] += 1
                 _archive_sleep(PARKING_ARCHIVE_BUSY_WAIT_SECONDS)
                 continue
@@ -1326,32 +1300,30 @@ def archive_airport_parking_statistics(context) -> dict[str, Any]:
         totals["total_archived_buckets"] += int(result.get("archived_buckets", 0) or 0)
         totals["total_global_buckets"] += int(result.get("global_buckets", 0) or 0)
         if status != "batch_complete":
-            # no_new_rows(새 원본 없음)·deferred(남은 가장 오래된 버킷이 아직 늦은 수신 보류) — 더 돌려도 진척이 없다.
+            # no_new_rows(새 원본 없음)·deferred(남은 가장 오래된 대상이 아직 늦은 수신 보류) — 더 돌려도 진척이 없다.
             totals["stop_reason"] = status
             break
         if totals["batches"] >= max_batches:
             totals["stop_reason"] = "max_batches"
             break
-        if batch_seconds > PARKING_ARCHIVE_SLOW_BATCH_SECONDS:
-            totals["stop_reason"] = "slow_batch"
-            break
-        if out_of_time():
+        if elapsed() >= PARKING_ARCHIVE_TIME_BUDGET_SECONDS:
             totals["stop_reason"] = "time_budget"
             break
     context.add_output_metadata({**{key: value for key, value in result.items()
                                     if key in PARKING_ARCHIVE_METADATA_FIELDS}, **totals})
-    if max_batches > 1 and totals["stop_reason"] in {"max_batches", "slow_batch", "time_budget", "busy"}:
-        # 실패는 아니다(적재한 배치는 commit했다). 남은 보관분은 다음 정기 실행이나 수동 실행이 이어 한다.
+    if max_batches > 1 and totals["stop_reason"] in PARKING_ARCHIVE_BACKLOG_STOPS:
+        # 실패는 아니다(적재한 배치는 commit했다). 남은 보관분이 있다는 것을 부분 완료 태그와 경고로 보인다 — 매주 이러면
+        # 주 1회 예산이 쌓이는 양을 따라가지 못하는 것이다(주기·예산을 다시 정한다, docs/architecture/parking-retention.md).
         context.log.warning(
             f"주차 통계 보관을 {totals['stop_reason']}로 멈췄습니다(배치 {totals['batches']}개, 공항 버킷 "
             f"{totals['total_archived_buckets']}·전국 {totals['total_global_buckets']}, 가장 긴 배치 "
             f"{totals['max_batch_seconds']}초). 남은 가장 오래된 보관 대상: {result.get('oldest_pending_at')}.")
+        _record_collection_outcome(context, "partial")
     return {**result, **totals}
 
 
-# 공항 수집(run group `parking`, 상한 1)과 다른 run group이다 — 같은 group이면 정기 보관 run(최대 45분) 동안 5분 공항 수집이
-# Dagster 대기열에 묶인다. DB 직렬화는 같은 advisory lease가 맡고, 보관은 공항 run이 대기·진행 중이면 배치를 시작하지 않는다.
-@job(tags=_job_tags("parking_archive", "parking_statistics_archive_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
+# 공항 수집과 같은 run group(`parking`, 상한 1)이다 — Dagster가 둘을 직렬화하고, DB는 같은 advisory lease가 지킨다.
+@job(tags=_job_tags("parking", "parking_statistics_archive_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def parking_statistics_archive_job() -> None:
     archive_airport_parking_statistics()
 

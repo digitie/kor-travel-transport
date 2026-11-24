@@ -1,6 +1,6 @@
 # 주차 보존 2A: 전국 통계와 검산 보류·현재 요약
 
-이 단계는 [원본48시간·통계영구 설계](parking-retention.md)의 저장 보완이다. 기존 분석·현재·history API는 아직 원본을 읽으며 `prune_parking_raw`는 항상 거절한다. 자동 schedule이나 운영 삭제를 활성화하지 않는다. **2A만으로 원본48시간 정책이 완료되지 않는다.**
+이 단계는 [원본48시간·통계영구 설계](parking-retention.md)의 저장 보완이다. 기존 분석·현재·history API는 아직 원본을 읽으며 `prune_parking_raw`는 항상 거절한다. 운영 삭제는 활성화하지 않는다(2026-11-24부터 **적재만** 주 1회 정기 실행, [parking-retention](parking-retention.md)). **2A만으로 원본48시간 정책이 완료되지 않는다.**
 
 ## 전국 동시각 통계
 

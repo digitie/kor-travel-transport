@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 import math
-import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -33,8 +32,6 @@ from app.services.parsers import (
 
 
 KAC_QUOTA_SOURCE = "airport_kac_quota"
-#: 공항 수집 DB lease(`kor_travel_transport:airport_collection`)를 다른 보유자가 쥐고 있을 때 다시 시도하는 간격(초).
-AIRPORT_LEASE_POLL_SECONDS = 1.0
 KAC_FEE_REFRESH_CONTRACT = "kac_fee_daily:v1"
 
 KAC_PARKING_ENDPOINT = "http://openapi.airport.co.kr/service/rest/AirportParking/airportparkingRT"
@@ -513,16 +510,9 @@ class CollectionService:
                           else f"kac_parking HTTP 429: Retry-After {retry_after}s")
         row.updated_at = now_utc()
 
-    async def collect(
-        self, session: AsyncSession, trigger: str = "manual", *, lease_wait_seconds: float = 0.0,
-    ) -> dict[str, Any]:
-        """`lease_wait_seconds`: DB lease를 다른 보유자가 쥐고 있으면 그만큼 기다렸다가 건너뛴다(기본 0 = 즉시 건너뜀).
-
-        Dagster 공항 수집은 `AIRPORT_LEASE_WAIT_SECONDS`를 준다 — 같은 lease를 짧게 쥐는 주차 통계 보관 배치(정기 실행) 때문에
-        5분 수집 한 주기를 통째로 잃지 않게 한다. HTTP 수동 수집은 요청을 붙잡지 않게 기다리지 않는다.
-        """
+    async def collect(self, session: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
         async with self.operation_lock:
-            async with self._postgres_collection_lease(session, wait_seconds=lease_wait_seconds) as acquired:
+            async with self._postgres_collection_lease(session) as acquired:
                 if not acquired:
                     logger.warning("collection skipped trigger=%s because another database lease is active", trigger)
                     return {
@@ -536,9 +526,7 @@ class CollectionService:
                 return await self._collect_unlocked(session, trigger)
 
     @asynccontextmanager
-    async def _postgres_collection_lease(
-        self, session: AsyncSession, *, wait_seconds: float = 0.0,
-    ) -> AsyncIterator[bool]:
+    async def _postgres_collection_lease(self, session: AsyncSession) -> AsyncIterator[bool]:
         """동일 DB를 쓰는 Dagster/HTTP process 간 주차 수집을 하나로 직렬화한다.
 
         PostgreSQL session advisory lock은 수집 세션과 분리한 전용 connection에서 잡는다.
@@ -552,17 +540,11 @@ class CollectionService:
             return
 
         async with engine.connect() as lock_connection:
-            async def try_lock() -> bool:
-                return bool(await lock_connection.scalar(
+            acquired = bool(
+                await lock_connection.scalar(
                     text("SELECT pg_try_advisory_lock(hashtext('kor_travel_transport:airport_collection'))")
-                ))
-
-            acquired = await try_lock()
-            # 기다림은 try-lock 재시도다(대기열·deadlock 없음). 보유자가 끝나면 다음 시도에서 잡는다.
-            deadline = time.monotonic() + max(wait_seconds, 0.0)
-            while not acquired and time.monotonic() < deadline:
-                await asyncio.sleep(min(AIRPORT_LEASE_POLL_SECONDS, max(deadline - time.monotonic(), 0.0)))
-                acquired = await try_lock()
+                )
+            )
             try:
                 yield acquired
             finally:

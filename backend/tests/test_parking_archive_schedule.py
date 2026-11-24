@@ -19,8 +19,6 @@ from dagster import DagsterInstance, build_schedule_context
 from dagster._utils.schedules import schedule_execution_time_iterator
 
 from app.dagster import definitions as module
-from app.services.collection import CollectionService, FixturePublicDataClient
-from app.core.config import Settings
 from app.services.parking_global_archive import archive_parking_with_coverage
 from app.services.parking_statistics_archive import prune_parking_raw
 
@@ -37,9 +35,17 @@ def test_weekly_schedule_runs_the_scheduled_config_at_low_load_dawn() -> None:
     start = datetime(2026, 11, 23, tzinfo=KST)  # 월요일
     ticks = schedule_execution_time_iterator(start.timestamp(), schedule.cron_schedule, "Asia/Seoul")
     first, second = next(ticks), next(ticks)
-    # 주 1회, KST 새벽(유가 00:00 시작·최대 3.5시간, 새벽 기준정보 02:30~04:45가 끝난 뒤, 06:00 KRIC 전).
+    # 주 1회, KST 새벽(유가 00:00 시작·최대 3.5시간, 새벽 기준정보 02:30~04:45가 끝난 뒤).
     assert (second - first).days == 7
     assert first.weekday() == 0 and (first.hour, first.minute) == (5, 10)
+    # 같은 시각에 시작하는 다른 transport schedule이 없다(5분 공항·고속도로, 매시 정각 KRIC는 늘 돈다).
+    others = [s for s in module.definitions.schedules if s.name != schedule.name]
+    tick = datetime(2026, 11, 23, 5, 10, tzinfo=KST)
+    for other in others:
+        if other.cron_schedule.startswith(("*/", "0 * ", "1-", "3-")) or "/5" in other.cron_schedule:
+            continue
+        nearby = schedule_execution_time_iterator((tick.timestamp() - 1), other.cron_schedule, "Asia/Seoul")
+        assert next(nearby) != tick, other.name
     with DagsterInstance.local_temp() as instance:
         result = schedule.evaluate_tick(build_schedule_context(instance=instance))
     assert len(result.run_requests) == 1
@@ -49,23 +55,24 @@ def test_weekly_schedule_runs_the_scheduled_config_at_low_load_dawn() -> None:
     assert module.PARKING_ARCHIVE_SCHEDULED_CONFIG["max_batches"] > 7
 
 
-def test_archive_job_tags_priority_zero_bounded_runtime_and_own_run_group() -> None:
+def test_archive_job_tags_priority_zero_bounded_runtime_and_airport_serialization() -> None:
     tags = module.definitions.get_job_def("parking_statistics_archive_job").tags
     assert tags["dagster/priority"] == "0"
     runtime = int(tags["dagster/max_runtime"])
-    assert runtime == module.job_max_runtime_seconds("parking_statistics_archive_job") == 2700
-    # 시간 예산 뒤 배치 하나와 마무리 여유가 상한 안에 든다.
-    assert module.PARKING_ARCHIVE_TIME_BUDGET_SECONDS + module.PARKING_ARCHIVE_SLOW_BATCH_SECONDS * 4 < runtime
-    # 공항 수집(run group `parking`, 상한 1)과 다른 group이라 보관 run이 5분 수집을 Dagster 대기열에 묶지 않는다.
-    assert tags["kortraveltransport/run_group"] == "parking_archive"
+    assert runtime == module.job_max_runtime_seconds("parking_statistics_archive_job") == 900
+    # 공항 수집과 같은 run group(상한 1) — Dagster가 직렬화한다. 시간 예산은 공항 5분 주기 안이다.
+    assert tags["kortraveltransport/run_group"] == "parking"
     assert module.definitions.get_job_def("airport_collection_job").tags["kortraveltransport/run_group"] == "parking"
-    # 배치가 lease를 쥐는 시간은 공항 수집의 lease 대기보다 충분히 짧다.
-    assert module.PARKING_ARCHIVE_SLOW_BATCH_SECONDS * 2 <= module.AIRPORT_LEASE_WAIT_SECONDS
+    assert module.PARKING_ARCHIVE_TIME_BUDGET_SECONDS < 300 < runtime
 
 
 def test_cleanup_is_still_manual_and_blocked() -> None:
     with pytest.raises(RuntimeError):
         asyncio.run(prune_parking_raw())
+    # 정기 실행은 적재 job 하나뿐이다(정리 job·schedule은 없다).
+    jobs = {s.job_name for s in module.definitions.schedules}
+    assert "parking_statistics_archive_job" in jobs
+    assert not any("prune" in name or "cleanup" in name for name in jobs if name.startswith("parking"))
 
 
 def _batch(status: str, archived: int = 0, global_buckets: int = 0) -> dict:
@@ -84,11 +91,10 @@ class _Clock:
         self.now += seconds
 
 
-def _run(monkeypatch, batches, *, run_config=None, batch_seconds=5.0, active=()):
+def _run(monkeypatch, batches, *, run_config=None, batch_seconds=5.0):
     clock = _Clock()
     calls: list[dict] = []
     queue = list(batches)
-    activity = list(active)
 
     async def fake_run(_settings, action, **kwargs):
         assert action is module.archive_parking_with_coverage
@@ -100,13 +106,13 @@ def _run(monkeypatch, batches, *, run_config=None, batch_seconds=5.0, active=())
     monkeypatch.setattr(module, "_run_with_session", fake_run)
     monkeypatch.setattr(module, "_archive_clock", lambda: clock.now)
     monkeypatch.setattr(module, "_archive_sleep", clock.sleep)
-    monkeypatch.setattr(module, "_airport_collection_active", lambda _context: activity.pop(0) if activity else False)
     with DagsterInstance.ephemeral() as instance:
         result = module.parking_statistics_archive_job.execute_in_process(
             instance=instance, run_config=run_config or {}, raise_on_error=False)
         warnings = [entry.user_message for entry in instance.all_logs(result.run_id)
                     if entry.level == logging.WARNING and entry.step_key == OP]
-    return result, calls, clock, warnings
+        outcome = instance.get_run_by_id(result.run_id).tags.get("kortravel/collection-outcome")
+    return result, calls, clock, warnings, outcome
 
 
 def _metadata(result) -> dict:
@@ -115,99 +121,80 @@ def _metadata(result) -> dict:
     return {key: value.value for key, value in output.metadata.items()}
 
 
-def test_manual_default_is_one_batch_and_still_yields_to_airport_collection(monkeypatch) -> None:
-    """수동 실행 기본값은 예전 그대로다: 배치 하나(144 버킷), busy면 다시 시도하지 않는다. 다만 보관 job이 공항 수집과
-    다른 run group이 됐으므로 수동 실행도 공항 수집 run이 대기·진행 중이면 기다린 뒤 시작한다."""
+def test_manual_default_is_one_batch_without_retry(monkeypatch) -> None:
+    """수동 실행 기본값은 예전 그대로다: 배치 하나(144 버킷), busy면 다시 시도하지 않는다, 부분 완료 태그도 없다."""
     for status in ("batch_complete", "busy"):
-        result, calls, clock, warnings = _run(monkeypatch, [_batch(status, archived=3 if status != "busy" else 0)],
-                                              active=[True, True])
+        result, calls, clock, warnings, outcome = _run(
+            monkeypatch, [_batch(status, archived=3 if status != "busy" else 0)])
         assert result.success
         assert [call["max_buckets"] for call in calls] == [144]
-        assert clock.sleeps == [module.PARKING_ARCHIVE_YIELD_POLL_SECONDS] * 2 and warnings == []
-        metadata = _metadata(result)
-        assert metadata["stop_reason"] == ("max_batches" if status == "batch_complete" else "busy")
+        assert clock.sleeps == [] and warnings == [] and outcome is None
+        assert _metadata(result)["stop_reason"] == ("max_batches" if status == "batch_complete" else "busy")
 
 
 def test_scheduled_run_continues_batches_until_caught_up(monkeypatch) -> None:
     batches = [_batch("batch_complete", 2016, 144), _batch("batch_complete", 2016, 144),
                _batch("batch_complete", 1000, 0), _batch("no_new_rows")]
-    result, calls, _clock, warnings = _run(monkeypatch, batches, run_config=SCHEDULED)
+    result, calls, _clock, warnings, outcome = _run(monkeypatch, batches, run_config=SCHEDULED)
     assert result.success
     assert [call["max_buckets"] for call in calls] == [2016] * 4
-    assert all(call["max_runtime_seconds"] == 2700 for call in calls)
+    # 배치의 취소 시한은 run에 남은 실행 상한으로 잰다(배치 5초씩).
+    assert [call["max_runtime_seconds"] for call in calls] == [900, 895, 890, 885]
     metadata = _metadata(result)
     assert metadata["stop_reason"] == "no_new_rows"
     assert metadata["batches"] == 4
     assert metadata["total_archived_buckets"] == 5032 and metadata["total_global_buckets"] == 288
     assert metadata["status"] == "no_new_rows"  # 서비스 결과 필드는 마지막 배치 기준
-    assert warnings == []  # 따라잡았으면 경고가 없다
+    assert warnings == [] and outcome is None  # 따라잡았으면 경고·부분 완료 태그가 없다
 
 
 def test_scheduled_run_stops_on_deferred_without_spinning(monkeypatch) -> None:
-    result, calls, _clock, _warnings = _run(
+    result, calls, _clock, _warnings, outcome = _run(
         monkeypatch, [_batch("batch_complete", 2016), _batch("deferred")], run_config=SCHEDULED)
-    assert result.success and len(calls) == 2
+    assert result.success and len(calls) == 2 and outcome is None
     assert _metadata(result)["stop_reason"] == "deferred"
 
 
-def test_scheduled_run_retries_lease_contention_then_gives_up_green(monkeypatch) -> None:
+def test_scheduled_run_retries_lease_contention_then_stops_as_partial(monkeypatch) -> None:
     retries = module.PARKING_ARCHIVE_SCHEDULED_CONFIG["busy_retries"]
     batches = [_batch("busy"), _batch("batch_complete", 10), _batch("no_new_rows")]
-    result, calls, clock, _warnings = _run(monkeypatch, batches, run_config=SCHEDULED)
-    assert result.success and len(calls) == 3
+    result, calls, clock, _warnings, outcome = _run(monkeypatch, batches, run_config=SCHEDULED)
+    assert result.success and len(calls) == 3 and outcome is None
     assert clock.sleeps == [module.PARKING_ARCHIVE_BUSY_WAIT_SECONDS]
     assert _metadata(result)["busy_retries_used"] == 1
 
-    always_busy = [_batch("busy")] * (retries + 1)
-    result, calls, clock, warnings = _run(monkeypatch, always_busy, run_config=SCHEDULED)
+    result, calls, clock, warnings, outcome = _run(monkeypatch, [_batch("busy")] * (retries + 1), run_config=SCHEDULED)
     assert result.success  # busy는 미실행이지 실패가 아니다(예전 계약)
     assert len(calls) == retries + 1
     metadata = _metadata(result)
     assert metadata["stop_reason"] == "busy" and metadata["batches"] == 0
     assert any("busy로 멈췄습니다" in line for line in warnings)
+    assert outcome == "partial"
 
 
-def test_scheduled_run_yields_while_airport_collection_is_active(monkeypatch) -> None:
-    """공항 수집 run이 대기·진행 중이면 배치를 시작하지 않고 기다린다(같은 lease·수집 뒤 사전집계 갱신과 겹치지 않게)."""
-    result, calls, clock, _warnings = _run(
-        monkeypatch, [_batch("batch_complete", 5), _batch("no_new_rows")], run_config=SCHEDULED,
-        active=[True, True, False, True, False])
-    assert result.success and len(calls) == 2
-    assert clock.sleeps == [module.PARKING_ARCHIVE_YIELD_POLL_SECONDS] * 3
-
-
-def test_scheduled_run_stops_after_a_slow_batch(monkeypatch) -> None:
-    """배치가 느리면(공항 수집이 lease를 기다리는 시간과 겨룬다) 더 시작하지 않는다. 적재분은 commit했고 run은 성공이다."""
-    result, calls, _clock, warnings = _run(
-        monkeypatch, [_batch("batch_complete", 2016)] * 3, run_config=SCHEDULED,
-        batch_seconds=module.PARKING_ARCHIVE_SLOW_BATCH_SECONDS + 1)
-    assert result.success and len(calls) == 1
-    assert _metadata(result)["stop_reason"] == "slow_batch"
-    assert any("slow_batch로 멈췄습니다" in line and "2026-10-01T15:00:00+00:00" in line for line in warnings)
-
-
-def test_scheduled_run_respects_its_time_budget(monkeypatch) -> None:
+def test_scheduled_run_respects_its_time_budget_and_marks_backlog_partial(monkeypatch) -> None:
+    """공항 수집과 같은 run group이라 보관 run 동안 공항 run은 대기열에서 기다린다 — 예산 안에서만 새 배치를 시작한다."""
     per_batch = 40.0
-    expected = math.ceil(module.PARKING_ARCHIVE_TIME_BUDGET_SECONDS / per_batch)  # 예산을 넘긴 뒤에는 새 배치를 시작하지 않는다
-    result, calls, _clock, warnings = _run(
+    expected = math.ceil(module.PARKING_ARCHIVE_TIME_BUDGET_SECONDS / per_batch)
+    result, calls, _clock, warnings, outcome = _run(
         monkeypatch, [_batch("batch_complete", 2016)] * (expected + 5), run_config=SCHEDULED, batch_seconds=per_batch)
     assert result.success
     assert len(calls) == expected
     assert _metadata(result)["stop_reason"] == "time_budget"
-    assert warnings
+    assert any("time_budget로 멈췄습니다" in line and "2026-10-01T15:00:00+00:00" in line for line in warnings)
+    assert outcome == "partial"  # 남은 보관분이 있다는 신호(실패는 아니다)
 
 
-def test_scheduled_run_does_not_start_when_airport_stays_active_past_the_budget(monkeypatch) -> None:
-    polls = int(module.PARKING_ARCHIVE_TIME_BUDGET_SECONDS // module.PARKING_ARCHIVE_YIELD_POLL_SECONDS) + 5
-    result, calls, _clock, _warnings = _run(monkeypatch, [], run_config=SCHEDULED, active=[True] * polls)
-    assert result.success and calls == []
-    metadata = _metadata(result)
-    assert metadata["stop_reason"] == "time_budget" and metadata["batches"] == 0
+def test_scheduled_run_max_batches_is_a_backlog_signal(monkeypatch) -> None:
+    config = {"ops": {OP: {"config": {**module.PARKING_ARCHIVE_SCHEDULED_CONFIG, "max_batches": 2}}}}
+    result, calls, _clock, _warnings, outcome = _run(monkeypatch, [_batch("batch_complete", 2016)] * 3, run_config=config)
+    assert result.success and len(calls) == 2 and outcome == "partial"
+    assert _metadata(result)["stop_reason"] == "max_batches"
 
 
 def test_blocked_batch_fails_the_run_with_totals(monkeypatch) -> None:
     blocked = {**_batch("blocked"), "coverage_status": "conflict", "blocked_reason": "sealed_raw_mismatch"}
-    result, calls, _clock, _warnings = _run(
+    result, calls, _clock, _warnings, _outcome = _run(
         monkeypatch, [_batch("batch_complete", 7), blocked], run_config=SCHEDULED)
     assert not result.success and len(calls) == 2
     failure = next(event.event_specific_data for event in result.all_events if event.event_type_value == "STEP_FAILURE")
@@ -220,7 +207,7 @@ def test_blocked_batch_fails_the_run_with_totals(monkeypatch) -> None:
     {"max_batches": 0}, {"max_batches": 501}, {"max_buckets": 0}, {"max_buckets": 2017}, {"busy_retries": -1},
 ])
 def test_out_of_range_config_fails_before_touching_the_database(monkeypatch, config) -> None:
-    result, calls, _clock, _warnings = _run(monkeypatch, [], run_config={"ops": {OP: {"config": config}}})
+    result, calls, _clock, _warnings, _outcome = _run(monkeypatch, [], run_config={"ops": {OP: {"config": config}}})
     assert not result.success and calls == []
 
 
@@ -229,79 +216,3 @@ def test_coverage_service_rejects_out_of_range_bucket_limits() -> None:
     for value in (0, 2017):
         with pytest.raises(ValueError):
             asyncio.run(archive_parking_with_coverage(session, max_buckets=value))
-
-
-class _LockConnection:
-    def __init__(self, answers: list[bool]) -> None:
-        self.answers = list(answers)
-        self.statements: list[str] = []
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *_args: object) -> None:
-        return None
-
-    async def scalar(self, statement):
-        self.statements.append(str(statement))
-        if "pg_advisory_unlock" in str(statement):
-            return True
-        return self.answers.pop(0)
-
-
-def _lease(connection: _LockConnection, wait_seconds: float) -> bool:
-    async def run() -> bool:
-        engine = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"), connect=lambda: connection)
-        service = CollectionService(Settings(use_sample_client_when_no_key=True), client=FixturePublicDataClient())
-        async with service._postgres_collection_lease(SimpleNamespace(bind=engine), wait_seconds=wait_seconds) as acquired:
-            return acquired
-
-    return asyncio.run(run())
-
-
-def test_airport_lease_waits_for_a_short_holder(monkeypatch) -> None:
-    """보관 배치가 lease를 쥔 동안 공항 수집은 기다렸다가 잡는다(5분 수집 한 주기를 통째로 잃지 않는다)."""
-    import app.services.collection as collection
-
-    monkeypatch.setattr(collection, "AIRPORT_LEASE_POLL_SECONDS", 0.01)
-    connection = _LockConnection([False, False, True])
-    assert _lease(connection, wait_seconds=5) is True
-    assert sum("pg_try_advisory_lock" in statement for statement in connection.statements) == 3
-    assert "pg_advisory_unlock" in connection.statements[-1]
-
-
-def test_airport_lease_without_wait_keeps_the_old_skip(monkeypatch) -> None:
-    connection = _LockConnection([False])
-    assert _lease(connection, wait_seconds=0) is False
-    assert len(connection.statements) == 1  # 한 번 시도하고, 잡지 못했으니 해제도 없다
-
-
-def test_airport_lease_wait_is_bounded(monkeypatch) -> None:
-    import app.services.collection as collection
-
-    monkeypatch.setattr(collection, "AIRPORT_LEASE_POLL_SECONDS", 0.01)
-    connection = _LockConnection([False] * 1000)
-    assert _lease(connection, wait_seconds=0.05) is False
-    attempts = sum("pg_try_advisory_lock" in statement for statement in connection.statements)
-    assert 2 <= attempts < 50
-
-
-def test_dagster_airport_collection_passes_the_lease_wait(monkeypatch) -> None:
-    seen = {}
-
-    class Service:
-        async def collect(self, session, *, trigger, lease_wait_seconds):
-            seen["wait"] = lease_wait_seconds
-            return {"status": "skipped", "snapshot_count": 0}
-
-    monkeypatch.setattr(module, "CollectionService", lambda _settings: Service())
-
-    async def run():
-        session = SimpleNamespace(bind=None, commit=None, rollback=None)
-        try:
-            await module._collect_airport_with_analytics(session, settings=None, trigger="dagster_airport")
-        except Exception:  # noqa: BLE001 — 사전집계 판정 실패는 결과를 바꾸지 않는다(여기서는 대기값만 본다).
-            pass
-
-    asyncio.run(run())
-    assert seen["wait"] == module.AIRPORT_LEASE_WAIT_SECONDS
