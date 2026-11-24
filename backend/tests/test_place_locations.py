@@ -407,3 +407,134 @@ def test_missing_search_total_never_confirms_coordinate(tmp_path: Path, monkeypa
         await engine.dispose()
 
     asyncio.run(run())
+
+
+def _two_targets(session, now):
+    session.add(BusTerminalReference(source="data_go_kr_tago", service_type="intercity",
+        terminal_id="B1", terminal_name="강릉", city_name="강원도",
+        first_seen_at=now, last_seen_at=now, raw_item_json={}))
+    session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="대천",
+        first_seen_at=now, last_seen_at=now, raw_item_json={}))
+
+
+def _settings(tmp_path: Path, name: str, **overrides) -> Settings:
+    return Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / name}", seed_sample_data=False,
+                    place_location_collection_enabled=True, vworld_api_key="test-key", **overrides)
+
+
+def test_deterministic_server_error_on_one_target_does_not_stop_the_rest(tmp_path: Path, monkeypatch) -> None:
+    """운영(2026-11 odroid): 매일 서버 오류를 내는 대상 1곳 뒤에서 수집이 멈추고 job이 실패했다."""
+    from vworld import VworldServerError
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    class PoisonVworld(FakeVworld):
+        async def search_place(self, query: str, *, size: int):
+            if "강릉" in query:
+                self.calls.append(query)
+                raise VworldServerError("server error")
+            return await super().search_place(query, size=size)
+
+    monkeypatch.setattr("app.services.place_locations.asyncio.sleep", no_sleep)
+    PoisonVworld.calls = []
+    settings = _settings(tmp_path, "poison.sqlite3")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        async with factory() as session:
+            _two_targets(session, now_utc())
+            await session.commit()
+            result = await PlaceLocationCollectionService(settings, client_factory=PoisonVworld).collect(session)
+            assert result["status"] == "partial_success"
+            assert (result["provider_calls"], result["provider_failed"], result["provider_blocked"],
+                    result["port_locations"]) == (2, 1, 0, 1)
+        await engine.dispose()
+
+    asyncio.run(run())
+    assert PoisonVworld.calls == ["강릉시외버스터미널", "대천항"]
+
+
+@pytest.mark.parametrize("error_name,expected_calls", [
+    ("VworldAuthError", 1), ("VworldRateLimitError", 1), ("VworldServerError", 3),
+])
+def test_systemic_failures_stop_the_run_and_mark_it_blocked(tmp_path: Path, monkeypatch, error_name, expected_calls):
+    """인증·쿼터는 첫 실패에, 그 밖의 실패는 연속 3건에 멈춘다(제공기관 전체 장애로 본다)."""
+    import vworld
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    class DownVworld(FakeVworld):
+        async def search_place(self, query: str, *, size: int):
+            self.calls.append(query)
+            raise getattr(vworld, error_name)("down")
+
+    monkeypatch.setattr("app.services.place_locations.asyncio.sleep", no_sleep)
+    DownVworld.calls = []
+    settings = _settings(tmp_path, "down.sqlite3")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            for index in range(5):
+                session.add(FerryPort(source="data_go_kr_maritime", port_id=f"P{index}", port_name=f"항구{index}",
+                    first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            await session.commit()
+            result = await PlaceLocationCollectionService(settings, client_factory=DownVworld).collect(session)
+            assert result["provider_blocked"] == 1
+            assert result["provider_calls"] == result["provider_failed"] == expected_calls
+        await engine.dispose()
+
+    asyncio.run(run())
+    assert len(DownVworld.calls) == expected_calls
+
+
+@pytest.mark.parametrize("failures,age_days,called", [
+    (1, 1.5, True),   # 1회 실패 → 1일 대기
+    (2, 1.5, False),  # 2회 연속 실패 → 2일 대기
+    (2, 2.5, True),
+    (3, 3.5, False),  # 3회 → 4일
+    (6, 29, False),   # 상한 30일
+    (6, 31, True),
+])
+def test_repeated_failures_back_off_exponentially(tmp_path: Path, monkeypatch, failures, age_days, called) -> None:
+    from datetime import timedelta
+
+    from app.services.place_locations import failed_target_backoff
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.place_locations.asyncio.sleep", no_sleep)
+    FakeVworld.calls = []
+    settings = _settings(tmp_path, "backoff.sqlite3")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="대천",
+                first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            # 오래된 성공 영수증 뒤의 연속 실패만 센다
+            session.add(RawApiResponse(source="vworld_place", endpoint="vworld:port:P1",
+                request_params_json={"query": "대천항", "name": "대천", "city_name": None}, status_code=200,
+                body_text="{}", received_at=now - timedelta(days=age_days + failures + 40), parse_status="success"))
+            for index in range(failures):
+                session.add(RawApiResponse(source="vworld_place", endpoint="vworld:port:P1",
+                    request_params_json={"query": "대천항", "name": "대천", "city_name": None}, status_code=0,
+                    body_text="null", received_at=now - timedelta(days=age_days + (failures - 1 - index)),
+                    parse_status="failed", parse_error="VworldServerError"))
+            await session.commit()
+            result = await PlaceLocationCollectionService(settings, client_factory=FakeVworld).collect(session)
+            assert result["provider_calls"] == (1 if called else 0)
+        await engine.dispose()
+
+    asyncio.run(run())
+    assert failed_target_backoff(1) == timedelta(days=1)
+    assert failed_target_backoff(3) == timedelta(days=4)
+    assert failed_target_backoff(50) == timedelta(days=30)

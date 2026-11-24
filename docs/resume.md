@@ -1,3 +1,11 @@
+## 현재 상태 — 2026-11-24 좌표 보강 일부 실패 = 부분 성공(BUS-REF-PARTIAL-20261124)
+
+- bus_reference·maritime·place_location·kakao job: 좌표 호출 몇 건의 실패는 run SUCCESS + partial 태그, export 준비 계속.
+  VWorld 수집은 실패 대상을 건너뛰고(연속 3건·인증·쿼터에만 멈춤) 실패 대상을 지수 대기로 다시 본다. 철도 주소는 첫 줄만 검색한다.
+- 배포(Codex 담당): transport backend 이미지(Dagster code server·backend 같은 이미지). migration·gateway·UI 변경 없음.
+- 다음 한 작업: 배포 다음 날 03:30 KST bus_reference run이 SUCCESS(필요하면 partial)이고 `prepare_reference_exports`까지 도는지,
+  철도역 1096의 VWorld 영수증이 새 검색어(`서울시 강서구 방화동 886`)로 성공하는지 확인한다.
+
 ## 현재 상태 — 2026-11-24 5분 job 실행 상한·우선순위·고속도로 tick 기준 예약(DAGSTER-RUNTIME-PRIORITY-20261124)
 
 - backend만(Dagster job 태그·op deadline·고속도로 예약 계산). migration·UI 없음. 공개 `/transport/providers`·`collector-status`의

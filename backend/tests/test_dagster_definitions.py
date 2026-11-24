@@ -197,6 +197,7 @@ def _run_place_job(monkeypatch, provider: str, result: dict | Exception):
         run = getattr(dagster_definitions, job_name).execute_in_process(raise_on_error=False, instance=instance)
         warnings = [entry.user_message for entry in instance.all_logs(run.run_id)
                     if entry.level == logging.WARNING and entry.step_key == op_name]
+        run.outcome_tag = instance.get_run_by_id(run.run_id).tags.get("kortravel/collection-outcome")
     return run, warnings
 
 
@@ -237,9 +238,38 @@ def test_place_job_deferral_only_ends_success_with_metadata(monkeypatch, provide
 
 @pytest.mark.parametrize("provider", ["vworld", "kakao"])
 @pytest.mark.parametrize("result", [
+    # 운영(2026-11 odroid) 실패 11건의 모양: 결정적으로 실패하는 대상 1곳(호출 1건 중 1건 실패)
+    {"status": "partial_success", "run_id": 15, "provider_calls": 1, "deferred": 1, "provider_failed": 1,
+     "provider_blocked": 0},
     {"status": "partial_success", "run_id": 15, "provider_calls": 4, "deferred": 2, "provider_failed": 1},
     {"status": "success", "run_id": 16, "provider_calls": 4, "deferred": 0, "provider_failed": 1},
+    # 실패 3건이라도 호출의 절반 미만이면 대상 몇 곳의 실패다
+    {"status": "partial_success", "run_id": 16, "provider_calls": 7, "deferred": 3, "provider_failed": 3},
+])
+def test_place_job_isolated_provider_failures_are_partial_success(monkeypatch, provider, result):
+    """좌표 호출 몇 건의 실패는 run 실패가 아니라 부분 성공이다(성공 + partial 태그 + 실패 건수 + 경고)."""
+    _job, op_name, _service = _PLACE_JOBS[provider]
+    run, warnings = _run_place_job(monkeypatch, provider, result)
+    assert run.success
+    assert run.outcome_tag == "partial"
+    metadata = _output_metadata(run, op_name)
+    assert metadata["provider_failed"].value == result["provider_failed"]
+    assert metadata["provider_calls"].value == result["provider_calls"]
+    assert metadata["collection_outcome"].value == "partial"
+    assert any(f"{result['provider_failed']}건의 호출이 실패했습니다" in line for line in warnings)
+    # 같은 job의 export 준비가 건너뛰어지지 않는다
+    assert run.output_for_node("prepare_reference_exports")["status"] == "disabled"
+
+
+@pytest.mark.parametrize("provider", ["vworld", "kakao"])
+@pytest.mark.parametrize("result", [
     {"status": "failed", "run_id": 17},
+    # 인증·쿼터·연속 실패로 이번 실행을 멈췄다
+    {"status": "partial_success", "run_id": 17, "provider_calls": 1, "deferred": 1, "provider_failed": 1,
+     "provider_blocked": 1},
+    # 실패 3건 이상이면서 호출의 절반 이상
+    {"status": "partial_success", "run_id": 17, "provider_calls": 6, "deferred": 3, "provider_failed": 3},
+    {"status": "partial_success", "run_id": 17, "provider_calls": 3, "deferred": 3, "provider_failed": 3},
     # 유예로 설명되지 않는 부분 성공은 실패 쪽으로 둔다
     {"status": "partial_success", "run_id": 18, "deferred": 0, "provider_failed": 0},
 ])
@@ -470,14 +500,58 @@ def test_reference_enrichment_deferral_only_is_success_with_metadata(monkeypatch
 
 
 @pytest.mark.parametrize("provider", ["vworld", "kakao"])
-def test_reference_enrichment_provider_errors_still_fail(monkeypatch, provider):
-    partial = {"status": "partial_success", "run_id": 7, "deferred": 1, "provider_failed": 1}
+@pytest.mark.parametrize("partial", [
+    {"status": "partial_success", "run_id": 7, "provider_calls": 1, "deferred": 1, "provider_failed": 1,
+     "provider_blocked": 1},
+    {"status": "partial_success", "run_id": 7, "provider_calls": 4, "deferred": 3, "provider_failed": 3},
+])
+def test_reference_enrichment_provider_errors_still_fail(monkeypatch, provider, partial):
     ok = {"status": "success", "run_id": 8, "deferred": 0, "provider_failed": 0}
     result = _run_bus_reference_with(monkeypatch, *((partial, ok) if provider == "vworld" else (ok, partial)))
     assert not result.success
     failure = result.failure_data_for_node("enrich_new_reference_locations").user_failure_data
-    assert failure.metadata[f"{provider}_provider_failed"].value == 1
+    assert failure.metadata[f"{provider}_provider_failed"].value == partial["provider_failed"]
     assert failure.metadata[f"{provider}_status"].value == "partial_success"
+    assert failure.metadata["failed_parts"].value == provider
+
+
+@pytest.mark.parametrize("provider", ["vworld", "kakao"])
+def test_reference_enrichment_isolated_failure_is_partial_and_prepares_exports(monkeypatch, provider):
+    """운영(2026-11 odroid) bus_reference 실패의 모양: 기준정보는 저장됐고 좌표 호출 1건(1/1)만 실패했다.
+
+    예전에는 run FAILURE였고 뒤의 export 준비(prepare_reference_exports)까지 건너뛰었다.
+    """
+    from dagster import DagsterInstance
+
+    partial = {"status": "partial_success", "run_id": 7, "provider_calls": 1, "deferred": 1, "provider_failed": 1,
+               "provider_blocked": 0}
+    ok = {"status": "success", "run_id": 8, "provider_calls": 2, "deferred": 0, "provider_failed": 0}
+    vworld, kakao = (partial, ok) if provider == "vworld" else (ok, partial)
+
+    async def fake_run(_settings, action, *_args, **_kwargs):
+        return {"reference": {"status": "success", "run_id": 40}, "vworld": vworld, "kakao": kakao}[action]
+
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "BusReferenceCollectionService", lambda _: SimpleNamespace(collect="reference"))
+    monkeypatch.setattr(dagster_definitions, "PlaceLocationCollectionService", lambda _: SimpleNamespace(collect="vworld"))
+    monkeypatch.setattr(dagster_definitions, "KakaoPlaceCollectionService", lambda _: SimpleNamespace(collect="kakao"))
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", fake_run)
+    with DagsterInstance.ephemeral() as instance:
+        result = dagster_definitions.bus_reference_collection_job.execute_in_process(
+            raise_on_error=False, instance=instance)
+        tags = instance.get_run_by_id(result.run_id).tags
+        warnings = [entry.user_message for entry in instance.all_logs(result.run_id)
+                    if entry.level == logging.WARNING and entry.step_key == "enrich_new_reference_locations"]
+    assert result.success
+    assert not any(event.is_step_up_for_retry for event in result.all_events)
+    assert tags["kortravel/collection-outcome"] == "partial"
+    metadata = _output_metadata(result, "enrich_new_reference_locations")
+    assert metadata["collection_outcome"].value == "partial"
+    assert metadata["partial_parts"].value == provider
+    assert metadata[f"{provider}_provider_failed"].value == 1
+    assert metadata[f"{provider}_provider_calls"].value == 1
+    assert any("1건의 호출이 실패했습니다" in line for line in warnings)
+    assert result.output_for_node("prepare_reference_exports")["status"] == "disabled"
 
 
 def test_reference_enrichment_does_not_continue_after_lease_revocation(monkeypatch):
