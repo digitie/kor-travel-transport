@@ -167,7 +167,8 @@ from app.core.read_timing import observe_page_build
 from app.services.fuel_map_validation import validated_fuel_map_items, validated_place_map_items
 from app.services.place_map_admission import PlaceMapGate, place_map_admission, run_in_thread_holding
 from app.services.rail_catalog import metro_station_catalog
-from app.services.reference_export_preparation import warm_rail_reference_revision
+from app.services.reference_export_preparation import warm_reference_revisions
+from app.services.startup_warmup import run_startup_warmup
 from app.services.analytics import (
     SpecialDayHourAggregate,
     build_special_day_patterns_from_aggregates,
@@ -623,10 +624,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         elif resolved_settings.seed_sample_data:
             logger.info("sample seeding skipped because client_mode=%s", app.state.collection_service.client_mode)
 
-        if history_read_cache is not None:
+        def start_history_cache() -> None:
             # 전체 이력 조회가 느리거나 DB 읽기가 잠겨도 readiness를 막지 않는다.
-            # 채우기 전에는 기존 직접 SQL 경로를 사용한다.
-            app.state.history_cache_task = asyncio.create_task(history_read_cache.run())
+            # 채우기 전에는 기존 직접 SQL 경로를 사용한다. 기동 warmup 뒤(최대 30초)에 시작한다.
+            if history_read_cache is not None and app.state.history_cache_task is None:
+                app.state.history_cache_task = asyncio.create_task(history_read_cache.run())
 
         if resolved_settings.enable_scheduler and resolved_settings.scheduler_mode == "in_process":
             logger.info(
@@ -645,22 +647,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         elif resolved_settings.enable_scheduler:
             logger.info("in-process scheduler disabled; Dagster owns collection execution")
 
-        rail_warmup_task = None
+        startup_warmup_task = None
         try:
             async with AsyncExitStack() as stack:
                 if fuel_mcp_http is not None:
                     await stack.enter_async_context(fuel_mcp_http.router.lifespan_context(fuel_mcp_http))
-                if (engine.dialect.name == "postgresql" and resolved_settings.transport_map_current_enabled
-                        and resolved_settings.release_sha and resolved_settings.release_sha != "unknown"):
-                    rail_warmup_task = asyncio.create_task(
-                        warm_rail_reference_revision(session_factory, settings=resolved_settings)
-                    )
+                # yield 전에는 기다리지 않는다(task만 만든다 — 포트 개방을 늦추지 않는다). 풀 채우기 → 철도·여객선 지문 →
+                # 주차 이력 캐시 순서다. 입력 revision에 release_sha가 들어가므로(ADR-016) 그 값이 있을 때만 지문을 데운다.
+                if engine.dialect.name == "postgresql":
+                    reference_identity = (resolved_settings.transport_map_current_enabled
+                                          and resolved_settings.release_sha not in {None, "", "unknown"})
+                    startup_warmup_task = asyncio.create_task(run_startup_warmup(
+                        engine,
+                        warm_references=(
+                            (lambda: warm_reference_revisions(session_factory, settings=resolved_settings))
+                            if reference_identity else None
+                        ),
+                        start_history_cache=start_history_cache if history_read_cache is not None else None,
+                    ))
                 yield
         finally:
-            if rail_warmup_task is not None:
-                rail_warmup_task.cancel()
+            if startup_warmup_task is not None:
+                startup_warmup_task.cancel()
                 with suppress(asyncio.CancelledError):
-                    await rail_warmup_task
+                    await startup_warmup_task
             history_cache_task = app.state.history_cache_task
             if history_cache_task is not None:
                 history_cache_task.cancel()

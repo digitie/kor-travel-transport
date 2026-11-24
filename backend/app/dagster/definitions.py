@@ -1158,15 +1158,61 @@ def prepare_reference_exports(context, upstream: Any = None, other: Any = None) 
         return result
     with collection_owner(context.run_id, context.instance):
         result = asyncio.run(_run_with_session(settings, functools.partial(prepare_reference_export_bodies, settings=settings)))
-    context.add_output_metadata({"status": result["status"], "prepared": result["prepared"], "reused": result["reused"]})
-    if result["status"] == "not_ready":
-        context.add_output_metadata({"collection_outcome": "deferred", "error_code": "REFERENCE_EXPORT_DEFERRED",
-                                     "previous_data_preserved": True})
+    metadata = _reference_prepare_metadata(result)
+    status = result["status"]
+    # 준비는 첫 HTTP 페이지의 대체 경로다(준비가 없거나 실패해도 첫 페이지가 같은 본문을 직접 만든다). 그래서 이 step이
+    # run을 실패시키는 것은 준비 자체가 목적인 전용 job에서 한 종류도 준비하지 못한 경우뿐이다. 수집 job(5분 공항 수집
+    # 등)의 꼬리에서는 수집이 이미 commit됐으므로 같은 상황도 부분 완료로 남긴다(T23-04·WLH-04). 다른 준비와의 경합
+    # (`busy`)은 실패도 부분도 아니다. 회수된 실행·run 상한·취소는 위 호출에서 예외로 끝난다.
+    if status == "failed" and context.job_name == REFERENCE_EXPORT_PREPARE_JOB:
+        raise Failure(description="기준정보 파생 본문을 한 종류도 준비하지 못했습니다. 마지막 정상 본문은 유지되고, "
+                                  "첫 조회가 같은 본문을 직접 구성합니다.", metadata=metadata, allow_retries=False)
+    if status == "not_ready":
+        metadata.update({"collection_outcome": "deferred", "error_code": "REFERENCE_EXPORT_DEFERRED",
+                         "previous_data_preserved": True})
         context.log.warning("완결된 기준정보가 아직 없어 파생 본문 준비를 미룹니다. 마지막 정상 본문을 유지합니다.")
-    _record_collection_outcome(
-        context, _collection_output_metadata(result, "reference")["collection_outcome"],
-    )
+    if status in {"partial_success", "failed"}:
+        metadata.update({"collection_outcome": "partial",
+                         "error_code": "REFERENCE_EXPORT_PARTIAL" if status == "partial_success" else "REFERENCE_EXPORT_FAILED",
+                         "previous_data_preserved": True})
+        failed_kinds = ", ".join(row["kind"] for row in result["kinds"] if row["status"] == "failed")
+        context.log.warning(f"기준정보 파생 본문({failed_kinds})을 준비하지 못했습니다. 수집 결과와 마지막 정상 본문은 "
+                            "유지되고, 실패한 종류는 다음 실행이나 첫 조회가 다시 구성합니다.")
+    busy_kinds = [row["kind"] for row in result.get("kinds") or [] if row.get("status") == "busy"]
+    if busy_kinds:
+        context.log.info(f"기준정보 파생 본문({', '.join(busy_kinds)})은 다른 준비가 만드는 중이라 이번에는 건너뜁니다.")
+    context.add_output_metadata(metadata)
+    _record_collection_outcome(context, metadata.get("collection_outcome") or (
+        _collection_output_metadata(result, "reference")["collection_outcome"]))
     return result
+
+
+#: 준비 결과 중 공용 event log에 남겨도 되는 종류별 필드(값은 코드 상수·숫자·예외 종류·SQLSTATE뿐이다).
+_REFERENCE_PREPARE_KIND_FIELDS = ("kind", "status", "duration_ms", "item_count", "source_status",
+                                  "error_type", "sqlstate", "reason")
+
+
+def _reference_prepare_metadata(result: dict[str, Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {key: result[key] for key in ("status", "prepared", "reused") if key in result}
+    metadata["busy"] = int(result.get("busy") or 0)
+    metadata["failed"] = int(result.get("failed") or 0)
+    kinds = [{key: row[key] for key in _REFERENCE_PREPARE_KIND_FIELDS if key in row} for row in result.get("kinds") or []]
+    if kinds:
+        metadata["kinds"] = kinds
+    gc = result.get("gc")
+    if isinstance(gc, dict):
+        for key in ("expired_handles", "unused_artifacts", "duration_ms"):
+            if type(gc.get(key)) is int:
+                metadata[f"gc_{key}"] = gc[key]
+        if gc.get("busy") is True:
+            metadata["gc_busy"] = True
+        if isinstance(gc.get("error"), dict):
+            metadata["gc_error_type"] = str(gc["error"].get("error_type", "unknown"))
+    return metadata
+
+
+#: 준비 자체가 목적인 전용 job. 이 job에서만 "한 종류도 준비하지 못함"이 run 실패다.
+REFERENCE_EXPORT_PREPARE_JOB = "reference_export_prepare_job"
 
 
 @job(tags=_job_tags("reference", "reference_export_prepare_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))

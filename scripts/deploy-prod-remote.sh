@@ -543,3 +543,5 @@ if migrate_image_ref="$(compose config --format json | python3 -c 'import json,s
   migrate_image_id="$(docker image inspect -f '{{.Id}}' "${migrate_image_ref}")" || migrate_image_id=""
 fi
 publish_release_pointer "${migrate_image_id}"
+# 배포 검증·current 발행 뒤의 best-effort warm(기준정보 본문 준비 + loopback export 확인). 실패해도 배포는 성공이다.
+bash "${SCRIPT_DIR}/post-deploy-warm.sh" --project "${COMPOSE_PROJECT_NAME}" --api-port "${PUBLIC_API_PORT:-12302}" || true

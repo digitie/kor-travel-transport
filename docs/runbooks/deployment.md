@@ -235,6 +235,43 @@ Manager 교체 과정 동안 prune 실행을 막는다. 컨테이너 내부에�
 compute-log 디렉터리의 배타 잠금이 동시 sweep을 막는다. 동시 sweep은 파일을 삭제하기 전에
 실패하고 JSON의 `ok`에 `false`를 반환한다.
 
+## 배포 직후 best-effort warm(기준정보 본문 준비·loopback export 확인, 2026-11-24)
+
+기준정보 본문(ADR-016 artifact)의 입력 revision에는 `RELEASE_SHA`가 들어가므로 배포마다 rail·ferry·bus·parking
+본문이 모두 무효가 된다. 5분 공항 수집의 준비 step은 code-server 냉기동·다음 tick·공항 수집 뒤에야 돌므로, 그
+사이의 첫 Map 호출이 요청 안에서 전체를 구성한다(감사 WLH-03·MC-07·RT-03). 배포 검증도 `/health`와
+`release_sha`만 보므로 export 토큰·허용 peer·Map current 플래그 불일치는 Map 실패로만 드러난다(RT-11).
+[`scripts/post-deploy-warm.sh`](../../scripts/post-deploy-warm.sh)가 두 가지를 best-effort로 한다. 결과와 상관없이
+exit 0이고 문제는 stderr `post-deploy-warm: WARN ...` 줄로만 남긴다(배포 rollback·실패 판정에 쓰지 않는다).
+
+1. **본문 준비** — 먼저 backend `/health`의 `release_sha`와 code-server 컨테이너 env의 `RELEASE_SHA`를 비교한다.
+   다르거나(code-server만 롤백, `RELEASE_SHA` 없이 기동 등) API 값을 읽지 못하면 준비를 건너뛰고 경고한다 — API가
+   읽지 않을 revision의 본문을 만들고 head를 되돌리게 되기 때문이다. 같으면 code-server 안에서
+   `python -I -B -m app.deploy.prepare_references --timeout-seconds 300 --expect-release-sha <API 값>`을 실행한다.
+   모듈이 자기 설정의 release_sha를 다시 대조하고(다르면 exit 4), 같은 `prepare_reference_exports`를 Dagster run 없이
+   직접 부른다(공용 run 큐·`reference` run_group 대기를 피한다). stdout은 종류별 결과 JSON 한 줄(kind·status·
+   duration_ms·error_type·sqlstate)이며 DSN·토큰은 없다. run_group 상한·수집 owner 밖에서 돌므로 5분 공항 수집의
+   준비와 같은 본문을 두고 겹칠 수 있다. 겹친 종류는 잠금 대기(55P03)·직렬화 실패(40001)·admission 경합을 한 번
+   다시 본 뒤 `busy`로 끝나며, 배포 쪽도 공항 run 쪽도 실패·부분 완료로 세지 않는다.
+2. **loopback smoke+warm** — backend 컨테이너 안에서 `python -I -B -m app.deploy.export_smoke --port <API 포트>`(`-B`: 런타임처럼 pyc를 쓰지 않는다)가
+   T1 다섯 종(`limit=1`)과 `TRANSPORT_MAP_CURRENT_ENABLED`일 때 rail·ferry 첫 페이지를 한 번씩 부른다. 토큰은 컨테이너
+   env(`TRANSPORT_SERVICE_EXPORT_TOKEN`)에서만 읽고 argv·출력에 넣지 않는다. 출력은 `GET <경로> <상태> <지연>ms`뿐이다.
+   서빙 중인 uvicorn 프로세스의 지문 memo·커넥션을 데우는 유일한 경로다. 토큰이 설정됐는데 404면 exit 3(토큰·
+   `SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`·라우터 설정 불일치 경고), 503·시간 초과는 exit 1(경고)이다. 토큰이 없으면
+   export가 의도적으로 닫힌 것이라 건너뛴다.
+
+호출 위치:
+
+- **Odroid 정본(Manager v2)**: `ktdctl service-release apply-core-candidate transport ... --confirm`이 성공하고
+  location이 다시 실린 뒤 운영자가 승인된 source clone에서 실행한다. Manager 쪽 자동 호출은 후속이다.
+
+  ```sh
+  bash scripts/post-deploy-warm.sh --project kor-travel-transport --api-port 12302
+  ```
+
+- **legacy `deploy-prod-remote.sh`**: health·`release_sha` 확인과 Manager current 발행이 끝난 뒤 스스로 부른다
+  (`|| true`). 발행이 실패(exit 3)하면 부르지 않는다.
+
 ## 과거 n150 운영 절차
 
 1. n150에 `/home/digitie/apps/kor-travel-transport/.env.server14`를 만들고

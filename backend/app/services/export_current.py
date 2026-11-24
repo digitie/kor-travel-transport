@@ -178,11 +178,28 @@ _FIELDS = (
 )
 
 
-async def _snapshot_transaction(session: AsyncSession) -> None:
+def _timeout_literal(milliseconds: int) -> str:
+    # SET은 bind 변수를 받지 않는다. 양의 정수만 문장에 넣는다.
+    if type(milliseconds) is not int or milliseconds <= 0:
+        raise ValueError("timeout은 양의 정수(밀리초)여야 합니다")
+    return f"{milliseconds // 1000}s" if milliseconds % 1000 == 0 else f"{milliseconds}ms"
+
+
+async def _snapshot_transaction(
+    session: AsyncSession, *, lock_timeout_ms: int | None = None, statement_timeout_ms: int | None = None,
+) -> None:
     if session.bind.dialect.name == "postgresql":
         await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
-        await session.execute(text(f"SET LOCAL lock_timeout = '{SNAPSHOT_LOCK_TIMEOUT_SECONDS}s'"))
-        await session.execute(text(f"SET LOCAL statement_timeout = {snapshot_statement_timeout_ms()}"))
+        if lock_timeout_ms is None and statement_timeout_ms is None:
+            # 요청 경로: 잠금 2초, 문장 상한은 남은 예산 이하(재시도와 예산 공유).
+            await session.execute(text(f"SET LOCAL lock_timeout = '{SNAPSHOT_LOCK_TIMEOUT_SECONDS}s'"))
+            await session.execute(text(f"SET LOCAL statement_timeout = {snapshot_statement_timeout_ms()}"))
+        else:
+            # 오프라인 준비(`reference_export_preparation`)가 자기 예산에 맞춘 상한을 넘긴다.
+            lock_ms = SNAPSHOT_LOCK_TIMEOUT_SECONDS * 1000 if lock_timeout_ms is None else lock_timeout_ms
+            statement_ms = snapshot_statement_timeout_ms() if statement_timeout_ms is None else statement_timeout_ms
+            await session.execute(text(f"SET LOCAL lock_timeout = '{_timeout_literal(lock_ms)}'"))
+            await session.execute(text(f"SET LOCAL statement_timeout = '{_timeout_literal(statement_ms)}'"))
 
 
 async def expire_snapshots(session: AsyncSession, *, limit: int = 1) -> int:

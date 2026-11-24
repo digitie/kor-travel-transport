@@ -1,4 +1,4 @@
-"""기동 때 준비한 철도 지문은 같은 워커의 첫 조회에서 재사용된다."""
+"""기동 때 준비한 철도 지문은 같은 워커의 첫 조회에서 재사용된다. 주차 이력 캐시는 warmup 뒤에 시작한다."""
 
 import asyncio
 from threading import Event
@@ -56,25 +56,38 @@ def test_rail_startup_warmup_preserves_readiness_and_address_invalidation(test_s
     asyncio.run(seed_before_startup())
     started, finished = Event(), Event()
     resume = asyncio.Event()
-    real_warmup = main.warm_rail_reference_revision
+    real_warmup = main.warm_reference_revisions
     application = main.create_app(test_settings)
+    warmed = []
 
     async def pause_warmup(factory, *, settings):
         assert factory is application.state.session_factory
         started.set()
         await resume.wait()
-        await real_warmup(factory, settings=settings)
+        warmed.extend(await real_warmup(factory, settings=settings))
         finished.set()
+        return warmed
 
-    monkeypatch.setattr(main, "warm_rail_reference_revision", pause_warmup)
+    monkeypatch.setattr(main, "warm_reference_revisions", pause_warmup)
     with TestClient(application, client=LOOPBACK_CLIENT) as client:
         assert started.wait(3)
         assert client.get("/health").status_code == 200
         assert not finished.is_set()
+        # 지문 warmup이 끝나기(또는 30초) 전에는 주차 이력 캐시 전체 구성을 시작하지 않는다(G3-10).
+        assert application.state.history_cache_task is None
         assert client.get(PATH).status_code == 404
         assert client.portal is not None
         client.portal.call(resume.set)
         assert finished.wait(5)
+        # Map이 읽는 두 종류를 순서대로 데운다. 여객선 원천은 이 시험에 없다.
+        assert [(row["kind"], row["status"]) for row in warmed] == [
+            ("rail-stations-v1", "warmed"), ("ferry-ports-v1", "source_unavailable"),
+        ]
+        for _ in range(50):
+            if application.state.history_cache_task is not None:
+                break
+            client.portal.call(asyncio.sleep, 0.05)
+        assert application.state.history_cache_task is not None
 
         async def storage_counts(session):
             return [
