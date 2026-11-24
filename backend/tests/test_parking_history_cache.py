@@ -236,10 +236,10 @@ def test_cache_does_not_publish_snapshot_changed_while_preparing(monkeypatch) ->
 
     original_deflate = history_cache.deflate_segment
 
-    def change_during_compression(raw):
+    def change_during_compression(raw, *level):
         nonlocal current_id
         current_id = 11
-        return original_deflate(raw)
+        return original_deflate(raw, *level)
 
     monkeypatch.setattr(history_cache, "load_snapshot", fake_load)
     monkeypatch.setattr(history_cache, "deflate_segment", change_during_compression)
@@ -756,7 +756,7 @@ def test_rebuild_interval_logs_are_paired_safe_and_skip_unchanged(monkeypatch, c
     assert finish["row_count"] == (None if outcome in {"failed", "cancelled"} else 1)
     assert finish["duration_ms"] >= 0 and finish["outcome"] == outcome
     assert set(start) == {"event", "phase", "rebuild_id", "at", "duration_ms", "row_count", "mode", "reason"}
-    assert set(finish) == {*start, "outcome", "changed_keys"}
+    assert set(finish) == {*start, "outcome", "changed_keys", "phases_ms"}
     assert "secret" not in caplog.text and "password" not in caplog.text
     if outcome == "published":
         caplog.clear()

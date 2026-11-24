@@ -177,15 +177,23 @@ covering index를 concurrent로 만들고 해당 테이블의 auto-analyze 임�
   진행 중이던 transaction이 낮은 id로 늦게 commit하면 `count(*) WHERE id <= W`가 저장값과 달라진다 → 전체 재생성. 삭제도 같은 검사로,
   update·delete는 `pg_stat` 지문으로 잡는다(운영 코드에 이 쓰기 경로는 없다). 새 키가 5만 개를 넘으면(대량 이관·복원) 전체 재생성.
   안전망으로 마지막 전체 재생성이 20시간을 넘으면 새벽(KST 03~04시)에 한 번 전체 재생성한다.
-- **날짜 조각**: 범위(전체·공항·주차장)마다 항목을 UTC 하루 단위 조각(불변)으로 나눠 둔다. 증분은 바뀐 날짜부터의 조각과 기간 경계의
-  첫 조각만 새로 만들고 나머지 조각 객체를 그대로 넘긴다(전체 튜플 복사 없음, 55만 항목 기준 0.3초 → 10~20ms).
-- **gzip 조각 이어 붙이기**(#270 경로와 일관): 조각마다 독립 deflate(Z_FULL_FLUSH, 수준 9)를 처음 쓸 때 만들어 조각에 보관하고, 요청 때
+- **날짜 조각**: 범위(전체·공항·주차장)마다 항목을 UTC 하루 단위 조각(불변)으로 나눠 둔다. 증분은 바뀐 키가 있는 날짜의 조각과 기간
+  경계의 첫 조각만 새로 만들고 나머지 조각 객체를 그대로 넘긴다(전체 튜플 복사 없음, 55만 항목 기준 0.3초 → 10~20ms).
+- **보관 기간**: 30일 + 15분 여유. 여유가 없으면 갱신 직전에 시각을 정하고 전송 슬롯을 기다리던 30일 요청이 앞부분이 잘린 snapshot을
+  못 쓰고 직접 SQL로 떨어진다.
+- **고장 회복**: 증분이 `IncrementalUnavailable`이 아닌 오류(DB·코드)로 실패해도 같은 갱신에서 전체 재생성으로 회복한다
+  (`reason=incremental_error:<예외 이름>`).
+- **gzip 조각 이어 붙이기**(#270 경로와 일관): 조각마다 독립 deflate(Z_FULL_FLUSH, 수준 9 — 요청마다 새로 만드는 첫 날짜 부분은 6)를 처음 쓸 때 만들어 조각에 보관하고, 요청 때
   gzip 머리말 + 첫 날짜(부분)·나머지 조각 + 빈 마지막 블록 + CRC32(`crc32_combine`)·길이로 한 member의 정상 gzip을 조립한다. 갱신 뒤에는
-  바뀐 날짜와 첫 날짜만 새로 압축한다(30일 전체 기준 갱신마다 약 7초 → 0.15초, x86). 크기는 본문 전체 gzip 9와 같다.
+  바뀐 날짜와 첫 날짜만 새로 압축한다(예전 갱신마다 85MB br 6 + gzip 9 약 7초 → 0.1초 안팎, x86). 크기는 본문 전체를 같은 수준으로
+  압축한 것과 같다. 기동·전체 재생성 뒤에는 범위별 첫 gzip 요청이 그 범위의 모든 날짜를 압축한다(30일 전체 본문은 게시 전에 만든다).
   캐시 적중 응답은 클라이언트가 gzip을 받으면 gzip이다(br은 매번 전체 압축이 필요해 gzip을 받지 않는 클라이언트에만). 그래서 공개 전체 이력
   (`br, gzip`)은 br 약 1.2MB 대신 gzip 약 2.0MB(합성 55만 행)를 받는다 — 갱신 비용과 바꾼 선택이다. 30일 전체 gzip 본문은 게시 전에 만들어 둔다.
 - 로그 `event=parking_history_rebuild`에 `mode`(`incremental`·`full`)·`reason`(`new_rows`·`cold`·`late_commit_or_delete`·`update_or_delete`·
-  `too_many_changes`·`periodic` 등)·`changed_keys`가 붙는다.
+  `too_many_changes`·`periodic`·`incremental_error:*` 등)·`changed_keys`·`phases_ms`(`count_ms`·`changes_ms`·`splice_ms`·`full_load_ms`·`gzip_ms`)가 붙는다.
+- 남은 한계: 늦은 commit 감지용 `count(*)`는 기간이 아니라 표 전체를 센다(원본 정리가 막혀 표가 계속 커진다 — `count_ms`로 본다).
+  update·delete 감지는 `pg_stat` 통계(`track_counts` 켜짐 전제)에 기대며 반영 지연 동안은 직전 값을 낼 수 있다. 공항 코드 변경은
+  다음 전체 재생성(새벽 안전망)까지 반영되지 않는다. 원본 정리(`parking-retention.md`)를 켜면 정리마다 전체 재생성이 돈다.
 - 측정은 journal 2026-11-24 PARKING-HISTORY-INCREMENTAL 항목과 PR 본문 표.
 
 ## PostgreSQL 인덱스

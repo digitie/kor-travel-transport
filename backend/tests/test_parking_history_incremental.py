@@ -12,6 +12,7 @@ import random
 import zlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
@@ -199,7 +200,7 @@ def test_incremental_refresh_publishes_without_full_load_and_prepares_matching_b
     async def no_full(_factory):
         raise AssertionError("새 행만 들어왔으면 전체 재생성하지 않는다")
 
-    async def changes(_factory, snapshot):
+    async def changes(_factory, snapshot, **_kwargs):
         loaded.append(snapshot.max_snapshot_id)
         return snapshot.with_changes(NOW - timedelta(days=30), 11, 11, frozenset({(NOW, 4)}), [new]), 1
 
@@ -222,7 +223,12 @@ def test_incremental_refresh_publishes_without_full_load_and_prepares_matching_b
     }
 
 
-def test_incremental_unavailable_falls_back_to_full_rebuild(monkeypatch, caplog) -> None:
+@pytest.mark.parametrize(("failure", "reason"), [
+    (history_cache.IncrementalUnavailable("late_commit_or_delete"), "late_commit_or_delete"),
+    # 증분 코드·DB 오류도 전체 재생성으로 회복한다(캐시가 다음 새벽까지 꺼지지 않게).
+    (RuntimeError("boom"), "incremental_error:RuntimeError"),
+])
+def test_incremental_unavailable_falls_back_to_full_rebuild(monkeypatch, caplog, failure, reason) -> None:
     base = history_cache.ParkingHistorySnapshot.from_rows(NOW - timedelta(days=30), 10, [], 10, NOW)
     cache = _cache_with(base, (10, 10, 0, 0))
     full = history_cache.ParkingHistorySnapshot.from_rows(NOW - timedelta(days=30), 12, [], 12, NOW)
@@ -230,8 +236,8 @@ def test_incremental_unavailable_falls_back_to_full_rebuild(monkeypatch, caplog)
     async def fingerprint():
         return (12, 12, 0, 0)
 
-    async def changes(_factory, _snapshot):
-        raise history_cache.IncrementalUnavailable("late_commit_or_delete")
+    async def changes(_factory, _snapshot, **_kwargs):
+        raise failure
 
     async def load(_factory):
         return full
@@ -243,7 +249,9 @@ def test_incremental_unavailable_falls_back_to_full_rebuild(monkeypatch, caplog)
     assert cache.snapshot is full
     finish = [json.loads(record.getMessage()) for record in caplog.records
               if '"phase":"finish"' in record.getMessage()][-1]
-    assert (finish["mode"], finish["reason"], finish["outcome"]) == ("full", "late_commit_or_delete", "published")
+    assert (finish["mode"], finish["reason"], finish["outcome"]) == ("full", reason, "published")
+    assert "full_load_ms" in finish["phases_ms"] and "gzip_ms" in finish["phases_ms"]
+    assert "boom" not in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +402,8 @@ def test_gzip_segments_are_reused_and_only_changed_days_recompressed(monkeypatch
     cutoff = NOW - timedelta(days=5)
     deflated = []
     original = history_cache.deflate_segment
-    monkeypatch.setattr(history_cache, "deflate_segment", lambda raw: deflated.append(len(raw)) or original(raw))
+    monkeypatch.setattr(history_cache, "deflate_segment",
+                        lambda raw, *level: deflated.append(len(raw)) or original(raw, *level))
     first = snapshot.render_gzip(cutoff, None, None)
     days = len(snapshot.everything.chunks)
     assert days >= 4 and len(deflated) == days + 1  # 첫 날짜(머리말 포함) + 나머지 날짜 + 꼬리
@@ -423,3 +432,43 @@ def test_cached_responses_prefer_gzip_segments_and_keep_br_for_br_only_clients()
     assert history_cache.cached_response_encoding("br") == "br"
     assert history_cache.cached_response_encoding("br, gzip;q=0") == "br"
     assert history_cache.cached_response_encoding("") == "identity"
+
+
+def test_late_old_observation_rebuilds_only_its_own_day() -> None:
+    """늦게 들어온 옛 관측 하나는 그 날짜 조각만 다시 만든다(그 뒤 날짜의 압축 조각은 그대로)."""
+    rows = [SourceRow(index + 1, NOW - timedelta(hours=6 * (24 - index)), 1 + index % 5, "live", NOW, index)
+            for index in range(24)]  # 6일
+    snapshot = history_cache.ParkingHistorySnapshot.from_rows(NOW - timedelta(days=30), 24, rows, 24, NOW)
+    old = rows[2]
+    late = SourceRow(25, old.observed_at + timedelta(minutes=1), 2, "live", NOW, 5)
+    updated = snapshot.with_changes(NOW - timedelta(days=30), 25, 25,
+                                    frozenset({(late.observed_at, 2)}), [late])
+    changed_day = history_cache._day_of(late.observed_at)
+    before, after = snapshot.everything.chunks, updated.everything.chunks
+    assert [chunk.day for chunk in after] == [chunk.day for chunk in before]
+    for old_chunk, new_chunk in zip(before, after, strict=True):
+        assert (old_chunk is new_chunk) == (old_chunk.day != changed_day)
+
+
+def test_cache_window_keeps_a_margin_for_requests_waiting_for_a_slot(monkeypatch) -> None:
+    """갱신 직전에 시각을 정한 30일 요청이 갱신 뒤에도 캐시를 쓴다(앞부분을 30일에 딱 맞춰 자르지 않는다)."""
+    monkeypatch.setattr(history_cache, "now_utc", lambda: NOW)
+    base = history_cache.ParkingHistorySnapshot.from_rows(NOW - timedelta(days=31), 1, [], 1, NOW)
+
+    class Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def connection(self, **_kwargs):
+            return None
+
+        async def execute(self, _statement):
+            return SimpleNamespace(one=lambda: (1, 1, 1))
+
+    snapshot, _ = asyncio.run(history_cache.load_changes(Session, base))
+    request_cutoff = NOW - timedelta(minutes=10) - timedelta(days=30)  # 10분 전에 시각을 정한 요청
+    assert snapshot.earliest_observed_at <= request_cutoff
+    assert snapshot.earliest_observed_at == NOW - history_cache.HISTORY_WINDOW - history_cache.HISTORY_WINDOW_MARGIN

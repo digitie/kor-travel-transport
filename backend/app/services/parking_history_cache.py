@@ -49,6 +49,10 @@ INCREMENTAL_MAX_KEYS = 50_000
 #: 증분의 안전망. 마지막 전체 재생성이 이보다 오래되면 이용이 적은 새벽(KST)에 한 번 전체 재생성한다.
 FULL_REBUILD_MAX_AGE = timedelta(hours=20)
 FULL_REBUILD_LOCAL_HOURS = range(3, 5)
+#: 캐시가 보관하는 기간. 전체 이력 요청(최대 30일) + 여유. 여유가 없으면 갱신 직전에 시각을 정하고 전송 슬롯을
+#: 기다리던 30일 요청이, 갱신으로 앞부분이 잘린 snapshot(`cutoff < earliest`)을 못 쓰고 직접 SQL로 떨어진다.
+HISTORY_WINDOW = timedelta(days=30)
+HISTORY_WINDOW_MARGIN = timedelta(minutes=15)
 _KST = ZoneInfo("Asia/Seoul")
 
 
@@ -103,8 +107,10 @@ _GZIP_HEADER = b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff"  # mtime 0, 최대 �
 _DEFLATE_FINAL = b"\x03\x00"  # 빈 마지막 고정 Huffman 블록
 _BODY_PREFIX = b'{"items":['
 _BODY_SUFFIX = b'],"next_cursor":null}'
-#: 이력 gzip 본문의 압축 수준. 날짜 조각을 한 번 압축해 재사용하므로(갱신마다 바뀌는 것은 마지막·첫 날짜뿐) 9를 유지한다.
+#: 날짜 조각 gzip 수준. 조각은 한 번 압축해 보관하므로 크기를 우선해 9다(합성 55만 행 30일: 9는 2.0MB, 6은 2.5MB).
+#: 요청마다 새로 압축하는 첫 날짜(부분)·머리말·꼬리는 6이다. 압축을 푼 본문은 수준과 무관하게 같다.
 HISTORY_GZIP_SEGMENT_LEVEL = 9
+HISTORY_GZIP_HEAD_LEVEL = 6
 
 
 def _day_of(value: datetime) -> int:
@@ -161,8 +167,8 @@ class DeflatedSegment(NamedTuple):
     length: int
 
 
-def deflate_segment(raw: bytes) -> DeflatedSegment:
-    compressor = zlib.compressobj(HISTORY_GZIP_SEGMENT_LEVEL, zlib.DEFLATED, -15)
+def deflate_segment(raw: bytes, level: int = HISTORY_GZIP_SEGMENT_LEVEL) -> DeflatedSegment:
+    compressor = zlib.compressobj(level, zlib.DEFLATED, -15)
     return DeflatedSegment(compressor.compress(raw) + compressor.flush(zlib.Z_FULL_FLUSH), zlib.crc32(raw), len(raw))
 
 
@@ -246,11 +252,11 @@ class HistoryScopeIndex:
         return self.size if index >= len(self.chunks) else self.offsets[index] + within
 
     def splice(
-        self, earliest: datetime, first_changed: datetime | None,
+        self, earliest: datetime, changed_days: frozenset[int],
         changed_keys: frozenset[tuple[datetime, int]], winners: list[CachedHistoryItem],
     ) -> HistoryScopeIndex:
-        """증분 반영: 기간 밖 앞 조각을 버리고(첫 조각은 잘라 새로 만든다), 바뀐 첫 날짜부터의 조각만 다시 만든다.
-        그 앞 조각 객체(와 압축 조각)는 그대로 재사용한다."""
+        """증분 반영: 기간 밖 앞 조각을 버리고(첫 조각은 잘라 새로 만든다), 바뀐 키가 있는 날짜의 조각만 다시 만든다.
+        나머지 조각 객체(와 압축 조각)는 그대로 재사용한다. 늦게 들어온 옛 관측 하나가 그 뒤 날짜를 모두 다시 만들지 않는다."""
         chunks = list(self.chunks)
         first_day = _day_of(earliest)
         keep_from = bisect_left(self.days, first_day)
@@ -262,15 +268,28 @@ class HistoryScopeIndex:
                 chunks[0] = HistoryChunk(head.day, head.items[trim:], head.times[trim:])
                 if not chunks[0].items:
                     chunks.pop(0)
-        if first_changed is not None:
-            changed_day = _day_of(first_changed)
-            split = bisect_left([chunk.day for chunk in chunks], changed_day)
-            tail = [item for chunk in chunks[split:] for item in chunk.items if _history_key(item) not in changed_keys]
-            # 이 범위의 키가 바뀌지 않았으면(다른 공항·주차장의 새 행) 조각을 그대로 둔다(압축 조각 재사용).
-            if winners or len(tail) != sum(len(chunk.items) for chunk in chunks[split:]):
-                tail.extend(winners)
-                tail.sort(key=_history_key)
-                chunks = chunks[:split] + list(_chunks(tail, [item.observed_at for item in tail]))
+        if changed_days:
+            added: dict[int, list[CachedHistoryItem]] = defaultdict(list)
+            for item in winners:
+                added[_day_of(item.observed_at)].append(item)
+            rebuilt = []
+            for chunk in chunks:
+                if chunk.day in changed_days:
+                    kept = [item for item in chunk.items if _history_key(item) not in changed_keys]
+                    extra = added.pop(chunk.day, [])
+                    # 이 범위의 키가 바뀌지 않았으면(다른 공항·주차장의 새 행) 조각을 그대로 둔다(압축 조각 재사용).
+                    if extra or len(kept) != len(chunk.items):
+                        kept.extend(extra)
+                        kept.sort(key=_history_key)
+                        if kept:
+                            rebuilt.append(HistoryChunk(chunk.day, tuple(kept), tuple(item.observed_at for item in kept)))
+                        continue
+                rebuilt.append(chunk)
+            for day, extra in added.items():  # 이 범위에 아직 없던 날짜
+                extra.sort(key=_history_key)
+                rebuilt.append(HistoryChunk(day, tuple(extra), tuple(item.observed_at for item in extra)))
+            rebuilt.sort(key=lambda chunk: chunk.day)
+            chunks = rebuilt
         if len(chunks) == len(self.chunks) and all(new is old for new, old in zip(chunks, self.chunks, strict=True)):
             return self
         return HistoryScopeIndex.of(tuple(chunks))
@@ -373,7 +392,7 @@ class ParkingHistorySnapshot:
         earliest = max(earliest_observed_at, self.earliest_observed_at)
         winners = sorted((item for item in _encode_rows(rows) if item.observed_at >= earliest), key=_history_key)
         keys = frozenset(key for key in changed_keys if key[0] >= earliest)
-        first_changed = min((key[0] for key in keys), default=None)
+        changed_days = frozenset(_day_of(key[0]) for key in keys)
 
         def scopes(existing: Mapping, key_of) -> Mapping:
             grouped: dict = defaultdict(list)
@@ -382,13 +401,13 @@ class ParkingHistorySnapshot:
             result = {}
             for scope_key in (*existing, *(key for key in grouped if key not in existing)):
                 spliced = existing.get(scope_key, _EMPTY_SCOPE).splice(
-                    earliest, first_changed, keys, grouped.get(scope_key, []))
+                    earliest, changed_days, keys, grouped.get(scope_key, []))
                 if spliced.size:
                     result[scope_key] = spliced
             return MappingProxyType(result)
 
         return ParkingHistorySnapshot(
-            earliest, max_snapshot_id, self.everything.splice(earliest, first_changed, keys, winners),
+            earliest, max_snapshot_id, self.everything.splice(earliest, changed_days, keys, winners),
             scopes(self.airport_indexes, lambda item: item.airport_code),
             scopes(self.lot_indexes, lambda item: item.parking_lot_id),
             source_row_count, self.full_built_at,
@@ -420,11 +439,12 @@ class ParkingHistorySnapshot:
         index, within = scope.locate(cutoff)
         chunks = scope.chunks[index:]
         if not chunks:
-            return assemble_gzip([deflate_segment(_BODY_PREFIX + _BODY_SUFFIX)])
+            return assemble_gzip([deflate_segment(_BODY_PREFIX + _BODY_SUFFIX, HISTORY_GZIP_HEAD_LEVEL)])
         head = chunks[0]
-        segments = [deflate_segment(_BODY_PREFIX + b",".join(item.encoded for item in head.items[within:]))]
+        segments = [deflate_segment(_BODY_PREFIX + b",".join(item.encoded for item in head.items[within:]),
+                                    HISTORY_GZIP_HEAD_LEVEL)]
         segments.extend(chunk.deflated() for chunk in chunks[1:])
-        segments.append(deflate_segment(_BODY_SUFFIX))
+        segments.append(deflate_segment(_BODY_SUFFIX, HISTORY_GZIP_HEAD_LEVEL))
         return assemble_gzip(segments)
 
 
@@ -506,7 +526,7 @@ async def load_snapshot(
     earliest_observed_at: datetime | None = None,
 ) -> ParkingHistorySnapshot:
     built_at = now_utc()
-    earliest = earliest_observed_at or built_at - timedelta(days=30)
+    earliest = earliest_observed_at or built_at - HISTORY_WINDOW - HISTORY_WINDOW_MARGIN
     async with session_factory() as session:
         await session.connection(execution_options=_CONSISTENT_READ)
         max_id, row_count = (await session.execute(select(
@@ -533,6 +553,7 @@ async def load_changes(
     base: ParkingHistorySnapshot,
     *,
     earliest_observed_at: datetime | None = None,
+    timings: dict[str, float] | None = None,
 ) -> tuple[ParkingHistorySnapshot, int]:
     """`base` 이후 새로 commit된 행만 읽어 다음 snapshot을 만든다. (snapshot, 바뀐 키 수)를 돌려준다.
 
@@ -544,8 +565,10 @@ async def load_changes(
     """
     if base.source_row_count is None:
         raise IncrementalUnavailable("no_row_count")
-    earliest = earliest_observed_at or now_utc() - timedelta(days=30)
+    earliest = earliest_observed_at or now_utc() - HISTORY_WINDOW - HISTORY_WINDOW_MARGIN
     watermark = base.max_snapshot_id
+    timings = timings if timings is not None else {}
+    started = monotonic()
     async with session_factory() as session:
         await session.connection(execution_options=_CONSISTENT_READ)
         max_id, unchanged_count, row_count = (await session.execute(select(
@@ -553,6 +576,7 @@ async def load_changes(
             func.count().filter(ParkingSnapshot.id <= watermark),
             func.count(),
         ).select_from(ParkingSnapshot))).one()
+        timings["count_ms"] = round((monotonic() - started) * 1000, 1)
         if int(max_id) < watermark or int(unchanged_count) != base.source_row_count:
             raise IncrementalUnavailable("late_commit_or_delete")
         keys: frozenset[tuple[datetime, int]] = frozenset()
@@ -573,9 +597,12 @@ async def load_changes(
                     ParkingSnapshot.id <= max_id,
                     tuple_(ParkingSnapshot.parking_lot_id, ParkingSnapshot.observed_at).in_(touched),
                 ))
+    timings["changes_ms"] = round((monotonic() - started) * 1000, 1)
+    splice_started = monotonic()
     snapshot = await asyncio.to_thread(
         base.with_changes, earliest, int(max_id), int(row_count), keys, rows,
     )
+    timings["splice_ms"] = round((monotonic() - splice_started) * 1000, 1)
     return snapshot, len(keys)
 
 
@@ -674,6 +701,7 @@ class ParkingHistoryReadCache:
             rebuild_id = uuid4().hex
             started = monotonic()
             row_count = changed_keys = None
+            phases: dict[str, float] = {}
             outcome = "failed"
             logger.warning(json.dumps({"event": "parking_history_rebuild", "phase": "start",
                 "rebuild_id": rebuild_id, "at": now_utc().isoformat(), "duration_ms": 0,
@@ -682,13 +710,19 @@ class ParkingHistoryReadCache:
                 refreshed = None
                 if mode == "incremental":
                     try:
-                        refreshed, changed_keys = await load_changes(self.session_factory, self.snapshot)
+                        refreshed, changed_keys = await load_changes(self.session_factory, self.snapshot, timings=phases)
                     except IncrementalUnavailable as exc:
                         mode, reason = "full", exc.reason
+                    except Exception as exc:  # noqa: BLE001 — 증분 고장으로 캐시가 다음 새벽까지 꺼지지 않게 전체로 회복한다.
+                        mode, reason = "full", f"incremental_error:{type(exc).__name__}"
                 if refreshed is None:
+                    load_started = monotonic()
                     refreshed = await load_snapshot(self.session_factory)
+                    phases["full_load_ms"] = round((monotonic() - load_started) * 1000, 1)
                 row_count = refreshed.size
+                gzip_started = monotonic()
                 prepared = await self.prepare_full_window(refreshed)
+                phases["gzip_ms"] = round((monotonic() - gzip_started) * 1000, 1)
                 # 준비 중 원본이 바뀌었다면 오래된 스냅샷에 새 확인 시각을 찍지 않는다.
                 # 증분이면 다음 확인(POLL_SECONDS 뒤)이 같은 기준에서 다시 증분하므로 비용이 작다.
                 if await self.source_fingerprint() != fingerprint:
@@ -707,7 +741,7 @@ class ParkingHistoryReadCache:
                     "rebuild_id": rebuild_id, "at": now_utc().isoformat(),
                     "duration_ms": round((monotonic() - started) * 1000, 3),
                     "row_count": row_count, "outcome": outcome, "mode": mode, "reason": reason,
-                    "changed_keys": changed_keys}, separators=(",", ":")))
+                    "changed_keys": changed_keys, "phases_ms": phases}, separators=(",", ":")))
         self.last_fingerprint = fingerprint
         self.validated_at = monotonic()
         self.validated_at_utc = now_utc()
