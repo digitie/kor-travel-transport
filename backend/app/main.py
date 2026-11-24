@@ -163,6 +163,7 @@ from app.services.fuel_map import FUEL_FACILITY_LABELS, fuel_map_items_statement
 from app.services import place_map_cache
 from app.core.read_timing import observe_page_build
 from app.services.fuel_map_validation import validated_fuel_map_items, validated_place_map_items
+from app.services.place_map_admission import PlaceMapGate, place_map_admission
 from app.services.rail_catalog import metro_station_catalog
 from app.services.reference_export_preparation import warm_rail_reference_revision
 from app.services.analytics import (
@@ -601,6 +602,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.transport_statistics_miss_semaphore = asyncio.Semaphore(
             resolved_settings.transport_statistics_max_concurrent_misses
         )
+        # 장소 지도: 입장 제한·대기 중 동일 요청 합치기·25초 시한·연결 끊김 취소(MUI-02·04, app/services/place_map_admission.py).
+        app.state.place_map_gate = PlaceMapGate()
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None
         app.state.fuel_scheduler_task = None
@@ -831,6 +834,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ("/v1/admin/backups", "post"): (404, 503),
             ("/v1/admin/backups/{filename}", "get"): (400, 404),
             ("/v1/admin/backups/restore", "post"): (400, 404, 409, 503),
+            # 장소 지도는 혼잡(입장 거절)을 429, 25초 시한 초과를 504로 알린다(둘 다 Retry-After).
+            ("/v1/transport/features/places", "get"): (429, 504),
             # 실시간 TAGO 시간표는 설정·참조 데이터·상류 provider 상태를 함께 반영한다.
             ("/v1/transport/bus/timetable", "get"): (404, 429, 502, 503),
             ("/v1/transport/rail/timetables", "get"): (404,),
@@ -1385,6 +1390,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await fuel_statistics_page(session, scope, product_code, scope_key)
 
     @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
+    @place_map_admission
     async def transport_place_features(
         request: Request,
         kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, bus_terminal, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측"),
@@ -1487,6 +1493,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         items: list[TransportPlaceMapItem | dict[str, Any]] = []
         validated_items_json = None
         validated_items_count = 0
+        fuel_items_raw = None
         total = 0
         kind_totals: dict[str, int] = {}
 
@@ -1722,15 +1729,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(per_kind_limit)
             )
             if requested_kinds == ("fuel_station",) and session.get_bind().dialect.name == "postgresql":
-                async with request.app.state.fuel_map_limiter:
-                    validated_items_json, validated_items_count = (await session.execute(
-                        fuel_map_items_statement(station_query, read_at),
-                    )).one()
-                    validated_items_json, validated_count = await to_thread.run_sync(
-                        validated_fuel_map_items, validated_items_json,
-                    )
-                    if validated_count != validated_items_count:
-                        raise RuntimeError("유가 지도 JSON 항목 수가 조회 결과와 다릅니다.")
+                # PostgreSQL이 만든 항목 JSON의 검증은 아래에서 모든 SQL을 끝내고 연결을 반납한 뒤 한다.
+                fuel_items_raw, validated_items_count = (await session.execute(
+                    fuel_map_items_statement(station_query, read_at),
+                )).one()
             else:
                 stations = await rows_places("fuel_station", station_query)
                 station_ids = [station.id for station in stations]
@@ -1904,15 +1906,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             fuel_prices_last_refreshed_at = (
                 serialize_utc(read_model.last_success_at) if read_model and read_model.last_success_at else None
             )
-        if prefetched is not None:
-            # 현재 DB 행 전체로 만든 입력만 재사용한다. TTL 없이 가격·위치·원문 투영의
-            # 변경을 즉시 검증하며, 매 요청 바뀌는 metadata는 캐시에 넣지 않는다.
+        if fuel_items_raw is not None or prefetched is not None:
+            # 모든 SQL이 끝났다. limiter 대기와 thread 검증 동안 풀 연결·transaction을 쥐지 않게 먼저
+            # 반납한다(MUI-02). close는 읽은 객체를 만료시키지 않으며 이후 DB를 다시 읽지 않는다.
+            await session.close()
             async with request.app.state.fuel_map_limiter:
-                validated_items_json, validated_items_count = await to_thread.run_sync(
-                    validated_place_map_items, to_json(visible_items),
-                )
-            if validated_items_count != len(visible_items):
-                raise RuntimeError("장소 지도 JSON 항목 수가 조회 결과와 다릅니다.")
+                if fuel_items_raw is not None:
+                    validated_items_json, validated_count = await to_thread.run_sync(
+                        validated_fuel_map_items, fuel_items_raw,
+                    )
+                    if validated_count != validated_items_count:
+                        raise RuntimeError("유가 지도 JSON 항목 수가 조회 결과와 다릅니다.")
+                else:
+                    # 현재 DB 행 전체로 만든 입력만 재사용한다. TTL 없이 가격·위치·원문 투영의
+                    # 변경을 즉시 검증하며, 매 요청 바뀌는 metadata는 캐시에 넣지 않는다.
+                    validated_items_json, validated_items_count = await to_thread.run_sync(
+                        validated_place_map_items, to_json(visible_items),
+                    )
+                    if validated_items_count != len(visible_items):
+                        raise RuntimeError("장소 지도 JSON 항목 수가 조회 결과와 다릅니다.")
         result = TransportPlaceMapResponse(
             generated_at=now_utc(), kind=selected_kind, total=total,
             fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), truncated=total > (validated_items_count if validated_items_json is not None else len(visible_items)), kind_totals=kind_totals,
