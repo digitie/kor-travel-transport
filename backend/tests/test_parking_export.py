@@ -352,7 +352,8 @@ def test_history_only_store_failure_does_not_abort_failure_marking(export_client
 
 @pytest.mark.parametrize("variant", ["timestamp", "zero_capacity", "unmapped_airport"])
 def test_single_bad_row_is_isolated_and_membership_is_preserved(export_client, variant):
-    """KAC 한 행(10%)의 결함은 그 행만 격리한다. 정상 행은 승격하고 빠진 주차장은 직전 current 그대로 유지한다."""
+    """KAC 한 행(10%)의 결함은 그 행만 격리한다. 정상 행은 승격하고, 격리 행이 가리키는 주차장은 직전 current 그대로
+    유지한다. 용량 0(폐쇄)과 다른 공항으로 바뀐 행은 같은 주차장으로 볼 수 없어 넘기지 않는다(식별자 기준)."""
     c = export_client
     settings = c.app.state.settings
     client = Fixture()
@@ -376,9 +377,13 @@ def test_single_bad_row_is_isolated_and_membership_is_preserved(export_client, v
                for item in result["errors"])
     generation, last_error, members = _run(c, head)
     assert generation != before_generation and last_error is None
-    assert members == before_members  # 격리된 주차장도 membership에서 빠지지 않는다.
+    carried = variant == "timestamp"
+    if carried:
+        assert members == before_members  # 격리된 주차장도 membership에서 빠지지 않는다.
+    else:
+        assert len(members) == len(before_members) - 1 and set(members) < set(before_members)
     page = c.get(PATH, headers=HEADERS)
-    assert page.status_code == 200 and page.json()["total_count"] == 12
+    assert page.status_code == 200 and page.json()["total_count"] == (12 if carried else 11)
     assert page.json()["meta"]["source_status"] == "ok"
     async def history(s):
         return await s.scalar(select(func.count()).select_from(ParkingSnapshot).where(
@@ -403,13 +408,14 @@ def test_isolated_row_is_not_carried_when_previous_value_is_old(export_client):
 
 
 def test_isolation_does_not_hide_real_disappearance(export_client):
-    """빠진 주차장이 격리 행 수보다 많으면 실제 소멸이 섞인 것이라 직전 값을 넘기지 않는다."""
+    """실제로 사라진 주차장은 넘기지 않고, 격리 행이 가리키는 주차장만 넘긴다(건수가 아니라 식별자 기준)."""
     c = export_client
     client = Fixture()
     collector = service(c, client)
     assert _run(c, lambda s: collector.collect(s))["status"] == "success"
     client.subset = 9  # 1개 소멸
-    client.bad_source, client.bad_kind = "kac_parking", "timestamp"  # + 1개 격리 → 빠진 2개 > 격리 1개
+    client.bad_source, client.bad_kind = "kac_parking", "timestamp"  # + 1개 격리(식별 가능)
     result = _run(c, lambda s: collector.collect(s))
     assert result["status"] == "partial_success" and result["isolated_rows"] == 1
-    assert c.get(PATH, headers=HEADERS).json()["total_count"] == 10
+    # 12 - 소멸 1 = 11: 격리 주차장은 유지, 사라진 주차장은 빠진다(옛 건수 기준은 둘 다 뺐다).
+    assert c.get(PATH, headers=HEADERS).json()["total_count"] == 11

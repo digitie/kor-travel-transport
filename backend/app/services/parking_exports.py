@@ -35,6 +35,9 @@ class ParkingPayload:
     current_rows: list
     received_rows: int
     invalid_rows: int
+    #: 격리한 행 중 기존 parser가 주차장을 식별한 것의 `(airport_code, lot_id)`. 직전 current 값을 넘길 대상이다.
+    #: 용량 0(폐쇄)으로 거부한 행과 식별할 수 없는 행은 넣지 않는다(넘기지 않는다).
+    carry_identities: frozenset = frozenset()
 
 
 def parking_scope(settings, source):
@@ -73,6 +76,7 @@ def validate_parking_payload(settings, source, response) -> ParkingPayload:
     history_rows = []
     current_rows = []
     invalid = 0
+    carry: set[tuple[str, str]] = set()
     for item in raw_items:
         try:
             # 기존 이력 parser를 행 하나에 적용한다(분 단위 이력 계약 그대로).
@@ -98,6 +102,9 @@ def validate_parking_payload(settings, source, response) -> ParkingPayload:
                 raise ValueError("주차장 관측시각이 미래입니다")
         except Exception:  # noqa: BLE001 — SDK 정본 검증 오류 종류와 무관하게 그 행만 격리한다.
             invalid += 1
+            if legacy_row is not None and legacy_row.lot_id and legacy_row.total_spaces > 0:
+                # 주차장은 알지만 이번 값이 무효다(깨진 시각·수치 등). 용량 0은 폐쇄 신호라 넘기지 않는다.
+                carry.add((legacy_row.airport_code, legacy_row.lot_id))
             continue
         current_rows.append(row)
     if not current_rows:
@@ -111,17 +118,21 @@ def validate_parking_payload(settings, source, response) -> ParkingPayload:
 
     def selected(values):
         return [row for row in values if source == "incheon_parking" or row.airport_code in settings.supported_airport_codes]
+    supported = settings.supported_airport_codes
     return ParkingPayload(history_rows=selected(history_rows), current_rows=selected(current_rows),
-                          received_rows=len(raw_items), invalid_rows=invalid)
+                          received_rows=len(raw_items), invalid_rows=invalid,
+                          carry_identities=frozenset(identity for identity in carry
+                                                     if source == "incheon_parking" or identity[0] in supported))
 
 
 async def store_parking_current(session, settings, *, source, run_id, observations: Sequence, proof, lot_ids,
-                                carry_forward_limit: int = 0):
-    """`carry_forward_limit`은 이번 원천 응답에서 격리한 무효 행 수다.
+                                carry_identities: frozenset = frozenset()):
+    """`carry_identities`는 이번 원천 응답에서 격리한 행의 `(airport_code, lot_id)`다.
 
-    current는 완결 집합 계약이다(빠진 주차장 = 소비자에서 삭제). 무효 행의 주차장은 알 수 없으므로 직전 head에
-    있었는데 이번 집합에 없는 주차장이 그 수 이하일 때만, 관측이 `PARKING_CARRY_FORWARD_MAX_AGE` 안인 직전
-    current 행을 값·관측시각 그대로 새 세대에 넣는다. 빠진 수가 더 많으면 실제 소멸이 섞인 것이라 넘기지 않는다.
+    current는 완결 집합 계약이다(빠진 주차장 = 소비자에서 삭제). 직전 head에 있었는데 이번 집합에 없는 주차장 중
+    **격리한 행이 가리키는 주차장만**, 관측이 `PARKING_CARRY_FORWARD_MAX_AGE` 안인 직전 current 행을 값·관측시각
+    그대로 새 세대에 넣는다. 응답에서 정말 사라진 주차장은 식별자가 맞지 않아 넘기지 않는다(건수로 맞추면 한 주차장의
+    소멸과 다른 주차장의 무효 행이 겹칠 때 사라진 주차장을 최대 1시간 내보냈다).
     """
     scope = parking_scope(settings, source)
     old = await session.scalar(select(ReferenceExportState).where(
@@ -154,16 +165,18 @@ async def store_parking_current(session, settings, *, source, run_id, observatio
             row.collected_at = now
         ids.append(lot_id)
         pending.append(row)
-    if carry_forward_limit > 0 and old is not None:
-        missing = [lot_id for lot_id in old.member_ids if lot_id not in set(ids)]
-        if 0 < len(missing) <= carry_forward_limit:
-            cutoff = now - PARKING_CARRY_FORWARD_MAX_AGE
-            for lot_id in missing:
-                row = await session.get(ParkingCurrent, (source, scope, lot_id))
-                if (row is not None and row.generation == old.generation and row.observed_at is not None
-                        and serialize_utc(row.observed_at) >= cutoff):
-                    ids.append(lot_id)
-                    pending.append(row)
+    if carry_identities and old is not None:
+        present = set(ids)
+        cutoff = now - PARKING_CARRY_FORWARD_MAX_AGE
+        for lot_id in old.member_ids:
+            if lot_id in present:
+                continue
+            row = await session.get(ParkingCurrent, (source, scope, lot_id))
+            if (row is not None and row.generation == old.generation and row.observed_at is not None
+                    and (row.airport_code, row.lot_code) in carry_identities
+                    and serialize_utc(row.observed_at) >= cutoff):
+                ids.append(lot_id)
+                pending.append(row)
     await promote_reference(session, kind=KIND, scope=scope, run_id=run_id,
                             confirmed_at=min(now, *(serialize_utc(v.observed_at) for v in observations)),
                             member_ids=ids, proof={**proof, "source": source})

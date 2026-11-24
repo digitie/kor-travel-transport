@@ -1037,6 +1037,8 @@ class ProviderCollectionStatus(BaseModel):
     last_success_at: datetime | None = None
     next_due_at: datetime | None = None
     error_code: str | None = None
+    #: 최근 실행이 무효 원천 행을 격리하고 나머지를 저장했을 때 그 원천의 격리 행 수(`status`는 부분 성공).
+    isolated_rows: int | None = None
 
 
 class KricCoverage(BaseModel):

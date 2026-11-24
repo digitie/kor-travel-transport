@@ -1,3 +1,22 @@
+## 2026-11-24 — #263 사후 리뷰 후속: 격리 상태 표시·일시적 파싱 오류 재조회·주차 넘김 식별자 기준(ISOLATION-FOLLOWUP-20261124)
+
+- #263(무효 행 격리·부분 성공)은 머지 전 적대 리뷰 없이 머지됐다. 사후 리뷰의 P1 1건과 P2 2건을 고친다.
+- P1 운영 상태 표시: 공동 job의 공항 원천은 실행 상태(`partial_success`)만 보고 `collection_failed`로, 고속도로는 원천 상태(성공)만 보고
+  성공으로 보였다. 격리가 늘 남는 행 하나 때문에 공항이 5분마다 영구히 실패로 보였다. 이제 `parse_isolated_rows`가 실행 오류 문장에서
+  원천별 격리 행 수와 "다른 오류가 섞였는가"를 읽는다. 격리만 있으면 공항·고속도로 모두 상태 `partial_success`(공항은
+  `shared_job_partial_success`), `isolated_rows=N`, 오류 코드 없음 — 관리 화면은 "부분 성공(격리 N건)"이고 확인 필요로 세지 않는다. 같은 job의
+  격리 없는 원천은 성공이다. 격리 말고 다른 오류가 섞이면 지금처럼 실패다. 공개 collector-status의 실행 오류 표지도 격리만 있으면
+  `rows_isolated`다. `ProviderCollectionStatus.isolated_rows`(선택 필드) 추가.
+- P2 일시적 파싱 오류: #263이 `KrexParseError` 전체의 재조회를 껐는데 SDK는 잘린 JSON·HTML 게이트웨이 본문도 이 오류로 낸다. 재조회 생략은
+  행 단위 결정적 실패(`KrexPartialParseError`)에만 두고, 그 밖의 `KrexParseError`는 빈/급감 집합처럼 한 번 다시 조회한다. 재조회 응답에서
+  격리한 행이 있으면 그 격리 기록을 이어받는다.
+- P2 주차 넘김: 격리 행 수로만 맞춰(빠진 수 ≤ 격리 수) 한 주차장의 실제 소멸과 다른 주차장의 무효 행이 겹치면 사라진 주차장을 최대
+  1시간 내보냈다. 이제 격리 행 중 기존 parser가 식별한 `(airport_code, lot_id)`만 넘긴다. 용량 0(폐쇄)과 식별할 수 없는 행은 넘기지 않는다.
+  고속도로 소통은 SDK가 무효 행의 식별자를 주지 않아 건수 기준 그대로다.
+- 시험: `test_journey_api.py`(격리만/다른 오류 섞임의 상태), `test_transport_collection.py`(일시적 파싱 오류 1회 재조회·행 단위 실패 재조회 없음·
+  재조회 격리 기록·`parse_isolated_rows`), `test_parking_export.py`(식별자 기준 넘김, 폐쇄·다른 공항 행은 넘기지 않음, 소멸+격리 동시),
+  admin vitest `provider-status.test.ts`, e2e `provider-isolated-rows.spec.ts`(390/1440).
+
 ## 2026-11-24 — 고속도로·공항 수집의 무효 행 격리와 부분 성공(COLLECTION-PARTIAL-20261124)
 
 - 배경(수집 실패 감사 2026-11-23 §2.3·§2.5 P1 #4, P2): odroid 14일 실패 중 공항 835건(IIAC 관측시각 표기)·고속도로 830건

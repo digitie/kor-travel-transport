@@ -3924,7 +3924,13 @@ def _public_run_error(message: str | None) -> str | None:
     """
     if not message:
         return None
-    return "upstream_rate_limited" if is_upstream_rate_limit_error(message) else "collection_failed"
+    if is_upstream_rate_limit_error(message):
+        return "upstream_rate_limited"
+    from app.services.transport_collection import parse_isolated_rows
+
+    isolated, other = parse_isolated_rows(message)
+    # 무효 원천 행만 격리한 부분 성공(유효 행 저장)은 실패와 구분한다.
+    return "rows_isolated" if isolated and not other else "collection_failed"
 
 
 async def _load_collection_run_statuses(

@@ -1869,8 +1869,8 @@ def test_highway_retry_source_timeout_does_not_discard_recovered_peer(tmp_path, 
     asyncio.run(run())
 
 
-def test_highway_deterministic_parse_error_is_not_reconfirmed(tmp_path):
-    """응답 계약 위반(KrexParseError)은 같은 응답을 다시 받아도 같다 — 재호출하지 않고 원천 실패로 판정한다."""
+def test_highway_transient_parse_error_is_reconfirmed_once(tmp_path):
+    """잘린 JSON·게이트웨이 본문 같은 `KrexParseError`는 일시적일 수 있어 한 번 다시 조회한다."""
     from krex import KrexParseError
 
     async def run():
@@ -1878,12 +1878,54 @@ def test_highway_deterministic_parse_error_is_not_reconfirmed(tmp_path):
         original = await provider.collect_highway()
         provider.collect_highway = AsyncMock(return_value=original)
         service = TransportCollectionService(build_settings(tmp_path), provider)
-        error = KrexParseError("missing complete envelope")
+        error = KrexParseError("JSON parse failure")
         result = await service._confirm_highway_payload(
-            replace(original, incidents=error), (INCIDENT_SOURCE,), {INCIDENT_SOURCE: 106},
+            replace(original, traffic=error), (TRAFFIC_SOURCE,), {TRAFFIC_SOURCE: 1},
         )
-        assert result.incidents is error
+        assert result.traffic == original.traffic
+        provider.collect_highway.assert_awaited_once()
+        assert provider.collect_highway.await_args.kwargs["sources"] == (TRAFFIC_SOURCE,)
+        # 다시 받아도 같은 오류면 원천 실패로 남는다.
+        provider.collect_highway = AsyncMock(return_value=replace(original, traffic=error))
+        again = await service._confirm_highway_payload(
+            replace(original, traffic=error), (TRAFFIC_SOURCE,), {TRAFFIC_SOURCE: 1},
+        )
+        assert again.traffic is error
+    asyncio.run(run())
+
+
+def test_highway_row_level_parse_error_is_not_reconfirmed(tmp_path):
+    """행 단위 결정적 실패(`KrexPartialParseError`)는 같은 응답을 다시 받아도 같다 — 재호출하지 않는다."""
+    from krex import KrexPartialParseError
+
+    async def run():
+        provider = FakeTransportProvider()
+        original = await provider.collect_highway()
+        provider.collect_highway = AsyncMock(return_value=original)
+        service = TransportCollectionService(build_settings(tmp_path), provider)
+        error = KrexPartialParseError("traffic flow response contains invalid records", items=(), received_rows=10)
+        result = await service._confirm_highway_payload(
+            replace(original, traffic=error), (TRAFFIC_SOURCE,), {TRAFFIC_SOURCE: 10},
+        )
+        assert result.traffic is error
         provider.collect_highway.assert_not_awaited()
+    asyncio.run(run())
+
+
+def test_reconfirm_keeps_the_isolation_record_of_the_retried_response(tmp_path):
+    from krex import KrexParseError
+
+    async def run():
+        provider = FakeTransportProvider()
+        original = await provider.collect_highway()
+        retried = replace(original, isolated=((TRAFFIC_SOURCE, 21, 1),), complete_sources=(TRAFFIC_SOURCE,))
+        provider.collect_highway = AsyncMock(return_value=retried)
+        service = TransportCollectionService(build_settings(tmp_path), provider)
+        result = await service._confirm_highway_payload(
+            replace(original, traffic=KrexParseError("JSON parse failure")), (TRAFFIC_SOURCE,), {TRAFFIC_SOURCE: 1},
+        )
+        assert result.traffic == original.traffic
+        assert result.isolated == ((TRAFFIC_SOURCE, 21, 1),)
     asyncio.run(run())
 
 
@@ -1963,3 +2005,13 @@ def test_highway_isolated_rows_make_a_partial_success_run(client):
             assert state.last_success_at is not None and state.last_error is None
         provider.collect_highway.assert_awaited_once()
     client.portal.call(run)
+
+
+def test_parse_isolated_rows_separates_isolation_from_other_errors():
+    from app.services.transport_collection import isolated_rows_message, parse_isolated_rows
+
+    only = "\n".join([isolated_rows_message("kac_parking", 25, 1), isolated_rows_message("incheon_parking", 20, 2)])
+    assert parse_isolated_rows(only) == ({"kac_parking": 1, "incheon_parking": 2}, False)
+    mixed = only + "\nkac_fee GMP: KrairportRateLimitError"
+    assert parse_isolated_rows(mixed) == ({"kac_parking": 1, "incheon_parking": 2}, True)
+    assert parse_isolated_rows(None) == ({}, False)
