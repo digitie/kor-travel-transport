@@ -405,26 +405,45 @@ T1의 55P03·57014·요청 상한 503은 이 경로가 직접 낸다(`Retry-Afte
 
 ## 장소 지도 입장 제한·시한·연결 반납 (2026-11-24 감사 MUI-02·04)
 
-`/v1/transport/features/places`(관리 `/map`·`/fuel`, 공개 유가 gateway)는
+`/v1/transport/features/places`(관리 `/map`·`/fuel`·`/flights` 공항 목록·역/항구 목록, 공개 유가 gateway)는
 `app/services/place_map_admission.py`의 `PlaceMapGate`를 거친다.
 
-- 동시에 DB 계산을 하는 요청은 4건이다. 슬롯을 기다리는 요청은 첫 SQL 전이라 풀 연결을 쥐지 않는다.
-  대기열이 8건으로 차면 기다리게 하지 않고 즉시 429 + `Retry-After: 2`를 낸다(교통 통계 입장 거절과 같은 코드).
+- 동시에 DB 계산을 하는 요청은 `PLACES_MAX_RUNNING`(기본 4)건이다. 슬롯을 기다리는 요청은 첫 SQL 전이라 풀 연결을
+  쥐지 않는다. 대기열이 `PLACES_MAX_WAITING`(기본 8)건으로 차면 기다리게 하지 않고 즉시 429 + `Retry-After: 2`를
+  낸다(교통 통계 입장 거절과 같은 코드). 거절 경고 로그는 10초에 한 줄이며 그 사이 거절 건수를 함께 남긴다.
 - 같은 정규화 요청(FastAPI가 해석한 query 값 전체)은 리더가 **아직 슬롯을 기다리는 동안에만** 합류해 결과를
   함께 받는다. 이미 읽기를 시작한 계산에는 합류하지 않으므로, 합류한 요청도 자기 도착 시각 이후의 snapshot을 본다.
-- 도착부터 25초(gateway·관리 BFF 30초보다 짧다) 안에 끝내지 못하면 계산을 취소·rollback하고 504 +
-  `Retry-After: 10`을 낸다. 같은 transaction에 `SET LOCAL statement_timeout = '25000ms'`를 둬 클라이언트 취소가
-  닿지 않아도 문장이 API 엔진 기본 상한(120초)까지 남지 않는다. 다른 경로의 엔진 상한은 바꾸지 않는다.
+- 도착부터 `PLACES_DEADLINE_SECONDS`(기본·상한 25초, gateway·관리 BFF 30초보다 짧다) 안에 끝내지 못하면 계산을
+  취소·rollback하고 504 + `Retry-After: 10`을 낸다. 리더가 슬롯을 기다리다(계산 시작 전) 시한을 넘기면 합류한
+  요청은 리더의 504를 받지 않고 자기 시한으로 다시 판단한다. 리더가 계산 중에 시한을 넘기면 같은 계산을 기다린
+  요청도 같은 504를 받는다.
+- 서버 쪽에도 transaction마다 `SET LOCAL statement_timeout`을 두며 값은 transaction 시작 때 남은 시한(ms)이다.
+  PostgreSQL은 이 상한을 문장마다 그 문장의 시작부터 재므로, 첫 문장은 전체 시한에 끝나고 같은 transaction의
+  뒤 문장은 transaction 시작 뒤 흐른 시간만큼 넘길 수 있다. 전체 시한은 asyncio 시한이 문장을 클라이언트 쪽에서
+  취소해 지키고, 서버 상한은 그 취소가 닿지 않을 때의 안전판이다. 다른 경로의 엔진 상한(120초)은 바꾸지 않는다.
 - 클라이언트(관리 BFF·공개 gateway)가 연결을 닫으면 `receive()`의 `http.disconnect`로 알아채 대기열 자리나 계산을
-  취소한다. 기록 상태는 499다. 합류한 다른 요청이 결과를 기다리는 리더는 끝까지 계산한다.
-  관리 BFF는 브라우저의 `request.signal`을 upstream fetch에 전달한다(공개 유가 BFF와 같다).
+  취소한다. 기록 상태는 499다. 합류한 다른 요청이 결과를 기다리는 리더는 계산을 이어 가되, 합류한 요청까지
+  모두 떠나면 그때 취소한다. 관리 BFF는 브라우저의 `request.signal`을 upstream fetch에 전달한다(공개 유가 BFF와 같다).
 - 유가 단독·다중 종류 PostgreSQL 경로는 모든 SQL을 끝낸 뒤 `session.close()`로 연결을 반납하고 나서
   `fuel_map_limiter`(2)를 기다려 thread 검증한다. 이전에는 limiter를 기다리는 동안과 검증하는 동안 연결을
-  idle-in-transaction으로 쥐었다.
+  idle-in-transaction으로 쥐었다. 검증 중 요청이 끊기거나 시한을 넘겨도 thread는 멈출 수 없으므로 limiter 토큰은
+  thread가 끝날 때 반납한다(`run_in_thread_holding`, 결과는 버린다). 끊김이 잦아도 동시 검증 thread는 2개를 넘지
+  않는다. 이때 gate 슬롯은 먼저 풀려 다음 요청이 DB 읽기를 시작할 수 있다(연결은 이미 반납했다).
 - 검증 항목 LRU(8개·8MiB)와 revision 증명 페이지 LRU(16개·24MiB)는 예산을 따로 쓴다. 공개 유가 검증 항목이
   관리 `/map` 페이지를 밀어내지 않는다. 항목 예산을 넘는 큰 입력(limit 5000 공개 유가 등)은 저장하지 않는다.
-- 관리·공개 지도 화면은 429·503·504 중 `Retry-After`가 5초 이하(없으면 약 1초)인 실패만 같은 범위·필터로 한 번
-  자동 재조회한다. 기다리는 동안 이전 결과를 유지하고, 두 번째 실패나 시한 초과(10초)는 기존 "다시 조회" 안내를 보인다.
+- OpenAPI는 places의 429·504에 `Retry-After` header를 적고, 공개 fuel gateway는 다른 출처 화면이 읽을 수 있게
+  `Access-Control-Expose-Headers`에 `Retry-After`를 둔다.
+
+### 화면의 재조회 (관리 `/map`·`/fuel`·`/flights`·역/항구 목록, 공개 유가)
+
+- `lib/place-retry.ts`: 429·503은 `Retry-After`가 5초 이하일 때(없으면 1초) 같은 범위·필터로 한 번만 자동
+  재조회한다. 504는 `Retry-After`가 5초 이하로 있을 때만 다시 묻는다. `Retry-After` 없는 504는 BFF·gateway가 30초를
+  기다린 끝이고, backend 시한 초과(`Retry-After: 10`)는 25초를 쓴 계산이라 자동으로 되풀이하지 않는다. 대기는
+  `Retry-After`를 최소로 지키고 그 절반까지 비례해 흩뜨린다. 범위·필터가 바뀌거나 화면을 떠나면 재조회하지 않는다.
+- 재조회를 기다리는 동안 지도는 "조회 중"이다. **지도 이동(같은 필터)** 중이면 이전 범위 결과가 그대로 보이지만,
+  필터·종류를 바꿨거나 목록 보기이면 이전 결과는 이미 비운 상태다.
+- 두 번째 실패와 시한 초과는 실패 안내에 backend의 한국어 안내(혼잡·범위를 좁히라는 안내)를 함께 보이고,
+  `Retry-After`가 지나기 전에는 "다시 조회"(공항 목록 다시 조회·저장 정보 새로고침)를 막는다.
 
 입장 제한 값은 운영 동시성 측정 없이 풀 크기(5+5)와 다른 경로 몫을 기준으로 정한 초기값이다. 거절·시한·끊김은
 `places_admission_rejected`·`places_deadline_exceeded`·`places_client_disconnected` 로그로 남는다. 운영 적용 뒤

@@ -60,6 +60,11 @@ loopback Host가 모두 맞아야 하고 아니면 404다. `fuel-stations`·`res
 전체면·관측시각을 함께 제공한다. 지도 요청마다 외부 provider를 호출하지 않는다. `fuel_station`에는 브랜드와 최신 유가, `rail_station`에는 운영 노선,
 `ferry_port`에는 항만가이드라인 좌표 출처·원본 점 수, `rest_area`에는 고속도로 노선·방향을 포함한다. 항만가이드라인 점은 터미널 중심점으로 추정하지 않으며 UI도
 안내 지점임을 표시한다.
+
+`features/places`는 입장 제한을 거친다. 혼잡하면 계산을 시작하지 않고 즉시 `429` + `Retry-After: 2`를, 전체
+시한(기본 25초)을 넘기면 계산을 취소하고 `504` + `Retry-After: 10`을 준다(둘 다 `application/problem+json`).
+호출자는 `Retry-After`가 지나기 전에 같은 요청을 반복하지 않는다. 클라이언트가 연결을 닫으면 backend는 그 요청의
+계산을 멈춘다([성능 기준](performance.md)의 "장소 지도 입장 제한·시한·연결 반납" 절).
 항구의 당일 운항은 `GET /v1/transport/ports/{port_id}/timetable`에서 한 항구·한 날짜만 비동기로
 provider 호출하고 저장하지 않는다.
 

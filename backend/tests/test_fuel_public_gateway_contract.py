@@ -76,6 +76,8 @@ def test_public_cors_is_exact_and_preflight_never_reaches_upstream():
     assert text.count("if ($fuel_preflight = 2) { return 403; }") == 3
     assert "add_header Access-Control-Allow-Credentials" not in text
     assert 'add_header Access-Control-Allow-Origin "*"' not in text
+    # 장소 지도 429·504의 Retry-After를 다른 출처 화면도 읽어 재조회 시각을 정한다.
+    assert 'add_header Access-Control-Expose-Headers "ETag, Retry-After" always;' in text
 
 
 def test_fuel_gateway_image_has_no_python_or_migration_role():
