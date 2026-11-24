@@ -1,3 +1,13 @@
+## 현재 상태 — 2026-11-24 주차 통계 보관 적재 주 1회 정기 실행(PARKING-ARCHIVE-WEEKLY-20261124)
+
+- Dagster code-server만(새 schedule `parking_statistics_archive_job_schedule`, 보관 op 배치 이음). migration·UI·OpenAPI·공항 수집 코드
+  변경 없음. 정리·원본 삭제 자동화 없음.
+- 배포(Codex 담당): transport backend 이미지(Dagster code-server). 새 schedule은 `default_status=RUNNING`으로 올라온다. Manager 설정
+  변경 불필요(run group `parking` 상한 그대로).
+- 주의: 첫 월요일 run은 운영 최초 backfill(비가역 sealed 버킷)이다. 소유자 결정으로 켰지만 2A 결합 수용은 별도로 남는다.
+- 다음 한 작업: 첫 월요일 05:10 run의 `stop_reason`·`batches`·`max_batch_seconds`·`oldest_pending_at`과 같은 시간 공항 run 지연을
+  본다. 매주 부분 완료(`time_budget`)이고 `oldest_pending_at`이 앞으로 가지 않으면 주기·탐색 watermark를 다시 정한다.
+
 ## 현재 상태 — 2026-11-24 공항 통계 사전집계 갱신 지연 경보(ANALYTICS-REFRESH-ALERT-20261124)
 
 - backend(판정·providers 필드, OpenAPI 추가) + Dagster code-server(공항 수집 op가 판정·태그) + transport-admin(홈 경보·운영 상태 행). migration 없음.

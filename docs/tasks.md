@@ -43,9 +43,12 @@
   캐시가 내용 digest로 본다). **남은 것**: 배포(migrate one-shot이 0048 적용) 뒤 odroid PostgreSQL 로그·Dagster에서
   `UPDATE transport_collection_states`와 `kt_places_revision` 문맥의 lock timeout이 0건인지 1주 확인. [journal](journal.md) 2026-11-24.
 
-- [ ] **PARKING-ARCHIVE-SCHEDULE-20261124 / 소유자 결정** — `parking_statistics_archive_job` schedule 없음은 첫 단계 범위(의도)로 확인하고
-  사유를 [parking-retention](architecture/parking-retention.md) "자동 실행 보류"에 남겼다. **남은 것(소유자)**: reader 전환과 함께 자동
-  적재(정리 없이)를 켤지·주기·`blocked` 경보 경로, 그리고 원본 정리 자동화 여부.
+- [ ] **PARKING-ARCHIVE-SCHEDULE-20261124 / 배포 뒤 확인** — 소유자 결정(2026-11-24)으로 보관 **적재만** 주 1회(월 05:10 KST) 자동,
+  정리·원본 삭제는 수동. [parking-retention](architecture/parking-retention.md) "1단계 의도와 주 1회 자동 적재". **남은 것**: 배포 뒤
+  첫 월요일 run의 `stop_reason`·`batches`·`max_batch_seconds`·`oldest_pending_at`(밀린 분량을 몇 주에 따라잡는지)과 그 시간 공항 run
+  지연·관측 공백 확인. 배치(하루치)가 평균 약 34초를 넘거나 매주 부분 완료면 주기(매일)나 미보관 탐색 시작점 watermark(탐색 비용이
+  보관 이력에 비례)를 정한다. 후속(소유자·Manager):
+  `blocked` 경보 규칙(주 1회 schedule은 `schedule_no_success`가 하루 뒤 풀림)과 해소 절차(후속 수용 목록 4), 원본 정리 자동화.
 
 ## 2026-11-23 — 공개 유가 places 504 후속
 
@@ -286,7 +289,7 @@ T-PARKING-OWNER-01·T-READ-PERF-01은 [완료 목록](tasks-done.md)에 이동�
   [0037 경합·검증 경계](reports/2026-10-28-parking-0037-downgrade-lock.md).
 - [ ] 운영 backfill/완전 coverage·동일schema 구dump 복원 보호·raw48h/cursor410·해상도·검산 후
   bounded prune와 자연 실행 수용을 마치기 전 원본48시간·통계영구 완료로 옮기지 않는다.
-  prune OFF·운영 삭제/스케줄 변경0이다. [현행 감사](reports/2026-10-28-parking-retention-resume.md).
+  prune OFF·운영 삭제 0이다(적재 job은 2026-11-24부터 주 1회 정기 실행 — PARKING-ARCHIVE-SCHEDULE-20261124). [현행 감사](reports/2026-10-28-parking-retention-resume.md).
 
 아래 항목의 과거 “회수 중/리뷰 미완”은 작성 당시 이력이며 현재 수용은 이 절과 감사 보고서가 정본이다.
 

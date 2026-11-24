@@ -1,6 +1,6 @@
 # 주차 보존 2A: 전국 통계와 검산 보류·현재 요약
 
-이 단계는 [원본48시간·통계영구 설계](parking-retention.md)의 저장 보완이다. 기존 분석·현재·history API는 아직 원본을 읽으며 `prune_parking_raw`는 항상 거절한다. 자동 schedule이나 운영 삭제를 활성화하지 않는다. **2A만으로 원본48시간 정책이 완료되지 않는다.**
+이 단계는 [원본48시간·통계영구 설계](parking-retention.md)의 저장 보완이다. 기존 분석·현재·history API는 아직 원본을 읽으며 `prune_parking_raw`는 항상 거절한다. 운영 삭제는 활성화하지 않는다(2026-11-24부터 **적재만** 주 1회 정기 실행, [parking-retention](parking-retention.md)). **2A만으로 원본48시간 정책이 완료되지 않는다.**
 
 ## 전국 동시각 통계
 
@@ -32,7 +32,7 @@ Python의 `bucket_start`와 지문/추이점 시각은 timezone을 단순 부착
 
 공항 집계가 충돌하면 savepoint만 되돌리고 보류 상태를 별도 outer transaction에서 commit한다. 전국 검산 충돌도 같은 방식으로 통계 원문을 보존한다. 활성 보류가 있으면 다음 실행도 blocked이며, 지금 단계에는 자동 해소/force 경로가 없다. 보류를 무시해 원본이48시간 안에 정리됐다고 보고하지 않는다. 실제 활성화 전에는 지연자료 처리·보류 해소·scope별 정리 진행과 초과 보유량의 운영 수용이 필요하다.
 
-기존 수동 `parking_statistics_archive_job`은 같은 collector transaction lease 아래 현재 seed→공항 집계→전국 seal을 수행한다. 상태 commit이 끝난 뒤 blocked 결과는 Dagster 실패로 표시한다. 녹색 job으로 coverage 성공을 위장하지 않는다. provider 호출·수집 실행 추가·자동 schedule·삭제는0이다.
+`parking_statistics_archive_job`(수동 + 2026-11-24부터 주 1회 정기 적재, [parking-retention](parking-retention.md))은 같은 collector transaction lease 아래 배치마다 현재 seed→공항 집계→전국 seal을 수행한다. 상태 commit이 끝난 뒤 blocked 결과는 Dagster 실패로 표시한다. 녹색 job으로 coverage 성공을 위장하지 않는다. provider 호출·수집 실행 추가·삭제는0이다.
 
 공항/전국 집계는 같은 실행 UTC 시각과48시간 cutoff를 쓰되 서로 다른 날짜 창을 선택할 수 있다.
 기존 선택/검산/발행 scalar는 `verification_domain=airport_statistics`이고 전국은 `global_` 접두사로

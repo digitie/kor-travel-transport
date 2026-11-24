@@ -185,13 +185,14 @@ async def test_replayed_old_observation_after_simulated_raw_expiry_cannot_replac
         await engine.dispose()
 
 
-def test_archive_job_is_providerless_and_has_no_automatic_schedule(monkeypatch):
+def test_archive_job_is_providerless_and_only_its_loading_is_scheduled(monkeypatch):
+    """소유자 결정(2026-11-24): 보관 적재만 주 1회 정기 실행한다. 정리(원본 삭제) 경로는 schedule에도 job에도 없다."""
     from app.dagster import definitions as module
     from app.services.parking_global_archive import archive_parking_with_coverage
 
     invoked = []
 
-    async def run(_settings, action):
+    async def run(_settings, action, **_kwargs):
         invoked.append(action)
         return {"status": "backfilled", "archived_buckets": 1, "pruned_snapshots": 0}
 
@@ -200,7 +201,9 @@ def test_archive_job_is_providerless_and_has_no_automatic_schedule(monkeypatch):
     result = module.parking_statistics_archive_job.execute_in_process()
     assert result.success
     assert invoked == [archive_parking_with_coverage]
-    assert "parking_statistics_archive_job_schedule" not in {s.name for s in module.definitions.schedules}
+    archive_schedules = [s for s in module.definitions.schedules if s.job_name == "parking_statistics_archive_job"]
+    assert [s.name for s in archive_schedules] == ["parking_statistics_archive_job_schedule"]
+    assert not any("prune" in s.job_name for s in module.definitions.schedules)
 
 
 @pytest.mark.asyncio

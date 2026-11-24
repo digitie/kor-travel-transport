@@ -72,7 +72,7 @@ TTL·자동 삭제가 없으며 데이터가 든 downgrade와 공항 삭제를 �
   기존 public current의 observed/id 선택과 원래 시각·혼잡도를 보존하고, 지연 관측의 수신 watermark는 분리한다.
   snapshot/raw FK나 payload는 없다. reader 전환은2B이며 현재 API는 아직 원본을 읽는다.
 
-세 표의 데이터가 있으면 downgrade를 거절한다. 기존 수동 통계 job 외 자동 schedule과 원본 삭제는 없다.
+세 표의 데이터가 있으면 downgrade를 거절한다. 통계 적재 job은 수동 + 주 1회 정기 실행(2026-11-24 소유자 결정)이고, 원본 삭제는 없다.
 [저장·검산·현재 요약 계약](parking-archive-coverage.md)을 따른다.
 
 ## 수집 실행 소유권 (`0024_collection_run_owner`)

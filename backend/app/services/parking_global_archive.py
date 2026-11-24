@@ -206,11 +206,17 @@ async def archive_global_statistics(
 
 
 async def archive_parking_with_coverage(
-    session: AsyncSession, *, checked_at: datetime | None = None,
+    session: AsyncSession, *, checked_at: datetime | None = None, max_buckets: int = 144,
 ) -> dict[str, Any]:
-    """현재 seed·공항 통계·전국 seal을 같은 lease로 처리한다. 삭제는 항상0이다."""
+    """현재 seed·공항 통계·전국 seal을 같은 lease로 처리한다. 삭제는 항상0이다.
+
+    `max_buckets`는 공항 통계의 한 실행 상한이다(1~2016, 기본 144). 2016(공항 14곳 x 144)이면 선택한 하루 범위를 한 번에
+    끝낸다 — 같은 하루를 여러 실행으로 나누면 실행마다 그날의 기존 버킷을 다시 검산한다. 전국 seal은 늘 하루(144) 상한이다.
+    """
+    if not 1 <= max_buckets <= 2016:
+        raise ValueError("한 실행의 버킷 상한은 1~2016입니다.")
     checked = ensure_tz(checked_at or now_utc(), "UTC").astimezone(UTC)
-    metadata = {**_run_metadata(checked, 144), **_global_metadata(checked),
+    metadata = {**_run_metadata(checked, max_buckets), **_global_metadata(checked),
                 "verification_domain": "airport_statistics", "archived_buckets": 0,
                 "latest_seeded": 0, "pruned_snapshots": 0,
                 "airport_status": "not_run", "airport_coverage_status": "not_audited",
@@ -227,7 +233,7 @@ async def archive_parking_with_coverage(
     seeded = await seed_latest_states(session)
     try:
         async with session.begin_nested():
-            airport_result = await archive_parking_statistics(session, checked_at=checked)
+            airport_result = await archive_parking_statistics(session, checked_at=checked, max_buckets=max_buckets)
     except ParkingArchiveConflict:
         # savepoint만 되돌려 통계 원문은 보존하고, 보류 표시는 외부 transaction에서 commit한다.
         await record_archive_issue(session, scope_key="batch", at=datetime(1970, 1, 1, tzinfo=UTC),
