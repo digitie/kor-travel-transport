@@ -95,17 +95,23 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
                          │ 서명 세션 + same-origin API
                          ▼
                  transport-admin-web
-                  ├─ 127.0.0.1:14001/v1/transport/*
+                  ├─ 127.0.0.1:12302/v1/transport/* (backend 직접, gateway를 지나지 않는다)
                   └─ 127.0.0.1:11002/graphql (공용 Dagster webserver, location 범위 query만)
 
 외부 OpenAPI ── TLS ── transport-api.digitie.mywire.org:12301
                          ▼
-                   transport-api-gateway ── 127.0.0.1:14001
+                   transport-api-gateway ── 127.0.0.1:12302 (공개 places limit ≤900)
 
 Dagster 운영 UI ── TLS ── dagster.digitie.mywire.org (Manager 공용 gateway 11001, Basic Auth)
                          ▼
                  공용 Dagster webserver 127.0.0.1:11002 — location `kor-travel-transport`
 ```
+
+공개 API gateway(12301)는 `GET /v1/transport/features/places`의 `limit`을 900 이하로 고정한다. 생략하면 900,
+900 초과 정수는 900으로 낮추고(응답 `truncated`), 1~900 정수가 아니면 gateway가 422 problem+json으로 거절한다.
+backend 직접(12302) 상한은 5000 그대로라 관리 UI의 목록 검색(5000)은 영향이 없다. 내부 계측 header
+`Server-Timing`은 공개 location에서 빼고 export location(Map)에만 남긴다.
+자세한 내용은 [요청 소요 시간 로그 읽기](../runbooks/request-timing-logs.md#공개-gateway-가드레일)를 따른다.
 
 두 listener(12301·12305)는 `docker-compose.transport-admin.yml`의 독립
 `kor-travel-transport-admin` project에 속한다. host network를 쓰지만 기존

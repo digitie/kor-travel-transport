@@ -1,4 +1,8 @@
-"""loopback Transport의 조회만 최대 60초 관측한다. 상태/본문을 변경하는 호출은 없다."""
+"""loopback Transport의 조회만 최대 60초 관측한다. 상태/본문을 변경하는 호출은 없다.
+
+--base-url은 backend 직접(http://127.0.0.1:12302)을 가리킨다. 공개 gateway(12301·12307)는 places limit을
+900으로 낮추므로 --large-map-samples의 limit=5000 표본이 조용히 작아진다.
+"""
 import argparse
 import json
 from datetime import UTC, datetime
@@ -11,7 +15,8 @@ from urllib.request import urlopen
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", required=True)
+    parser.add_argument("--base-url", required=True,
+                        help="backend 직접 origin(예: http://127.0.0.1:12302). 공개 gateway는 places limit을 900으로 낮춘다")
     parser.add_argument("--seconds", type=float, default=30)
     parser.add_argument("--interval", type=float, default=0.5)
     parser.add_argument("--large-map-samples", type=int, default=0)
@@ -23,6 +28,8 @@ def main():
             or not 1 <= args.seconds <= 60 or args.interval < 0.5
             or not 0 <= args.large_map_samples <= 3):
         parser.error("loopback origin, 1~60초, 간격>=0.5초, 지도 0~3회만 허용합니다")
+    if args.large_map_samples and parsed.port in {12301, 12307}:
+        parser.error("공개 gateway는 places limit을 900으로 낮춥니다. 대형 지도 표본은 backend 12302로 측정하세요")
     samples = []
     def sample(path):
         started = monotonic()

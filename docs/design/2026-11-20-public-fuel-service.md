@@ -14,7 +14,7 @@ gateway는 GET·HEAD·OPTIONS만 허용한다. /health, /v1/transport/fuel/place
 places는 기존 /v1/transport/features/places에 마지막 kind=fuel_station을
 고정한다. 반복·인코딩된 kind도 연료 외 종류를 선택할 수 없으며 kinds 혼용은
 기존 reader의 422 거절을 유지한다. bbox·zoom은 그대로 전달한다. limit은 공개 UI(300)와 관리 지도(900)
-범위 안으로 묶는다. 생략은 900, 900 초과 정수는 900, 정수가 아니면 400이며 판정 값을 upstream query
+범위 안으로 묶는다. 생략은 900, 900 초과 정수는 900, 1~900 정수가 아니면 422 problem+json이며 판정 값을 upstream query
 끝에 붙인다(2026-11-24, [요청 소요 시간 로그 읽기](../runbooks/request-timing-logs.md#공개-gateway-가드레일)).
 HEAD도 기존 GET reader를 쓰고 nginx가 응답 body를 생략한다.
 
