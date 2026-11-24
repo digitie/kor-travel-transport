@@ -13,7 +13,7 @@ import time
 import traceback
 from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
 from contextlib import AsyncExitStack
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from itertools import islice
@@ -29,7 +29,7 @@ from opinet.experimental import (
     OpinetBrowserCollector,
     OpinetBrowserSnapshot,
 )
-from sqlalchemy import JSON, Integer, and_, cast, func, or_, select, text, tuple_
+from sqlalchemy import JSON, Integer, and_, cast, func, or_, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import DBAPIError
@@ -97,6 +97,11 @@ FUEL_STATION_UPSERT_BATCH = 500
 FUEL_PRICE_UPSERT_BATCH = 2_000
 #: 기존 소통 관측 조회와 ORM flush의 일시 보유량을 제한한다. pair 400개는 SQLite 999 bind 안에도 든다.
 TRAFFIC_SNAPSHOT_BATCH = 400
+#: 소통 5분 통계의 최근 창. 원천 commit 뒤 별도 transaction이 매 실행 이 창 전체를 원본에서 다시 만든다(WLH-06,
+#: 재대조). 원천 transaction은 이번 저장이 바꾼 bucket만 다시 만든다 — 원본과 그 통계는 함께 commit된다.
+TRAFFIC_STATISTICS_RECENT_WINDOW = timedelta(hours=2)
+#: 5분 통계 집계(`_rebuild_traffic_statistics_range`)의 입력 열. 기존 관측에서 이 값이 바뀌면 그 bucket을 다시 만든다.
+TRAFFIC_STATISTICS_INPUT_FIELDS = ("route_no", "direction", "speed", "free_flow_speed")
 #: 유가 스냅샷 저장 시도 횟수. 일시적 DB 오류(`_is_transient_database_error`)에만 한 번 더 저장한다.
 FUEL_STORE_ATTEMPTS = 2
 #: Dagster 유가 op가 저장하는 `CollectionRun.trigger`(op의 `dagster_fuel`에 이 서비스가 접두를 붙인다).
@@ -227,6 +232,67 @@ class HighwayPayload:
     complete_sources: tuple[str, ...] = ()
     # 무효 행을 격리하고 유효 행만 받은 source: (source, received_rows, invalid_rows).
     isolated: tuple[tuple[str, int, int], ...] = ()
+
+
+#: `TrafficStoreReport.seconds`의 단계 이름. run 요약 키는 `traffic_<단계>_seconds`다.
+TRAFFIC_STORE_STEPS = (
+    "raw_response",        # 응답 원본(`raw_api_responses`) 저장
+    "history",             # 관측 이력(`highway_traffic_snapshots`) INSERT·정정 UPDATE·반복 확인 UPDATE
+    "current_upsert",      # `highway_traffic_current` 승격
+    "touched_statistics",  # 원천 transaction 안: 이번 저장이 바꾼 bucket의 5분 통계
+    "commit",              # 성공 표시 + 원천 commit
+    "statistics",          # commit 뒤 별도 transaction: 최근 창 재대조
+)
+
+
+@dataclass(slots=True)
+class TrafficStoreReport:
+    """소통 source 저장 한 번의 행 분류와 단계별 시간(초). run 요약·Dagster metadata·로그에 싣는다(WLH-06).
+
+    `rebuild_from`은 저장 전에 한 번 정한 최근 창의 시작이다. 집계·로그에서 원천 transaction의 정정 bucket(창 밖)과
+    commit 뒤 재대조 창이 같은 경계를 쓰게 한다.
+    """
+
+    rebuild_from: datetime
+    inserted: int = 0
+    changed: int = 0
+    unchanged: int = 0
+    #: 새로 넣었거나 통계 입력값이 바뀐 관측의 5분 bucket 시작. 값이 같은 반복 관측은 넣지 않는다.
+    affected_buckets: set[datetime] = field(default_factory=set)
+    #: 원천 transaction에서 다시 만든 bucket 수와 그중 최근 창보다 오래된(정정) bucket 수.
+    touched_buckets: int = 0
+    corrected_buckets: int = 0
+    seconds: dict[str, float] = field(default_factory=dict)
+    #: commit 뒤 최근 창 재대조 결과. None은 시도하지 않음(PostgreSQL 아님)이다.
+    statistics_refreshed: bool | None = None
+
+    def add_seconds(self, step: str, started: float) -> None:
+        self.seconds[step] = self.seconds.get(step, 0.0) + (time.monotonic() - started)
+
+    def summary(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "traffic_inserted_rows": self.inserted,
+            "traffic_changed_rows": self.changed,
+            "traffic_unchanged_rows": self.unchanged,
+            "traffic_touched_buckets": self.touched_buckets,
+            "traffic_corrected_buckets": self.corrected_buckets,
+            **{f"traffic_{step}_seconds": round(self.seconds[step], 3)
+               for step in TRAFFIC_STORE_STEPS if step in self.seconds},
+        }
+        if self.statistics_refreshed is not None:
+            result["traffic_statistics_refreshed"] = self.statistics_refreshed
+        return result
+
+
+def _five_minute_bucket(value: datetime) -> datetime:
+    """PostgreSQL `date_bin('5 minutes', …, '2000-01-01 00:00+00')`과 같은 UTC 5분 bucket 시작."""
+    value = serialize_utc(value).replace(second=0, microsecond=0)
+    return value - timedelta(minutes=value.minute % 5)
+
+
+def _traffic_statistics_window_start(current: datetime) -> datetime:
+    """최근 창(`TRAFFIC_STATISTICS_RECENT_WINDOW`)의 시작 bucket."""
+    return _five_minute_bucket(current) - TRAFFIC_STATISTICS_RECENT_WINDOW
 
 
 class TransportProvider(Protocol):
@@ -674,8 +740,12 @@ class TransportCollectionService:
                 or (fuel_storage_only and serialize_utc(row.updated_at) > started_at)
             )
 
+        # 고속도로 저장 단계 계측(WLH-06): 조회 시간과 소통 source의 행 분류·단계별 시간.
+        highway_fetch_seconds: float | None = None
+        traffic_report: TrafficStoreReport | None = None
         try:
             if highway_due:
+                highway_fetch_started = time.monotonic()
                 try:
                     async with asyncio.timeout(2 * HIGHWAY_FETCH_TIMEOUT_SECONDS):
                         highway_result = await self.provider.collect_highway(sources=highway_sources)
@@ -693,6 +763,7 @@ class TransportCollectionService:
                 highway_result = await self._confirm_highway_payload(
                     highway_result, highway_sources, highway_baselines,
                 )
+                highway_fetch_seconds = time.monotonic() - highway_fetch_started
             if fuel_due:
                 fuel_started = time.monotonic()
                 logger.info("fuel browser collection started run_id=%s timeout=%ss", run_id, FUEL_FETCH_TIMEOUT_SECONDS)
@@ -728,12 +799,26 @@ class TransportCollectionService:
                     result = highway_result if isinstance(highway_result, Exception) else getattr(highway_result, field, None)
                     isolation = next((entry for entry in getattr(highway_result, "isolated", ())
                                       if entry[0] == source), None)
-                    store_options = {"carry_forward_limit": isolation[2]} if isolation is not None else {}
+                    store_options: dict[str, Any] = (
+                        {"carry_forward_limit": isolation[2]} if isolation is not None else {}
+                    )
+                    report = None
+                    if source == TRAFFIC_SOURCE:
+                        # 최근 창의 시작은 저장 전에 한 번 정한다(정정 bucket 분류와 commit 뒤 재대조가 같은 경계).
+                        report = TrafficStoreReport(rebuild_from=_traffic_statistics_window_start(now_utc()))
+                        store_options["report"] = report
                     try:
+                        raw_started = time.monotonic()
                         items = await self._collect_highway_source(session, run_id, errors, source, result)
+                        if report is not None:
+                            report.add_seconds("raw_response", raw_started)
                         count = await store(session, run_id, items, **store_options) if items is not None else 0
-                        if source == TRAFFIC_SOURCE and items is not None:
-                            await self._refresh_recent_traffic_statistics(session, items)
+                        if report is not None and items is not None:
+                            # 이번 저장이 바꾼 bucket(새 관측·통계 입력값 정정)의 5분 통계는 원본과 함께 확정한다 —
+                            # 성공 표시가 보이는 시점에 그 원본의 통계도 보인다. 최근 두 시간 창 전체의 재대조는
+                            # commit 뒤 별도 transaction이다(WLH-06).
+                            await self._rebuild_touched_traffic_buckets(session, report)
+                        commit_started = time.monotonic()
                         if items is not None:
                             # 성공 표시는 저장을 모두 끝낸 뒤 commit 직전에 한다(상태 행 잠금을 짧게 쥔다). 2026-11 운영의
                             # 상태 쓰기 lock_timeout은 0045 문장 trigger가 모든 수집기의 상태 쓰기를 한 revision 행에 줄
@@ -742,6 +827,9 @@ class TransportCollectionService:
                                 session, source, now_utc(), keep_success_at=source == INCIDENT_SOURCE,
                             )
                         await session.commit()
+                        if report is not None and items is not None:
+                            report.add_seconds("commit", commit_started)
+                            traffic_report = report
                     except Exception as exc:
                         # 해당 소스만 되돌린다. 앞선 소스의 데이터·성공 상태는 이미 확정됐다.
                         await session.rollback()
@@ -760,6 +848,24 @@ class TransportCollectionService:
                             traffic_count += count
                         else:
                             incident_count += count
+                if traffic_report is not None:
+                    # 소통·돌발 원천을 모두 확정한 뒤에 한다 — 재대조가 돌발 저장을 늦추지 않는다. 원천 상태
+                    # (`last_success_at`·`next_due_at`)는 이미 commit됐고 이 단계의 결과로 바꾸지 않는다.
+                    statistics_started = time.monotonic()
+                    traffic_report.statistics_refreshed = await self._refresh_recent_traffic_statistics(
+                        session, traffic_report.rebuild_from,
+                    )
+                    if traffic_report.statistics_refreshed is not None:
+                        traffic_report.add_seconds("statistics", statistics_started)
+                    logger.info(
+                        "highway traffic store run_id=%s inserted=%s changed=%s unchanged=%s touched_buckets=%s "
+                        "corrected_buckets=%s statistics_refreshed=%s fetch=%.3fs %s",
+                        run_id, traffic_report.inserted, traffic_report.changed, traffic_report.unchanged,
+                        traffic_report.touched_buckets, traffic_report.corrected_buckets,
+                        traffic_report.statistics_refreshed, highway_fetch_seconds or 0.0,
+                        " ".join(f"{step}={traffic_report.seconds[step]:.3f}s"
+                                 for step in TRAFFIC_STORE_STEPS if step in traffic_report.seconds),
+                    )
 
             if fuel_due:
                 store_started = time.monotonic()
@@ -903,6 +1009,10 @@ class TransportCollectionService:
         )
         if isolated_row_count:
             summary["isolated_rows"] = isolated_row_count
+        if highway_fetch_seconds is not None:
+            summary["highway_fetch_seconds"] = round(highway_fetch_seconds, 3)
+        if traffic_report is not None:
+            summary.update(traffic_report.summary())
         if scope == "fuel":
             state = (await session.scalar(select(TransportCollectionState).where(
                 TransportCollectionState.source == OPINET_SOURCE).execution_options(populate_existing=True))
@@ -1184,10 +1294,17 @@ class TransportCollectionService:
         items: tuple[TrafficFlow, ...],
         *,
         carry_forward_limit: int = 0,
+        report: TrafficStoreReport | None = None,
     ) -> int:
-        """`carry_forward_limit`은 이번 응답에서 격리한 무효 행 수다(`traffic_current` 유지 상한)."""
+        """`carry_forward_limit`은 이번 응답에서 격리한 무효 행 수다(`traffic_current` 유지 상한).
+
+        `report`에는 행 분류(새 관측·값 정정·값이 같은 반복 관측), 통계를 다시 만들 bucket, 단계별 시간을 쌓는다.
+        """
+        history_started = time.monotonic()
         stored = 0
         collected_at = now_utc()
+        if report is None:
+            report = TrafficStoreReport(rebuild_from=_traffic_statistics_window_start(collected_at))
         seen_keys: set[tuple[str, datetime]] = set()
         for chunk in _chunked(items, TRAFFIC_SNAPSHOT_BATCH):
             batch: list[tuple[TrafficFlow, str | None, datetime, str]] = []
@@ -1215,23 +1332,36 @@ class TransportCollectionService:
                     )
                 )
             }
+            unchanged_ids: list[int] = []
             for item, direction, observed_at, identity_key in batch:
+                values = {
+                    "route_no": item.route_no,
+                    "route_name": item.route_name,
+                    "conzone_id": item.conzone_id,
+                    "conzone_name": item.conzone_name,
+                    "direction": direction,
+                    "speed": item.speed,
+                    "free_flow_speed": item.free_flow_speed,
+                    "congestion_level": _enum_value(item.congestion_level),
+                    "raw_item_json": _provider_json(item),
+                }
                 existing = existing_by_key.get((identity_key, observed_at))
                 if existing is not None:
-                    # KREX가 동일한 관측 시각을 반복할 수 있다. 행을 하나 더 만들지는
-                    # 않되, 이번 조회로 확인한 원본 값과 수집 시각은 갱신해야 공개 API가
-                    # 실제 최신 확인 상태를 정확하게 표현한다.
+                    if all(getattr(existing, name) == value for name, value in values.items()):
+                        # KREX는 멈춘 구간의 같은 관측을 매 주기 그대로 돌려준다. 값이 같으면 원본 JSON·값 열을
+                        # 다시 쓰지 않고 이번 확인(수집 시각·실행)만 아래에서 한 문장으로 갱신한다. 통계 입력도
+                        # 그대로라 그 bucket은 다시 만들지 않는다.
+                        unchanged_ids.append(existing.id)
+                        continue
+                    # KREX가 같은 관측 시각의 값을 정정했다. 행을 하나 더 만들지는 않되, 이번 조회로 확인한
+                    # 원본 값과 수집 시각은 갱신해야 공개 API가 실제 최신 확인 상태를 정확하게 표현한다.
+                    if any(getattr(existing, name) != values[name] for name in TRAFFIC_STATISTICS_INPUT_FIELDS):
+                        report.affected_buckets.add(_five_minute_bucket(observed_at))
                     existing.collection_run_id = collection_run_id
                     existing.collected_at = collected_at
-                    existing.route_no = item.route_no
-                    existing.route_name = item.route_name
-                    existing.conzone_id = item.conzone_id
-                    existing.conzone_name = item.conzone_name
-                    existing.direction = direction
-                    existing.speed = item.speed
-                    existing.free_flow_speed = item.free_flow_speed
-                    existing.congestion_level = _enum_value(item.congestion_level)
-                    existing.raw_item_json = _provider_json(item)
+                    for name, value in values.items():
+                        setattr(existing, name, value)
+                    report.changed += 1
                     continue
                 session.add(
                     HighwayTrafficSnapshot(
@@ -1240,59 +1370,90 @@ class TransportCollectionService:
                         identity_key=identity_key,
                         observed_at=observed_at,
                         collected_at=collected_at,
-                        route_no=item.route_no,
-                        route_name=item.route_name,
-                        conzone_id=item.conzone_id,
-                        conzone_name=item.conzone_name,
-                        direction=direction,
-                        speed=item.speed,
-                        free_flow_speed=item.free_flow_speed,
-                        congestion_level=_enum_value(item.congestion_level),
-                        raw_item_json=_provider_json(item),
+                        **values,
                     )
                 )
+                report.affected_buckets.add(_five_minute_bucket(observed_at))
                 stored += 1
+            if unchanged_ids:
+                await session.execute(
+                    update(HighwayTrafficSnapshot)
+                    .where(HighwayTrafficSnapshot.id.in_(unchanged_ids))
+                    .values(collection_run_id=collection_run_id, collected_at=collected_at)
+                    .execution_options(synchronize_session="evaluate")
+                )
+                report.unchanged += len(unchanged_ids)
             await session.flush()
             existing_by_key.clear()
         await session.flush()
+        report.inserted += stored
+        report.add_seconds("history", history_started)
         if self.settings.transport_map_current_enabled:
             from app.services.traffic_current import update_traffic_current
 
+            current_started = time.monotonic()
             await update_traffic_current(
                 session, source=TRAFFIC_SOURCE, scope_key=self._highway_scope_key(TRAFFIC_SOURCE),
                 collection_run_id=collection_run_id, pairs=seen_keys, confirmed_at=collected_at,
                 carry_forward_limit=carry_forward_limit, carry_forward_max_age=CURRENT_CARRY_FORWARD_MAX_AGE,
             )
+            report.add_seconds("current_upsert", current_started)
         return stored
+
+    async def _rebuild_touched_traffic_buckets(self, session: AsyncSession, report: TrafficStoreReport) -> None:
+        """원천 transaction 안: 이번 저장이 바꾼 bucket의 5분 통계만 좁게 다시 만든다(WLH-06).
+
+        대상은 새로 넣은 관측과 통계 입력값(`TRAFFIC_STATISTICS_INPUT_FIELDS`)이 바뀐 관측의 bucket이다. 값이 같은
+        반복 관측(센서가 멈춘 구간이 매 주기 돌려주는 오래된 관측)은 넣지 않는다 — 예전에는 응답 전체로 과거 bucket을
+        모아 매 실행 결과가 같은 재집계를 반복했다. 이 bucket은 원본과 같은 transaction에서 commit되므로, commit 뒤
+        재대조가 실패하거나 프로세스가 그 사이에 끝나도 이번 원본의 통계는 이미 맞다. 이어진 bucket은 한 범위로 묶는다.
+        """
+        bind = session.get_bind()
+        if bind.dialect.name != "postgresql":
+            return
+        started = time.monotonic()
+        buckets = sorted(report.affected_buckets)
+        step = timedelta(minutes=5)
+        ranges: list[list[datetime]] = []
+        for bucket_start in buckets:
+            if ranges and ranges[-1][1] == bucket_start:
+                ranges[-1][1] = bucket_start + step
+            else:
+                ranges.append([bucket_start, bucket_start + step])
+        for range_start, range_end in ranges:
+            await self._rebuild_traffic_statistics_range(session, range_start, range_end)
+        report.touched_buckets = len(buckets)
+        report.corrected_buckets = sum(1 for bucket in buckets if bucket < report.rebuild_from)
+        report.add_seconds("touched_statistics", started)
 
     async def _refresh_recent_traffic_statistics(
         self,
         session: AsyncSession,
-        items: tuple[TrafficFlow, ...],
-    ) -> None:
-        """최근 두 시간과 이번 수집의 과거 정정 bucket을 5분 집계로 다시 만든다."""
+        rebuild_from: datetime,
+    ) -> bool | None:
+        """원천 commit 뒤 별도 transaction으로 최근 창 전체의 5분 통계를 원본에서 다시 만든다(WLH-06 재대조).
+
+        이번 원본이 바꾼 bucket은 이미 원천 transaction에서 맞췄다(`_rebuild_touched_traffic_buckets`). 이 단계는 최근
+        두 시간이 원본의 재계산과 같다는 예전 보장을 유지하는 멱등 재대조다(같은 범위 DELETE + 원본 INSERT…SELECT —
+        몇 번을 다시 해도 결과가 같다). 그래서 실패(문장 시간 초과·잠금 대기 등)는 이미 확정한 원본·current·성공 상태를
+        되돌리지 않고 False와 한 줄 경고로 남기며, 다음 실행의 같은 단계가 그 창을 다시 만든다. 원천 상태 행은 이 결과로
+        바꾸지 않는다. PostgreSQL이 아니면(5분 집계 표를 쓰지 않는다) None이다.
+        """
         bind = session.get_bind()
         if bind.dialect.name != "postgresql":
-            return
-        current = now_utc().replace(second=0, microsecond=0)
-        rebuild_from = current - timedelta(hours=2, minutes=current.minute % 5)
-        await self._rebuild_traffic_statistics_range(session, rebuild_from)
-
-        # KREX는 이미 저장한 과거 시각의 값을 정정할 수 있다. 최근 범위보다 오래된
-        # 이번 수집 bucket은 좁게 별도 재집계해 stale 통계를 남기지 않는다.
-        corrected_buckets: set[datetime] = set()
-        for item in items:
-            observed_at = _parse_provider_datetime(item.updated_at, self.settings.app_timezone)
-            if observed_at is None or observed_at >= rebuild_from:
-                continue
-            bucket = observed_at.replace(second=0, microsecond=0)
-            corrected_buckets.add(bucket - timedelta(minutes=bucket.minute % 5))
-        for bucket_start in sorted(corrected_buckets):
-            await self._rebuild_traffic_statistics_range(
-                session,
-                bucket_start,
-                bucket_start + timedelta(minutes=5),
+            return None
+        try:
+            await self._rebuild_traffic_statistics_range(session, rebuild_from)
+            await session.commit()
+        except Exception as exc:
+            await session.rollback()
+            logger.warning(
+                "highway traffic statistics reconcile deferred rebuild_from=%s cause=%s; stored traffic, its touched "
+                "buckets and source state are kept and the next collection rebuilds the recent window",
+                rebuild_from.isoformat(), _safe_error(exc, self.settings)[:300],
             )
+            return False
+        return True
 
     @staticmethod
     async def _rebuild_traffic_statistics_range(

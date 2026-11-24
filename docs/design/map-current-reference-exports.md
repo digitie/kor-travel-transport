@@ -25,8 +25,8 @@
 ### 교통
 
 - `services/transport_collection.py:_collect_unlocked`: source별 due/claim을 commit한 뒤 provider를 호출한다. T5 `_confirm_highway_payload`가 빈/25% 미만·parse 오류를 제한 재확인한다.
-- `_collect_highway_source`의 raw/성공 상태, `_store_traffic`, 최근 2시간 5분 통계가 한 source transaction으로 commit된다. incident 실패는 먼저 commit한 traffic을 되돌리지 않는다. 같은 모델을 T2에도 유지한다.
-- `_store_traffic`는 `(source, identity_key, observed_at)`로 단건 SELECT하고, 같은 시각이면 기존 행의 값·collected_at·collection_run_id를 UPDATE한다. 새 행은 추가한다. `stored`는 새 INSERT 수이므로 replay 0건도 성공한 전체 관측일 수 있다.
+- `_collect_highway_source`의 raw/성공 상태, `_store_traffic`, 이번 저장이 바꾼 bucket의 5분 통계가 한 source transaction으로 commit된다. 최근 2시간 창 전체의 5분 통계 재대조는 source commit 뒤 별도 transaction이다(2026-11-24 WLH-06, `docs/architecture/collection.md` "고속도로 소통 저장 transaction과 5분 통계"). incident 실패는 먼저 commit한 traffic을 되돌리지 않는다. 같은 모델을 T2에도 유지한다.
+- `_store_traffic`는 `(source, identity_key, observed_at)`로 단건 SELECT하고, 같은 시각이면 기존 행의 값·collected_at·collection_run_id를 UPDATE한다(값과 원본 JSON이 모두 같으면 collected_at·collection_run_id만, 2026-11-24). 새 행은 추가한다. `stored`는 새 INSERT 수이므로 replay 0건도 성공한 전체 관측일 수 있다.
 - 기존 traffic 저장은 8,300 입력에 SELECT+write가 행별로 발생하는 구조다. 새 pointer를 행마다 SELECT/flush하면 이 비용을 더한다. pointer만 200~500개씩 묶어 upsert하고 추가 commit은 하지 않는다. history bulk 개편은 별도 후속 PR로 분리한다.
 - T5 scope는 route/conzone 설정 fingerprint다. 전체/필터 scope를 같은 denominator나 head로 섞지 않는다. guard 실패/timeout/quota/store rollback에서는 pointer/head/membership을 전진시키지 않는다.
 

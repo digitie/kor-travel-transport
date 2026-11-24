@@ -67,6 +67,37 @@ ADR-013 개정 — 한 번 다시 조회해도 비면 실패, 마지막 성공 �
 결과 저장은 소스별 transaction으로 분리해, 뒤의 돌발/유가 저장 실패가 먼저 성공한
 소통정보를 rollback하지 않도록 한다.
 
+### 고속도로 소통 저장 transaction과 5분 통계(2026-11-24, WLH-06)
+
+운영 odroid에서 소통 source 저장 transaction(원본 + current + 최근 2시간 5분 통계 재구축 + 상태)이 175초를 넘겨
+5분 주기의 대부분 동안 xid를 열어 두었다(vacuum horizon 고정, 한 문장이 수집 statement timeout을 넘으면 8,300행
+source 전체 rollback). 단계별 계측도 없었다. 이제 경계는 다음과 같다.
+
+1. **원천 transaction**(한 번의 commit): 응답 원본(`raw_api_responses`), 관측 이력(`highway_traffic_snapshots`),
+   current 승격, **이번 저장이 바꾼 bucket의 5분 통계**, 성공 표시(`last_success_at`·`next_due_at`·`last_error=NULL`).
+   바뀐 bucket은 새로 넣은 관측과 통계 입력값(`route_no`·`direction`·`speed`·`free_flow_speed`)이 바뀐 관측의
+   bucket이다. 그래서 원천 commit이 보이는 순간 그 원본의 통계도 이미 맞다. commit 전에 실패하면 원본과 그 통계가 함께
+   rollback되고 source 오류만 기록한다(예전과 같다).
+2. **재대조 transaction**(원천 commit 뒤, 돌발까지 확정한 다음): 최근 2시간 창 전체를 원본에서 다시 만든다(같은 범위
+   DELETE + 원본 `INSERT … SELECT`). 멱등이라 몇 번을 다시 해도 결과가 같고, 창 안의 어긋남(이전 실패·수동 수정 등)을
+   원본 재계산과 같게 되돌린다. 원천 상태 행은 이 결과로 바꾸지 않는다 — `last_success_at`은 원천 commit 시각의 성공이다.
+3. **재대조 실패**(문장 시간 초과·잠금 대기·연결 오류)는 원본·current·바뀐 bucket 통계·성공 상태를 되돌리지 않는다.
+   run 원장(`collection_runs.status`)은 원천 결과대로 두고(유가 통계 발행 지연과 같은 규칙), Dagster 결과에
+   `traffic_statistics_refreshed=false`·`collection_outcome=partial`·원천 오류가 없으면 `error_code=DERIVED_CACHE_DEFERRED`와
+   경고 한 줄을 남긴다(run 태그 `kortravel/collection-outcome=partial`). 다음 실행의 같은 단계가 창을 다시 만든다. 원천
+   commit 뒤 재대조 도중 실행이 끊겨도(취소·프로세스 종료) 이미 확정한 원본과 그 bucket 통계는 맞다. 이때 run 원장은
+   예전처럼 `failed`(`collection cancelled`)로 닫고 원천 상태는 덮지 않는다.
+4. **반복 관측**: KREX는 센서가 멈춘 구간의 같은 관측(같은 `identity_key`·`observed_at`)을 매 주기 그대로 돌려준다. 값과
+   원본 JSON이 모두 같으면 `collected_at`·`collection_run_id`만 한 문장으로 갱신하고 원본 JSON·값 열은 다시 쓰지 않는다.
+   그 bucket도 다시 만들지 않는다(예전에는 응답에 섞인 2시간 창 밖의 과거 bucket을 매 실행 같은 결과로 재집계했다). 값이
+   바뀐 정정은 예전처럼 원본 JSON까지 갱신하고, 통계 입력값이 바뀌었으면 그 bucket을 원천 transaction에서 다시 만든다.
+
+단계별 시간과 행 분류는 run 요약과 Dagster output metadata에 싣는다: `highway_fetch_seconds`,
+`traffic_{raw_response,history,current_upsert,touched_statistics,commit,statistics}_seconds`,
+`traffic_{inserted,changed,unchanged}_rows`, `traffic_touched_buckets`(원천 transaction에서 다시 만든 bucket),
+`traffic_corrected_buckets`(그중 최근 창보다 오래된 정정 bucket), `traffic_statistics_refreshed`. 같은 값은 수집기 로그
+`highway traffic store run_id=…` 한 줄에도 남는다.
+
 ### 공급자 관측 지연 주의
 
 2026-09-19 20:22 KST의 별도 새 연결 조회에서도 KREX 0405 응답 8,370행의 최신
