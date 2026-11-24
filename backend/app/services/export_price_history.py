@@ -8,13 +8,15 @@ import hashlib
 import hmac
 import json
 from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
-from sqlalchemy import and_, or_, select
+from sqlalchemy import Select, and_, or_, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -27,6 +29,42 @@ from app.services.transport_collection import FUEL_STALE_AFTER, OPINET_SOURCE
 MAX_HISTORY_LIMIT = 5000
 MAX_HISTORY_WINDOW = timedelta(days=366)
 CURSOR_TTL = timedelta(minutes=15)
+#: 이력 조회 transaction의 문장별 서버 상한(밀리초). Map T4 예산(PinVi→Map 5초)과 같다. 소비자가 이미
+#: 포기한 조회가 API 엔진 기본 상한(120초)까지 공용 DB 연결을 잡지 않게 한다. `SET LOCAL`이라
+#: transaction이 끝나면(rollback) 연결의 기본값으로 돌아간다. 문장마다 적용되며 요청 전체 deadline은 아니다.
+HISTORY_STATEMENT_TIMEOUT_MS = 5_000
+#: 상한 초과 응답의 `Retry-After`(초). 같은 조회를 곧바로 반복해 같은 부하를 다시 만들지 않게 한다.
+HISTORY_TIMEOUT_RETRY_AFTER_SECONDS = 5
+#: 상한 초과 응답 본문. export(503)와 native(504)가 같은 문장을 쓴다.
+HISTORY_TIMEOUT_DETAIL = "가격 이력 조회가 시간 상한을 넘었습니다. 잠시 후 다시 조회하세요."
+#: PostgreSQL `query_canceled` — statement_timeout 초과(또는 관리자 취소)다.
+_QUERY_CANCELED = "57014"
+
+
+def opinet_station_identity(station_key: str) -> str:
+    """오피넷 안정 ID(UNI_ID) 자연키의 `fuel_stations.identity_key`.
+
+    수집 저장(`transport_collection._station_identity`)이 안정 ID가 있는 주유소에 쓰는 형식과 같아야 한다.
+    수집 저장 경로로 만든 fixture에서 두 형식이 같은 행을 고르는지 회귀 테스트로 고정한다.
+    """
+    return f"station:{station_key}"
+
+
+def station_lookup_statement(station_key: str, native_station_id: int | None = None) -> Select:
+    """이력 대상 주유소 1행(id·source·자연키·상표).
+
+    export 자연키는 수집기가 쓰는 identity_key로 찾는다. `uq_fuel_station_identity`(source, identity_key)
+    유니크 인덱스 1행 조회이며, 인덱스 없는 source_station_id 전체 스캔을 피한다. 안정 ID가 있는 행은
+    identity_key == 'station:' + source_station_id다(`opinet_station_identity`, 회귀 테스트로 고정).
+    native 경로는 기본키로 찾는다.
+    """
+    return select(
+        FuelStation.id, FuelStation.source, FuelStation.source_station_id, FuelStation.brand_code, FuelStation.brand_name,
+    ).where(
+        FuelStation.source == OPINET_SOURCE,
+        (FuelStation.identity_key == opinet_station_identity(station_key) if native_station_id is None
+         else FuelStation.id == native_station_id),
+    )
 
 
 def _aware(value: datetime) -> datetime:
@@ -99,11 +137,34 @@ class PriceHistoryRead:
     source_last_success_at: datetime
     revision: str
     issued: datetime
+    #: 같은 snapshot에서 읽은 주유소 행(id, source, source_station_id, brand_code, brand_name).
+    #: native 응답이 주유소를 다시 조회하지 않게 한다.
+    station: Any
 
 
 class PriceHistoryUnavailable(Exception):
     def __init__(self, response: Response):
         self.response = response
+
+
+@asynccontextmanager
+async def history_statement_deadline(session: AsyncSession, *, status_code: int = 503) -> AsyncIterator[None]:
+    """이력 transaction의 statement_timeout 초과(57014)를 500이 아닌 `status_code` + Retry-After problem으로 바꾼다.
+
+    T4 export는 503이다(Map이 503을 upstream_unavailable로 강등한다). native 지도 상세 경로는 504다.
+    화면이 503을 '성공한 수집 이력 없음'으로 안내하므로, 일시적인 조회 지연을 그 문구와 섞지 않는다.
+    다른 DB 오류는 그대로 올린다. 실패한 transaction은 바로 rollback해 연결을 반환한다.
+    """
+    try:
+        yield
+    except DBAPIError as exc:
+        if getattr(exc.orig, "sqlstate", None) != _QUERY_CANCELED:
+            raise
+        await session.rollback()
+        raise HTTPException(
+            status_code, HISTORY_TIMEOUT_DETAIL,
+            headers={"Retry-After": str(HISTORY_TIMEOUT_RETRY_AFTER_SECONDS), "Cache-Control": "private, no-cache"},
+        ) from exc
 
 
 async def read_price_history_page(
@@ -113,15 +174,18 @@ async def read_price_history_page(
     default_days: int = 30, max_window: timedelta = MAX_HISTORY_WINDOW,
     cursor_scope: str | None = None,
 ) -> PriceHistoryRead:
-    """한 주유소의 bounded DB 이력. 호출자가 같은 snapshot의 후속 조회와 rollback을 소유한다."""
+    """한 주유소의 bounded DB 이력. 호출자가 같은 snapshot의 후속 조회와 rollback을 소유한다.
+
+    PostgreSQL에서는 transaction에 `HISTORY_STATEMENT_TIMEOUT_MS` 문장 상한을 건다. 호출자는
+    `history_statement_deadline` 안에서 불러 상한 초과를 export 503·native 504 problem으로 바꾼다.
+    """
     if session.bind.dialect.name == "postgresql":
         await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
-    station_id = await session.scalar(select(FuelStation.id).where(
-        FuelStation.source == OPINET_SOURCE,
-        (FuelStation.source_station_id == station_key if native_station_id is None else FuelStation.id == native_station_id),
-    ).order_by(FuelStation.id).limit(1))
-    if station_id is None:
+        await session.execute(text(f"SET LOCAL statement_timeout = {int(HISTORY_STATEMENT_TIMEOUT_MS)}"))
+    station = (await session.execute(station_lookup_statement(station_key, native_station_id))).one_or_none()
+    if station is None:
         raise HTTPException(404, "주유소 자연키를 찾을 수 없습니다." if native_station_id is None else "저장된 주유소를 찾을 수 없습니다.")
+    station_id = station.id
     state = await session.scalar(select(TransportCollectionState).where(
         TransportCollectionState.source == OPINET_SOURCE,
     ))
@@ -198,7 +262,8 @@ async def read_price_history_page(
             price=float(row.price) if row.price is not None else None,
         ) for row in page], next_cursor=next_cursor, has_more=has_more,
     )
-    return PriceHistoryRead(result, page, station_id, start, end, serialize_utc(state.last_success_at), revision, issued)
+    return PriceHistoryRead(result, page, station_id, start, end, serialize_utc(state.last_success_at), revision, issued,
+                            station)
 
 
 def build_price_history_router(
@@ -227,11 +292,13 @@ def build_price_history_router(
 
         cursor는15분 동안 창·필터·성공 수집 revision을 고정한다. 수집 revision이 바뀌면409로
         처음부터 다시 읽는다. 휴게소 가격 이력 표는 만들지 않으며 별도 경로는501이다.
+        DB 문장이5초 상한을 넘으면503 problem과 `Retry-After`를 낸다.
         """
         try:
-            read = await read_price_history_page(
-                request, station_key, product, from_at, to_at, limit, cursor, session, cursor_key,
-            )
+            async with history_statement_deadline(session):
+                read = await read_price_history_page(
+                    request, station_key, product, from_at, to_at, limit, cursor, session, cursor_key,
+                )
         except PriceHistoryUnavailable as exc:
             return exc.response
         # gzip/JSON CPU 작업 중에는 DB snapshot을 잡지 않는다.
