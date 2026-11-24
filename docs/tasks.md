@@ -1,3 +1,15 @@
+## 2026-11-24 — Map 호출 개선 후속(MAP-CALL-REVIEW-20261124)
+
+- [ ] **MAP-CALL-DEPLOY-HOLD / P1** — #277 export 500→503 변경 배포는 Map "나이 기준 혼합"(#1542+#1549 흡수+후속 4항목) 운영 반영 통보 뒤.
+- [ ] **MAP-CALL-BASELINE / P1** — 배포 뒤 odroid 운영 기준선 측정(보고서 §4.4): T1·T3 첫·warm 지연, places `proxy_margin_ms`, 통계 재대조·장기 복구 시간,
+  이력 재구성 `peak_rss_kib`(512MiB 한도 판단, 보고서 §9 #4).
+- [ ] **MAP-CALL-OWNER / 소유자 결정** — 보고서 §9: 돌발 유예, T1 stale 200, 원본 보존 기한(디스크 고갈 P1), API 메모리 한도, Manager 협의
+  (`cpu_shares`·`log_lock_waits`·디스크 경보), 유가 신선도 보호 재시도. 추가: 고속도로 창 busy를 partial로 둘지, drift 자동 경보 기준,
+  이력 재구성 중 이전 캐시 30초 초과 제공.
+- [ ] **MAP-CALL-FOLLOWUPS / P2** — Manager v2가 `post-deploy-warm.sh` 자동 호출; ADR-016 artifact identity를 코드 지문으로; code-server `RELEASE_SHA`
+  빌드 전달; 공개 places per-client 제한(HAProxy 주소·XFF 확인 선행); `X-Limit-Applied`; CI에서 nginx `-t`·stub 시험; 12307 places
+  `proxy_temp` 기록; 이력 full rebuild 결과의 증분 기준 채택; Common `openapi-exceptions.yaml` airport M3 항목.
+
 ## 2026-11-24 — 수집 실패 감사 후속
 
 - [ ] **DASHBOARD-STATS-OFFLOAD-20261124 / P1** — 수집 직후 대시보드 통계 504(갱신 유예 사전집계·계산 thread·특수일 보관). **남은 것**: backend 배포 뒤
