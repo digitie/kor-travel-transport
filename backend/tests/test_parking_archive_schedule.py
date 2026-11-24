@@ -63,7 +63,7 @@ def test_archive_job_tags_priority_zero_bounded_runtime_and_airport_serializatio
     # 공항 수집과 같은 run group(상한 1) — Dagster가 직렬화한다. 시간 예산은 공항 5분 주기 안이다.
     assert tags["kortraveltransport/run_group"] == "parking"
     assert module.definitions.get_job_def("airport_collection_job").tags["kortraveltransport/run_group"] == "parking"
-    assert module.PARKING_ARCHIVE_TIME_BUDGET_SECONDS < 300 < runtime
+    assert module.PARKING_ARCHIVE_SCHEDULED_TIME_BUDGET_SECONDS < 300 < runtime
 
 
 def test_cleanup_is_still_manual_and_blocked() -> None:
@@ -138,8 +138,8 @@ def test_scheduled_run_continues_batches_until_caught_up(monkeypatch) -> None:
     result, calls, _clock, warnings, outcome = _run(monkeypatch, batches, run_config=SCHEDULED)
     assert result.success
     assert [call["max_buckets"] for call in calls] == [2016] * 4
-    # 배치의 취소 시한은 run에 남은 실행 상한으로 잰다(배치 5초씩).
-    assert [call["max_runtime_seconds"] for call in calls] == [900, 895, 890, 885]
+    # 배치의 취소 시한은 run 기록(`dagster/max_runtime` 900, 시작 시각) 기준으로 남은 상한이다.
+    assert all(800 < call["max_runtime_seconds"] <= 900 for call in calls)
     metadata = _metadata(result)
     assert metadata["stop_reason"] == "no_new_rows"
     assert metadata["batches"] == 4
@@ -175,7 +175,7 @@ def test_scheduled_run_retries_lease_contention_then_stops_as_partial(monkeypatc
 def test_scheduled_run_respects_its_time_budget_and_marks_backlog_partial(monkeypatch) -> None:
     """공항 수집과 같은 run group이라 보관 run 동안 공항 run은 대기열에서 기다린다 — 예산 안에서만 새 배치를 시작한다."""
     per_batch = 40.0
-    expected = math.ceil(module.PARKING_ARCHIVE_TIME_BUDGET_SECONDS / per_batch)
+    expected = math.ceil(module.PARKING_ARCHIVE_SCHEDULED_TIME_BUDGET_SECONDS / per_batch)
     result, calls, _clock, warnings, outcome = _run(
         monkeypatch, [_batch("batch_complete", 2016)] * (expected + 5), run_config=SCHEDULED, batch_seconds=per_batch)
     assert result.success
@@ -205,6 +205,7 @@ def test_blocked_batch_fails_the_run_with_totals(monkeypatch) -> None:
 
 @pytest.mark.parametrize("config", [
     {"max_batches": 0}, {"max_batches": 501}, {"max_buckets": 0}, {"max_buckets": 2017}, {"busy_retries": -1},
+    {"time_budget_seconds": -1},
 ])
 def test_out_of_range_config_fails_before_touching_the_database(monkeypatch, config) -> None:
     result, calls, _clock, _warnings, _outcome = _run(monkeypatch, [], run_config={"ops": {OP: {"config": config}}})
@@ -216,3 +217,32 @@ def test_coverage_service_rejects_out_of_range_bucket_limits() -> None:
     for value in (0, 2017):
         with pytest.raises(ValueError):
             asyncio.run(archive_parking_with_coverage(session, max_buckets=value))
+
+
+def test_manual_backfill_has_no_budget_and_uses_the_run_tag_runtime(monkeypatch) -> None:
+    """수동 backfill은 시간 예산 없이(기본 0) 실행 상한까지 배치를 잇고, 배치 시한은 run의 `dagster/max_runtime` 태그를 따른다
+    (운영자가 태그를 바꾼 긴 수동 run이 코드 상수 900초에 묶이지 않는다)."""
+    calls: list[dict] = []
+    queue = [_batch("batch_complete", 2016)] * 10 + [_batch("no_new_rows")]
+
+    async def fake_run(_settings, action, **kwargs):
+        calls.append(kwargs)
+        return dict(queue.pop(0))
+
+    clock = _Clock()
+
+    async def slow(_settings, action, **kwargs):
+        clock.now += 300.0  # 배치마다 5분 — 정기 예산(240초)이면 첫 배치 뒤 멈췄을 것이다
+        return await fake_run(_settings, action, **kwargs)
+
+    monkeypatch.setattr(module, "_settings", lambda: None)
+    monkeypatch.setattr(module, "_run_with_session", slow)
+    monkeypatch.setattr(module, "_archive_clock", lambda: clock.now)
+    config = {"ops": {OP: {"config": {"max_batches": 500, "max_buckets": 2016}}}}
+    with DagsterInstance.ephemeral() as instance:
+        result = module.parking_statistics_archive_job.execute_in_process(
+            instance=instance, run_config=config, tags={"dagster/max_runtime": "7200"}, raise_on_error=False)
+    assert result.success
+    assert len(calls) == 11
+    assert _metadata(result)["stop_reason"] == "no_new_rows"
+    assert all(7000 < call["max_runtime_seconds"] <= 7200 for call in calls)

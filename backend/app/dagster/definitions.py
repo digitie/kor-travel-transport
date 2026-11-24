@@ -75,9 +75,9 @@ MAX_RUNTIME_SECONDS = 14400
 #: 늦어도 run monitoring보다 먼저 끝나 실패를 직접 기록한다.
 #: - 기준정보 파생 본문 준비: 180초(기존 값).
 #: 그 밖의 job은 주기가 4시간 이상이거나(유가 브라우저 수집 3.5시간 포함) 이어 하기 backfill이라 `MAX_RUNTIME_SECONDS`를 둔다.
-#: - 주차 통계 보관: provider 호출 없는 DB 작업. 정기 실행은 새 배치를 `PARKING_ARCHIVE_TIME_BUDGET_SECONDS`(240초) 안에서만
-#:   시작한다. 배치 하나가 예상보다 길어도 공항 수집(같은 run group)을 오래 막지 않게 900초에서 끊는다(수동 실행도 같다 —
-#:   긴 수동 backfill은 실행할 때 `dagster/max_runtime` 태그를 바꿔 준다).
+#: - 주차 통계 보관: provider 호출 없는 DB 작업. 정기 실행은 새 배치를 `PARKING_ARCHIVE_SCHEDULED_TIME_BUDGET_SECONDS`(240초)
+#:   안에서만 시작한다. 배치 하나가 예상보다 길어도 공항 수집(같은 run group)을 오래 막지 않게 기본 900초에서 끊는다. 긴 수동
+#:   backfill은 실행할 때 `dagster/max_runtime` 태그를 늘린다 — op가 run 기록의 태그로 배치 시한을 잰다(`_archive_remaining_runtime`).
 JOB_MAX_RUNTIME_SECONDS = {
     "airport_collection_job": 1800,
     "highway_collection_job": 1200,
@@ -1194,10 +1194,13 @@ PARKING_ARCHIVE_DEFAULT_BUCKETS = 144
 #: 정기 실행 설정. 하루 공항 수집은 2,016 버킷(공항 14곳 x 10분 144)이라 기본값(144)으로는 한 주 분량의 1/14도 못 한다.
 #: 배치 하나에 하루 범위를 끝내고(`max_buckets=2016` — 같은 하루를 144씩 나누면 배치마다 그날 기존 버킷을 다시 검산한다)
 #: 시간 예산 안에서 배치를 잇는다. busy(같은 lease를 HTTP 수동 수집 등이 쥠)는 짧게 몇 번만 다시 본다.
-PARKING_ARCHIVE_SCHEDULED_CONFIG = {"max_batches": 50, "max_buckets": 2016, "busy_retries": 3}
-#: 이 시간이 지나면 새 배치를 시작하지 않는다. 보관 job은 공항 수집과 같은 run group(`parking`, 상한 1)이라 보관 run 동안
-#: 공항 run은 Dagster 대기열에서 기다린다 — 5분 수집 한 주기 안에서 끝내 공항 run은 늦어질 뿐 tick을 잃지 않게 한다.
-PARKING_ARCHIVE_TIME_BUDGET_SECONDS = 240
+PARKING_ARCHIVE_SCHEDULED_CONFIG = {"max_batches": 50, "max_buckets": 2016, "busy_retries": 3, "time_budget_seconds": 240}
+#: 정기 실행의 시간 예산(`time_budget_seconds`): 이 시간이 지나면 새 배치를 시작하지 않는다. 보관 job은 공항 수집과 같은
+#: run group(`parking`, 상한 1)이라 보관 run 동안 공항 run은 Dagster 대기열에서 기다린다 — 보통 5분 수집 한 주기 안에서 끝내
+#: 공항 run은 늦어지기만 한다. 예산은 배치의 **시작**만 막으므로, 배치 하나가 길면 run이 5분을 넘고 그 사이 공항 tick 하나가
+#: coalescing에 합쳐질 수 있다(주 1회 1~2 tick, 첫 run의 `max_batch_seconds`로 확인한다).
+#: 수동 실행 기본값 0 = 예산 없음(실행 상한 `dagster/max_runtime`까지).
+PARKING_ARCHIVE_SCHEDULED_TIME_BUDGET_SECONDS = PARKING_ARCHIVE_SCHEDULED_CONFIG["time_budget_seconds"]
 #: lease 경합(`busy`) 뒤 다시 시도하는 간격(초).
 PARKING_ARCHIVE_BUSY_WAIT_SECONDS = 10
 #: 결과 metadata에 싣는 서비스 결과 필드(마지막 배치 기준). 원문·비밀값은 없다.
@@ -1229,6 +1232,20 @@ def _archive_sleep(seconds: float) -> None:
     time.sleep(seconds)
 
 
+def _archive_remaining_runtime(context, fallback: float) -> float:
+    """이 run에 남은 실행 상한(초). run 기록의 `dagster/max_runtime` 태그와 시작 시각으로 잰다 — 운영자가 태그를 바꾼 수동 run도
+    그 상한을 쓰고, step 기동 지연도 셈에 든다. 읽지 못하면 op 시작 기준 `fallback`."""
+    try:
+        record = call_with_deadline(lambda: context.instance.get_run_record_by_id(context.run_id), timeout_seconds=10)
+        if record is None or record.start_time is None:
+            return fallback
+        limit = int((record.dagster_run.tags or {}).get(
+            "dagster/max_runtime", job_max_runtime_seconds("parking_statistics_archive_job")))
+        return limit - (time.time() - record.start_time)
+    except Exception:  # noqa: BLE001 — 예산 계산 실패로 보관을 막지 않는다.
+        return fallback
+
+
 def _log_archive_batch(context, result: dict[str, Any], batch_seconds: float) -> None:
     context.log.info(
         "주차 통계 결과: status=%s coverage_status=%s selected_snapshots=%s verified_buckets=%s "
@@ -1251,15 +1268,19 @@ def _log_archive_batch(context, result: dict[str, Any], batch_seconds: float) ->
                          description="배치 하나의 공항 통계 버킷 상한(1~2016, 2016 = 하루 범위 전체)."),
     "busy_retries": Field(int, default_value=0, is_required=False,
                           description="DB lease 경합(busy) 뒤 다시 시도하는 횟수(0~100)."),
+    "time_budget_seconds": Field(int, default_value=0, is_required=False,
+                                 description="이 시간이 지나면 새 배치를 시작하지 않는다(0 = 예산 없음, 실행 상한까지)."),
 })
 @_redact_op_errors
 def archive_airport_parking_statistics(context) -> dict[str, Any]:
     # 원본 수집/provider와 별개인 DB 전용 작업. 적재·검산만 하고 원본 정리(삭제)는 없다.
     config = context.op_config
     max_batches, max_buckets, busy_retries = config["max_batches"], config["max_buckets"], config["busy_retries"]
-    if not (1 <= max_batches <= 500 and 1 <= max_buckets <= 2016 and 0 <= busy_retries <= 100):
+    budget = config["time_budget_seconds"]
+    if not (1 <= max_batches <= 500 and 1 <= max_buckets <= 2016 and 0 <= busy_retries <= 100
+            and 0 <= budget <= 86_400):
         raise Failure(description="주차 통계 보관 설정이 범위를 벗어났습니다"
-                                  "(max_batches 1~500, max_buckets 1~2016, busy_retries 0~100).",
+                                  "(max_batches 1~500, max_buckets 1~2016, busy_retries 0~100, time_budget_seconds 0~86400).",
                       allow_retries=False)
     settings = _settings()
     runtime = job_max_runtime_seconds("parking_statistics_archive_job")
@@ -1271,12 +1292,16 @@ def archive_airport_parking_statistics(context) -> dict[str, Any]:
     def elapsed() -> float:
         return _archive_clock() - started
 
+    def out_of_budget() -> bool:
+        return bool(budget) and elapsed() >= budget
+
     while True:
         batch_started = _archive_clock()
-        # 배치의 취소 시한은 이 run에 남은 실행 상한으로 잰다(run monitoring보다 먼저 끝내 rollback한다).
+        # 배치의 취소 시한은 이 run에 남은 실행 상한(run 기록 기준)으로 잰다(run monitoring보다 먼저 끝내 rollback한다).
+        remaining = _archive_remaining_runtime(context, runtime - elapsed())
         result = asyncio.run(_run_with_session(
             settings, archive_parking_with_coverage, max_buckets=max_buckets,
-            max_runtime_seconds=max(int(runtime - elapsed()), RUN_DEADLINE_MARGIN_SECONDS + MIN_RUN_DEADLINE_SECONDS),
+            max_runtime_seconds=max(int(remaining), RUN_DEADLINE_MARGIN_SECONDS + MIN_RUN_DEADLINE_SECONDS),
         ))
         batch_seconds = _archive_clock() - batch_started
         totals["max_batch_seconds"] = round(max(totals["max_batch_seconds"], batch_seconds), 3)
@@ -1290,7 +1315,7 @@ def archive_airport_parking_statistics(context) -> dict[str, Any]:
                                        if key in PARKING_ARCHIVE_METADATA_FIELDS}, **totals})
         if status == "busy":
             # 다른 보유자(HTTP 수동 수집·수동 보관 실행)가 lease를 쥐고 있다. 변경 0으로 돌아왔다.
-            if totals["busy_retries_used"] < busy_retries and elapsed() < PARKING_ARCHIVE_TIME_BUDGET_SECONDS:
+            if totals["busy_retries_used"] < busy_retries and not out_of_budget():
                 totals["busy_retries_used"] += 1
                 _archive_sleep(PARKING_ARCHIVE_BUSY_WAIT_SECONDS)
                 continue
@@ -1306,7 +1331,7 @@ def archive_airport_parking_statistics(context) -> dict[str, Any]:
         if totals["batches"] >= max_batches:
             totals["stop_reason"] = "max_batches"
             break
-        if elapsed() >= PARKING_ARCHIVE_TIME_BUDGET_SECONDS:
+        if out_of_budget():
             totals["stop_reason"] = "time_budget"
             break
     context.add_output_metadata({**{key: value for key, value in result.items()

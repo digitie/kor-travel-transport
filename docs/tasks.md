@@ -46,7 +46,8 @@
 - [ ] **PARKING-ARCHIVE-SCHEDULE-20261124 / 배포 뒤 확인** — 소유자 결정(2026-11-24)으로 보관 **적재만** 주 1회(월 05:10 KST) 자동,
   정리·원본 삭제는 수동. [parking-retention](architecture/parking-retention.md) "1단계 의도와 주 1회 자동 적재". **남은 것**: 배포 뒤
   첫 월요일 run의 `stop_reason`·`batches`·`max_batch_seconds`·`oldest_pending_at`(밀린 분량을 몇 주에 따라잡는지)과 그 시간 공항 run
-  지연 확인. 매주 부분 완료면 주기(매일)나 미보관 탐색 시작점 watermark(탐색 비용이 보관 이력에 비례)를 정한다. 후속(소유자·Manager):
+  지연·관측 공백 확인. 배치(하루치)가 평균 약 34초를 넘거나 매주 부분 완료면 주기(매일)나 미보관 탐색 시작점 watermark(탐색 비용이
+  보관 이력에 비례)를 정한다. 후속(소유자·Manager):
   `blocked` 경보 규칙(주 1회 schedule은 `schedule_no_success`가 하루 뒤 풀림)과 해소 절차(후속 수용 목록 4), 원본 정리 자동화.
 
 ## 2026-11-23 — 공개 유가 places 504 후속
