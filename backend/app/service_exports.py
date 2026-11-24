@@ -116,7 +116,7 @@ DUMP_GROUP = 25
 def _raw_text(column: Any) -> Any:
     """원본 행(JSONB)을 문자열로 받아 worker thread에서 `json.loads`한다(감사 T1-03).
 
-    asyncpg는 JSONB를 fetch 중(event loop)에 `json.loads`로 풀어 500행이면 수십 ms를 loop에서 쓴다. jsonb의
+    asyncpg는 JSONB를 fetch 중(event loop)에 `json.loads`로 푼다(합성 500행에서 약 16ms). jsonb의
     text 출력은 asyncpg가 받는 문자열과 같은 정규형이라 풀린 값도 같다(기본 deserializer = `json.loads`).
     """
     return cast(column, Text).label(column.key)
