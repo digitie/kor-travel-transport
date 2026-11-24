@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.testclient import TestClient
+from pydantic import TypeAdapter
 from krairport import KrairportClient
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -386,7 +387,12 @@ def _pages(client: TestClient, prefix: str, path: str, limit: int | None, header
 
 
 @pytest.mark.parametrize("limit", [None, 1, 2])
-def test_t1_bodies_are_byte_identical_to_the_previous_implementation(render_client: TestClient, limit) -> None:
+@pytest.mark.parametrize("group", [se.DUMP_GROUP, 2])
+def test_t1_bodies_are_byte_identical_to_the_previous_implementation(
+    render_client: TestClient, monkeypatch: pytest.MonkeyPatch, limit, group,
+) -> None:
+    # group=2면 시드(페이지당 최대 5건)에서도 item 묶음 직렬화가 여러 묶음·끝자리 묶음을 지난다.
+    monkeypatch.setattr(se, "DUMP_GROUP", group)
     _run(render_client, lambda session: _seed_all(session, render_client.fixed_now))
     for path in PATHS:
         page_limit = None if path in {"/highway-incidents/active", "/airports"} else limit
@@ -430,6 +436,21 @@ def test_t1_gzip_is_negotiated_with_vary(render_client: TestClient) -> None:
 def _vary(response) -> set[str]:
     # CORS middleware가 `Origin`을 덧붙인다.
     return {value.strip() for value in response.headers["vary"].split(",")}
+
+
+def test_grouped_dump_matches_a_single_dump_json() -> None:
+    """`_dump`의 묶음 직렬화는 한 번의 `dump_json`과 같은 바이트다(봉투 key와 같은 문자열 값이 있어도)."""
+    now = now_utc()
+    items = [ExportFuelStation(
+        natural_key=f"K{index}", source="opinet", name='"items":[] 이름' if index % 7 == 0 else f"이름{index}",
+        first_seen_at=now, last_seen_at=now, prices=[], raw={"items": [], '"items":[]': index, "f": index / 3},
+    ) for index in range(se.DUMP_GROUP * 2 + 3)]
+    collection = {"source": "opinet", "last_success_at": now, "failed": False, "stale": False,
+                  "last_attempt_failed": False}
+    for count in (0, 1, se.DUMP_GROUP, len(items)):
+        page = FuelStationExportPage(generated_at=now, collection=collection, items=items[:count],
+                                     next_cursor="9" if count else None, has_more=bool(count))
+        assert se._dump(page) == TypeAdapter(FuelStationExportPage).dump_json(page, by_alias=True), count
 
 
 def test_small_bodies_stay_uncompressed() -> None:

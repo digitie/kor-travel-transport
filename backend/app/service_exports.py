@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import gzip
 import ipaddress
+import json
 import secrets
 from collections.abc import AsyncIterator, Callable, Sequence
 from datetime import datetime, timedelta
@@ -37,7 +38,7 @@ from anyio import CapacityLimiter, to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from krairport import list_airports
 from pydantic import BaseModel, TypeAdapter
-from sqlalchemy import false, func, select, text
+from sqlalchemy import Text, cast, false, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -107,12 +108,26 @@ SNAPSHOT_LOCK_TIMEOUT = "3s"
 RENDER_CONCURRENCY = 2
 #: 이보다 작은 본문은 압축하지 않는다(T4 가격 이력 `_response`와 같은 기준, 감사 T1-06).
 GZIP_MIN_BYTES = 512
+#: 한 번의 `dump_json`으로 직렬화하는 item 수. 이 단위로 GIL을 놓아 event loop가 끼어들 틈을 둔다(로컬 500행
+#: 주유소 페이지에서 묶음당 약 5ms 이하, 전체 직렬화 시간은 한 번에 할 때와 비슷했다).
+DUMP_GROUP = 25
+
+
+def _raw_text(column: Any) -> Any:
+    """원본 행(JSONB)을 문자열로 받아 worker thread에서 `json.loads`한다(감사 T1-03).
+
+    asyncpg는 JSONB를 fetch 중(event loop)에 `json.loads`로 풀어 500행이면 수십 ms를 loop에서 쓴다. jsonb의
+    text 출력은 asyncpg가 받는 문자열과 같은 정규형이라 풀린 값도 같다(기본 deserializer = `json.loads`).
+    """
+    return cast(column, Text).label(column.key)
+
 
 _FUEL_STATION_COLUMNS = (
     FuelStation.id, FuelStation.source_station_id, FuelStation.source, FuelStation.name, FuelStation.brand_code,
     FuelStation.brand_name, FuelStation.phone, FuelStation.address, FuelStation.longitude, FuelStation.latitude,
     FuelStation.is_self, FuelStation.is_24h, FuelStation.has_carwash, FuelStation.has_maintenance,
-    FuelStation.has_cvs, FuelStation.first_seen_at, FuelStation.last_seen_at, FuelStation.raw_item_json,
+    FuelStation.has_cvs, FuelStation.first_seen_at, FuelStation.last_seen_at,
+    _raw_text(FuelStation.raw_item_json),
 )
 _FUEL_PRICE_COLUMNS = (
     FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code, FuelLatestPrice.price,
@@ -123,7 +138,8 @@ _REST_AREA_COLUMNS = (
     RestAreaReference.route_name, RestAreaReference.direction, RestAreaReference.longitude,
     RestAreaReference.latitude, RestAreaReference.has_gas_station, RestAreaReference.has_lpg_station,
     RestAreaReference.has_ev_charger, RestAreaReference.phone_number, RestAreaReference.data_reference_date,
-    RestAreaReference.first_seen_at, RestAreaReference.last_seen_at, RestAreaReference.raw_item_json,
+    RestAreaReference.first_seen_at, RestAreaReference.last_seen_at,
+    _raw_text(RestAreaReference.raw_item_json),
 )
 _REST_AREA_FUEL_COLUMNS = (
     RestAreaFuelPrice.id, RestAreaFuelPrice.service_area_code, RestAreaFuelPrice.source,
@@ -131,7 +147,7 @@ _REST_AREA_FUEL_COLUMNS = (
     RestAreaFuelPrice.route_name, RestAreaFuelPrice.direction, RestAreaFuelPrice.oil_company,
     RestAreaFuelPrice.has_lpg, RestAreaFuelPrice.phone_number, RestAreaFuelPrice.address,
     RestAreaFuelPrice.gasoline_price, RestAreaFuelPrice.diesel_price, RestAreaFuelPrice.lpg_price,
-    RestAreaFuelPrice.last_seen_at, RestAreaFuelPrice.raw_item_json,
+    RestAreaFuelPrice.last_seen_at, _raw_text(RestAreaFuelPrice.raw_item_json),
 )
 _INCIDENT_COLUMNS = (
     HighwayIncidentSnapshot.identity_key, HighwayIncidentSnapshot.source, HighwayIncidentSnapshot.occurred_date,
@@ -141,7 +157,7 @@ _INCIDENT_COLUMNS = (
     HighwayIncidentSnapshot.process_status, HighwayIncidentSnapshot.process_status_code,
     HighwayIncidentSnapshot.latitude, HighwayIncidentSnapshot.longitude, HighwayIncidentSnapshot.congestion_length,
     HighwayIncidentSnapshot.series_no, HighwayIncidentSnapshot.observed_at, HighwayIncidentSnapshot.collected_at,
-    HighwayIncidentSnapshot.raw_item_json,
+    _raw_text(HighwayIncidentSnapshot.raw_item_json),
 )
 
 
@@ -408,16 +424,43 @@ async def _render(request: Request, limiter: CapacityLimiter, build: Callable[[]
 
 
 def _encode(build: Callable[[], BaseModel], compress: bool) -> tuple[bytes, bool]:
-    page = build()
-    body = _adapter(type(page)).dump_json(page, by_alias=True)
+    body = _dump(build())
     if compress and len(body) >= GZIP_MIN_BYTES:
         return gzip.compress(body, compresslevel=1, mtime=0), True
     return body, False
 
 
+def _dump(page: BaseModel) -> bytes:
+    """`TypeAdapter(type(page)).dump_json(page, by_alias=True)`와 같은 바이트를 item 묶음 단위로 만든다.
+
+    pydantic-core는 `dump_json` 동안 GIL을 놓지 않는다. 500행(약 1.7MB)을 한 번에 직렬화하면 그동안 worker
+    thread가 event loop를 멈추므로, 봉투(`items=[]`)와 item 묶음(`DUMP_GROUP`개)을 따로 직렬화해 이어 붙인다.
+    JSON 문자열 안의 `"`는 언제나 escape되므로 봉투에서 따옴표 그대로의 `"items":[]`는 key 하나뿐이다.
+    """
+    items = getattr(page, "items", None)
+    if not items:
+        return _adapter(type(page)).dump_json(page, by_alias=True)
+    envelope = _adapter(type(page)).dump_json(page.model_copy(update={"items": []}), by_alias=True)
+    group = _list_adapter(type(items[0]))
+    body = b",".join(
+        group.dump_json(items[start:start + DUMP_GROUP], by_alias=True)[1:-1]
+        for start in range(0, len(items), DUMP_GROUP)
+    )
+    return envelope.replace(b'"items":[]', b'"items":[' + body + b"]", 1)
+
+
 @cache
 def _adapter(model: type[BaseModel]) -> TypeAdapter[Any]:
     return TypeAdapter(model)
+
+
+@cache
+def _list_adapter(model: type[BaseModel]) -> TypeAdapter[Any]:
+    return TypeAdapter(list[model])  # type: ignore[valid-type]
+
+
+def _loads(value: str | None) -> Any:
+    return None if value is None else json.loads(value)
 
 
 # 아래 구성 함수는 worker thread에서 돈다. 인자는 닫힌 snapshot에서 꺼낸 Core `Row`·평범한 값뿐이다.
@@ -442,7 +485,7 @@ def _fuel_station_page(
         longitude=row.longitude, latitude=row.latitude, is_self=row.is_self, is_24h=row.is_24h,
         has_carwash=row.has_carwash, has_maintenance=row.has_maintenance, has_cvs=row.has_cvs,
         first_seen_at=serialize_utc(row.first_seen_at), last_seen_at=serialize_utc(row.last_seen_at),
-        prices=prices.get(row.id, []), admin=addresses.get(row.id), raw=row.raw_item_json,
+        prices=prices.get(row.id, []), admin=addresses.get(row.id), raw=_loads(row.raw_item_json),
     ) for row in page]
     return FuelStationExportPage(
         generated_at=now_utc(), collection=collection, items=items,
@@ -462,7 +505,7 @@ def _rest_area_page(
         has_ev_charger=row.has_ev_charger, phone_number=row.phone_number,
         data_reference_date=row.data_reference_date, first_seen_at=serialize_utc(row.first_seen_at),
         last_seen_at=serialize_utc(row.last_seen_at), admin=addresses.get(row.id),
-        raw=row.raw_item_json,
+        raw=_loads(row.raw_item_json),
     ) for row in page]
     return RestAreaExportPage(
         generated_at=now_utc(), collection=collection, items=items,
@@ -479,7 +522,7 @@ def _rest_area_fuel_page(
         route_code=row.route_code, route_name=row.route_name, direction=row.direction,
         oil_company=row.oil_company, has_lpg=row.has_lpg, phone_number=row.phone_number,
         address=row.address, gasoline_price=row.gasoline_price, diesel_price=row.diesel_price,
-        lpg_price=row.lpg_price, observed_at=serialize_utc(row.last_seen_at), raw=row.raw_item_json,
+        lpg_price=row.lpg_price, observed_at=serialize_utc(row.last_seen_at), raw=_loads(row.raw_item_json),
     ) for row in page]
     return RestAreaFuelPriceExportPage(
         generated_at=now_utc(), collection=collection, items=items,
@@ -499,11 +542,15 @@ def _incident_set(
         latitude=row.latitude, longitude=row.longitude, congestion_length=row.congestion_length,
         series_no=row.series_no, observed_at=serialize_utc(row.observed_at),
         collected_at=serialize_utc(row.collected_at),
-        raw=(row.raw_item_json or {}).get("raw") if isinstance(row.raw_item_json, dict) else None,
+        raw=_incident_raw(_loads(row.raw_item_json)),
     ) for row in rows]
     return HighwayIncidentActiveSet(
         generated_at=now_utc(), collection=collection, collected_at=collected_at, items=items,
     )
+
+
+def _incident_raw(value: Any) -> Any:
+    return (value or {}).get("raw") if isinstance(value, dict) else None
 
 
 def _airport_page(with_parking: set[str]) -> AirportExportResponse:

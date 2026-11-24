@@ -322,3 +322,44 @@ HTTP 인증·본문·cursor 계약을 유지하며, 본문과 snapshot의 준비
 기존 본문이 있을 때 154→103ms, 본문이 없을 때 354→367ms였다. 두 비교에서
 첫 요청의 입력 지문 계산과 SQL이 각각 1회 감소했다. 운영 ARM 첫 요청 지연과
 기동부터 첫 응답까지 걸리는 총 시간은 별도 측정이 필요하다.
+
+## Map T1 export 본문 구성과 연결 반납 (2026-11-24)
+
+`/v1/service/exports/{fuel-stations,rest-areas,rest-area-fuel-prices,highway-incidents/active,airports}`(T1)는
+마지막 SQL 뒤 읽기 transaction을 rollback해 pool 연결과 RR snapshot을 먼저 돌려준다. 그다음 DTO 구성·JSON
+직렬화·gzip을 export 전용 `CapacityLimiter(2)` 아래 worker thread에서 한다. 전에는 같은 작업을 단일 uvicorn
+event loop에서 했고, request-scope `get_db`라 snapshot과 연결을 응답 송신이 끝날 때까지 쥐었다
+(감사 T1-03·T1-04·RT-08). rollback은 세션의 ORM 객체를 만료시키므로, 데이터는 필요한 열만 Core select로
+읽고(T1-05) 응답에 쓸 수집 상태는 반납 전에 만든다. 만료된 속성을 반납 뒤 읽으면 `MissingGreenlet`이 나며,
+기존 돌발 export 시험이 그 순서 변경을 잡는 것을 확인했다.
+
+thread로 옮겨도 GIL을 오래 쥐는 단일 호출은 event loop를 그대로 멈춘다. 그래서 두 가지를 더 했다.
+
+- 원본 행(`raw_item_json`, JSONB)은 `CAST(... AS TEXT)`로 받아 worker thread에서 `json.loads`한다. asyncpg는
+  JSONB를 fetch 중(loop)에 풀며, 합성 500행에서 약 16ms였다. jsonb text 출력은 asyncpg가 받는 문자열과 같은
+  정규형이라 풀린 값도 같다.
+- pydantic-core `dump_json`은 직렬화 동안 GIL을 놓지 않는다(합성 500행 1.7MB 약 19~30ms). 봉투와 item 25개
+  묶음을 따로 직렬화해 이어 붙여 한 번에 쥐는 시간을 약 5ms 이하로 줄였다. 전체 직렬화 시간은 비슷했다.
+
+본문 바이트는 FastAPI 기본 경로(`TypeAdapter(response_model).dump_json(by_alias=True)`)와 같다.
+`tests/test_service_exports_render.py`가 바뀌기 전 핸들러를 그대로 옮긴 legacy router와 5종·여러 limit의
+모든 페이지를 바이트 단위로 비교한다. `response_model`은 그대로라 OpenAPI 문서는 바뀌지 않는다.
+
+- gzip: `Accept-Encoding`이 gzip을 허용하고(q=0은 거절) 본문이 512B 이상이면 level 1로 압축하고
+  `Vary: Accept-Encoding`을 둔다(T4 가격 이력과 같은 규칙, 감사 T1-06). Map httpx는 기본으로 gzip을 받는다.
+- snapshot: `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` + `SET LOCAL statement_timeout='20s'`,
+  `lock_timeout='3s'`. Map read timeout 30초보다 짧아 Map이 포기한 페이지를 서버가 끝까지 만들지 않고,
+  migration DDL의 AccessExclusive 대기 뒤에 줄 서지 않는다(감사 RT-04). 연결이 pool로 돌아가면 격리 수준·
+  READ ONLY·`SET LOCAL`은 모두 원래 값이다(PostgreSQL 전용 시험).
+- `/airports`는 요청마다 `KrairportClient`(httpx 클라이언트 2개)를 만들지 않고 공개 `list_airports(active=True)`를
+  쓴다(T1-08, ADR-004의 공개 API 사용).
+- cursor가 int4 PK 범위(0..2^31-1) 밖이면 DB bind 오류(500) 대신 422다(T1-09).
+
+로컬 측정(Windows dev, PostgreSQL 18 container, 합성 주유소 1,000곳·유종 5개·원본 약 1.5KB, 같은 프로세스에서
+옛 구현과 번갈아 `limit=500` 요청 15~20회, 다른 작업이 CPU를 많이 쓰던 상태라 절대값의 편차가 크다)에서
+요청 중앙값은 285~420ms → 237~356ms, 동시에 돈 1ms ticker로 잰 event loop 최대 정지의 중앙값은 88~145ms →
+31~46ms였다. 본문은 1,741,856B이고 gzip level 1이면 122,5xxB였다(합성 원본이 반복적이라 실데이터 압축률은
+더 낮을 것이다). 운영 ARM 수치는 배포 후 Server-Timing으로 따로 확인해야 한다.
+
+statement timeout(57014)·일시 DB 오류를 503 코드로 바꾸는 것은 export 실패 계약 작업의 몫이다. 현재는 이 경로에서도
+일반 500이다.
