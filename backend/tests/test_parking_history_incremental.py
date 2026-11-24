@@ -32,10 +32,11 @@ class SourceRow:
     source: str
     collected_at: datetime
     occupied_spaces: int
+    airport_override: str | None = None  # 같은 주차장이 다른 공항 코드로 들어온 행(이관·원천 오류)
 
     @property
     def code(self) -> str:
-        return LOTS[self.parking_lot_id]
+        return self.airport_override or LOTS[self.parking_lot_id]
 
     total_spaces = 100
 
@@ -71,8 +72,11 @@ def _assert_same(left: history_cache.ParkingHistorySnapshot, right: history_cach
             assert [item.encoded for item in mine[key].items] == [item.encoded for item in theirs[key].items]
             assert mine[key].times == theirs[key].times
     earliest = max(left.earliest_observed_at, right.earliest_observed_at)
+    # start_index 전수 대조(조각 경계·자정 포함).
+    for cutoff in sorted({*left.times[::97], *(t + timedelta(microseconds=1) for t in left.times[::131])}):
+        assert left.start_index(cutoff, None, None) == sum(1 for t in left.times if t < cutoff)
     for cutoff in (earliest, NOW - timedelta(days=1), NOW - timedelta(hours=3), NOW):
-        for airport, lot in ((None, None), ("GMP", None), ("ICN", None), ("CJU", None), (None, 4), ("ICN", 1)):
+        for airport, lot in ((None, None), ("GMP", None), ("ICN", None), ("CJU", None), ("PUS", None), (None, 4), ("ICN", 1)):
             body = right.render(cutoff, airport, lot)
             assert left.render(cutoff, airport, lot) == body
             # 날짜 조각 gzip(증분 snapshot은 이전 조각 압축을 물려받는다)도 같은 본문으로 풀린다.
@@ -86,9 +90,9 @@ def test_incremental_chain_equals_full_rebuild(seed: int) -> None:
     rows: list[SourceRow] = []
     next_id = 1
 
-    def add(observed: datetime, lot: int, source: str, collected: datetime) -> None:
+    def add(observed: datetime, lot: int, source: str, collected: datetime, airport: str | None = None) -> None:
         nonlocal next_id
-        rows.append(SourceRow(next_id, observed, lot, source, collected, rng.randrange(0, 100)))
+        rows.append(SourceRow(next_id, observed, lot, source, collected, rng.randrange(0, 100), airport))
         next_id += 1
 
     clock = NOW - timedelta(days=31)
@@ -115,9 +119,14 @@ def test_incremental_chain_equals_full_rebuild(seed: int) -> None:
                 # 나중에 들어온 이관 행은 live를 이기지 못한다.
                 old = rng.choice(rows)
                 add(old.observed_at, old.parking_lot_id, "migration_backfill", NOW + timedelta(days=1))
-            elif kind < 0.9:
+            elif kind < 0.85:
                 # 늦게 들어온 옛 관측(기간 밖 포함).
                 add(clock - timedelta(hours=rng.randrange(1, 800)), lot, "late", clock)
+            elif kind < 0.9:
+                # UTC 자정 정각·µs 경계 관측, 다른 공항 코드로 들어온 같은 주차장 행.
+                midnight = clock.replace(hour=0, minute=0, second=0, microsecond=0)
+                add(midnight - timedelta(microseconds=rng.choice((0, 1))), lot, "edge", clock,
+                    rng.choice((None, "PUS")))
             else:
                 add(clock + timedelta(minutes=rng.randrange(1, 4)), lot, "live", clock)
         clock += timedelta(minutes=5)
@@ -251,7 +260,9 @@ def test_incremental_unavailable_falls_back_to_full_rebuild(monkeypatch, caplog,
               if '"phase":"finish"' in record.getMessage()][-1]
     assert (finish["mode"], finish["reason"], finish["outcome"]) == ("full", reason, "published")
     assert "full_load_ms" in finish["phases_ms"] and "gzip_ms" in finish["phases_ms"]
-    assert "boom" not in caplog.text
+    assert finish["incremental_errors"] == (1 if isinstance(failure, RuntimeError) else 0)
+    # 증분 고장은 traceback을 남긴다(전체 재생성으로 회복해도 원인을 찾을 수 있게). 기존 갱신 실패 로그와 같은 수준이다.
+    assert ("parking history incremental refresh failed" in caplog.text) == isinstance(failure, RuntimeError)
 
 
 # ---------------------------------------------------------------------------

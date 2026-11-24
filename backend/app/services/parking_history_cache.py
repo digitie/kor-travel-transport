@@ -617,6 +617,8 @@ class ParkingHistoryReadCache:
         self.validated_at_utc: datetime | None = None
         self.last_fingerprint: tuple[int, int, int, int] | None = None
         self.prepared_responses: OrderedDict[tuple[int, str | None, int | None, str], bytes] = OrderedDict()
+        #: 연속 증분 오류 수(경보용, finish 로그 `incremental_errors`). 증분이 한 번 성공하면 0.
+        self.incremental_errors = 0
         # 같은 불변 snapshot/범위만 합친다. 대기자가 사라지면 lock도 남기지 않는다.
         self.preparation_locks: WeakValueDictionary[tuple, asyncio.Lock] = WeakValueDictionary()
 
@@ -714,12 +716,17 @@ class ParkingHistoryReadCache:
                     except IncrementalUnavailable as exc:
                         mode, reason = "full", exc.reason
                     except Exception as exc:  # noqa: BLE001 — 증분 고장으로 캐시가 다음 새벽까지 꺼지지 않게 전체로 회복한다.
+                        self.incremental_errors += 1
+                        logger.exception("parking history incremental refresh failed (consecutive=%s); rebuilding in full",
+                                         self.incremental_errors)
                         mode, reason = "full", f"incremental_error:{type(exc).__name__}"
                 if refreshed is None:
                     load_started = monotonic()
                     refreshed = await load_snapshot(self.session_factory)
                     phases["full_load_ms"] = round((monotonic() - load_started) * 1000, 1)
                 row_count = refreshed.size
+                if mode == "incremental":
+                    self.incremental_errors = 0
                 gzip_started = monotonic()
                 prepared = await self.prepare_full_window(refreshed)
                 phases["gzip_ms"] = round((monotonic() - gzip_started) * 1000, 1)
@@ -741,7 +748,8 @@ class ParkingHistoryReadCache:
                     "rebuild_id": rebuild_id, "at": now_utc().isoformat(),
                     "duration_ms": round((monotonic() - started) * 1000, 3),
                     "row_count": row_count, "outcome": outcome, "mode": mode, "reason": reason,
-                    "changed_keys": changed_keys, "phases_ms": phases}, separators=(",", ":")))
+                    "changed_keys": changed_keys, "phases_ms": phases,
+                    "incremental_errors": self.incremental_errors}, separators=(",", ":")))
         self.last_fingerprint = fingerprint
         self.validated_at = monotonic()
         self.validated_at_utc = now_utc()

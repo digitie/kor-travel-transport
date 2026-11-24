@@ -182,7 +182,7 @@ covering index를 concurrent로 만들고 해당 테이블의 auto-analyze 임�
 - **보관 기간**: 30일 + 15분 여유. 여유가 없으면 갱신 직전에 시각을 정하고 전송 슬롯을 기다리던 30일 요청이 앞부분이 잘린 snapshot을
   못 쓰고 직접 SQL로 떨어진다.
 - **고장 회복**: 증분이 `IncrementalUnavailable`이 아닌 오류(DB·코드)로 실패해도 같은 갱신에서 전체 재생성으로 회복한다
-  (`reason=incremental_error:<예외 이름>`).
+  (`reason=incremental_error:<예외 이름>`, traceback 로그, 연속 횟수 `incremental_errors` — 0이 아니면 증분이 고장 난 채 매 수집 전체 재생성 중이다).
 - **gzip 조각 이어 붙이기**(#270 경로와 일관): 조각마다 독립 deflate(Z_FULL_FLUSH, 수준 9 — 요청마다 새로 만드는 첫 날짜 부분은 6)를 처음 쓸 때 만들어 조각에 보관하고, 요청 때
   gzip 머리말 + 첫 날짜(부분)·나머지 조각 + 빈 마지막 블록 + CRC32(`crc32_combine`)·길이로 한 member의 정상 gzip을 조립한다. 갱신 뒤에는
   바뀐 날짜와 첫 날짜만 새로 압축한다(예전 갱신마다 85MB br 6 + gzip 9 약 7초 → 0.1초 안팎, x86). 크기는 본문 전체를 같은 수준으로

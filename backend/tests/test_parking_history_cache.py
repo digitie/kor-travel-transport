@@ -756,7 +756,7 @@ def test_rebuild_interval_logs_are_paired_safe_and_skip_unchanged(monkeypatch, c
     assert finish["row_count"] == (None if outcome in {"failed", "cancelled"} else 1)
     assert finish["duration_ms"] >= 0 and finish["outcome"] == outcome
     assert set(start) == {"event", "phase", "rebuild_id", "at", "duration_ms", "row_count", "mode", "reason"}
-    assert set(finish) == {*start, "outcome", "changed_keys", "phases_ms"}
+    assert set(finish) == {*start, "outcome", "changed_keys", "phases_ms", "incremental_errors"}
     assert "secret" not in caplog.text and "password" not in caplog.text
     if outcome == "published":
         caplog.clear()
