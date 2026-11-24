@@ -13,6 +13,11 @@
 - P2 주차 넘김: 격리 행 수로만 맞춰(빠진 수 ≤ 격리 수) 한 주차장의 실제 소멸과 다른 주차장의 무효 행이 겹치면 사라진 주차장을 최대
   1시간 내보냈다. 이제 격리 행 중 기존 parser가 식별한 `(airport_code, lot_id)`만 넘긴다. 용량 0(폐쇄)과 식별할 수 없는 행은 넘기지 않는다.
   고속도로 소통은 SDK가 무효 행의 식별자를 주지 않아 건수 기준 그대로다.
+- 적대 리뷰(Popper·James) 반영: 공동 job 상태도 격리만 있으면 "부분 성공(격리 N건)"(`job_isolated_rows`), 격리만 있는 실행이 공항의
+  최근 성공 시각을 앞당김, 격리 배지 경고 톤, 기존 parser가 해석하지 못한 행도 식별자(`parking_row_identity`)로 넘김(용량을 정확히 0으로
+  보고한 행만 폐쇄로 제외), 모든 행 해석 실패(`failed to parse response record`)는 재조회하지 않음, 재조회도 실패하면 첫 파싱 오류를 남김(쿼터
+  초과는 그대로), 공개 표지 판정 한 곳으로. 남긴 것(P2): 고속도로 소통 넘김은 건수 기준(SDK가 무효 행 식별자를 주지 않음), 격리 표시는
+  해당 trigger의 최근 실행 기준, `unmapped_airport` 행은 식별할 수 없어 넘기지 않는다(#263은 넘겼다).
 - 시험: `test_journey_api.py`(격리만/다른 오류 섞임의 상태), `test_transport_collection.py`(일시적 파싱 오류 1회 재조회·행 단위 실패 재조회 없음·
   재조회 격리 기록·`parse_isolated_rows`), `test_parking_export.py`(식별자 기준 넘김, 폐쇄·다른 공항 행은 넘기지 않음, 소멸+격리 동시),
   admin vitest `provider-status.test.ts`, e2e `provider-isolated-rows.spec.ts`(390/1440).

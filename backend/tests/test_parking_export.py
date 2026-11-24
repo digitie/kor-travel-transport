@@ -419,3 +419,14 @@ def test_isolation_does_not_hide_real_disappearance(export_client):
     assert result["status"] == "partial_success" and result["isolated_rows"] == 1
     # 12 - 소멸 1 = 11: 격리 주차장은 유지, 사라진 주차장은 빠진다(옛 건수 기준은 둘 다 뺐다).
     assert c.get(PATH, headers=HEADERS).json()["total_count"] == 11
+
+
+def test_unparsable_incheon_row_is_still_carried_by_its_lot_identity(export_client):
+    """사후 리뷰 P2: 시각이 깨져 기존 parser가 행 전체를 해석하지 못해도 주차장(floor)은 식별되므로 직전 값을 넘긴다."""
+    from app.services.parsers import parking_row_identity, reported_capacity_is_zero
+
+    assert parking_row_identity({"floor": "T1 단기주차장", "datetm": "upstream error"}, kac=False) == ("ICN", "icn-t1-단기주차장")
+    assert parking_row_identity({"aprKor": "미매핑공항", "aprEng": "UNMAPPED"}, kac=True) is None
+    assert reported_capacity_is_zero({"parkingFullSpace": "0"}, kac=True)
+    assert not reported_capacity_is_zero({"parkingFullSpace": "-"}, kac=True)
+    assert not reported_capacity_is_zero({"parkingarea": "N/A"}, kac=False)

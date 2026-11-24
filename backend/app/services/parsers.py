@@ -273,6 +273,35 @@ def _coerce_kac_items(payload: str | list[dict[str, Any]]) -> list[dict[str, Any
     return _xml_items(payload)
 
 
+def parking_row_identity(item: Any, *, kac: bool) -> tuple[str, str] | None:
+    """원천 행 하나의 주차장 식별자 `(airport_code, lot_id)` — 기존 이력 parser와 같은 규칙이고 시각·수치는 보지 않는다.
+
+    시각이나 수치가 깨져 행 전체 해석이 실패한 행도 주차장은 알 수 있다(격리 행의 current 넘김, `parking_exports`).
+    공항을 알 수 없으면 None이다.
+    """
+    if not isinstance(item, dict):
+        return None
+    if kac:
+        airport_code = _resolve_kac_airport_code(item.get("aprKor"), item.get("aprEng"))
+        if airport_code is None:
+            return None
+        lot_name = normalize_kac_lot_name(
+            airport_code, item.get("parkingAirportCodeName") or item.get("parkingName") or "주차장")
+        return airport_code, _kac_source_lot_id(airport_code, lot_name)
+    return "ICN", _slug_lot_id("icn", item.get("floor") or "인천공항 주차장")
+
+
+def reported_capacity_is_zero(item: Any, *, kac: bool) -> bool:
+    """원천이 용량을 정확히 0으로 보고했는가(폐쇄 신호). 해석할 수 없는 값('-', 'N/A')은 0이 아니다."""
+    if not isinstance(item, dict):
+        return False
+    text = str(item.get("parkingFullSpace" if kac else "parkingarea") or "").strip().replace(",", "")
+    try:
+        return float(text) == 0
+    except ValueError:
+        return False
+
+
 def parse_kac_parking(
     payload: str | list[dict[str, Any]],
     allowed_airport_codes: list[str] | None = None,

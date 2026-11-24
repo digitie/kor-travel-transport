@@ -16,11 +16,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { dateTime, transportGet } from "@/lib/journey";
 import { getDagsterOverview, JOB_LABELS, runStalled, scheduleDescription, statusLabel, type DagsterOverview } from "@/lib/dagster";
-import { isolatedRows, providerStatusLabel } from "@/lib/provider-status";
+import { isolatedRows, jobStatusLabel, providerStatusLabel } from "@/lib/provider-status";
 import { dagsterLocationUrl, dagsterRunUrl, dagsterJobRunsUrl } from "@/lib/dagster-scope";
 import { cn } from "@/lib/utils";
 
-type Provider = { source: string; job_status?: string | null; name: string; job_name: string | null; enabled: boolean; mode: string; status: string; interval_seconds: number | null; last_started_at: string | null; last_success_at: string | null; next_due_at: string | null; error_code: string | null; isolated_rows?: number | null };
+type Provider = { source: string; job_status?: string | null; name: string; job_name: string | null; enabled: boolean; mode: string; status: string; interval_seconds: number | null; last_started_at: string | null; last_success_at: string | null; next_due_at: string | null; error_code: string | null; isolated_rows?: number | null; job_isolated_rows?: number | null };
 type Providers = { generated_at: string; items: Provider[]; ferry_window_start: string; ferry_window_end: string; ferry_expected_snapshots: number; ferry_stored_snapshots: number; kric_coverage?: { station_count: number; linked_station_count: number; expected_snapshots: number; stored_snapshots: number; fresh_snapshots: number; oldest_collected_at: string | null } };
 
 function jobRunHref(jobName: string, dagster: DagsterOverview | null) {
@@ -140,12 +140,12 @@ function ProviderCollectionRows({ providers, query, dagster }: Pick<ReturnType<t
       {providers?.items.filter((item) => [item.name, item.source, item.job_name].join(" ").toLowerCase().includes(query.toLowerCase())).map((item) => <details className="provider-row" key={item.source}>
         <summary className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
           <strong className="font-medium text-text-primary">{item.name}</strong>
-          <StatusBadge label={providerStatusLabel(item, statusLabel)} status={item.status} tone={item.error_code ? "destructive" : undefined} />
+          <StatusBadge label={providerStatusLabel(item, statusLabel)} status={item.status} tone={item.error_code ? "destructive" : isolatedRows(item) ? "warning" : undefined} />
           <span className="text-xs text-text-secondary">{item.mode === "scheduled" ? "정기 수집" : item.mode === "on_demand" ? "명시 요청만" : "통합 필요"}</span>
         </summary>
         <div className="mt-3 flex flex-col gap-3">
           <DetailList columns={2} items={[
-            { label: "공동 작업 상태", value: item.job_status ? statusLabel(item.job_status) : "이력 없음" },
+            { label: "공동 작업 상태", value: jobStatusLabel(item, statusLabel) },
             { label: "최근 시작", value: dateTime(item.last_started_at) },
             { label: item.status.startsWith("shared_job_") ? "공동 작업 최근 성공" : "최근 성공", value: dateTime(item.last_success_at) },
             { label: item.source === "kric_timetable" ? "호출 보호 종료" : "다음 실행 예약", value: item.next_due_at ? dateTime(item.next_due_at) : item.mode === "scheduled" ? "하단 Dagster 스케줄 확인" : "정기 수집 없음" },

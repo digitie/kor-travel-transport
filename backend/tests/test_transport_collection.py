@@ -2015,3 +2015,31 @@ def test_parse_isolated_rows_separates_isolation_from_other_errors():
     mixed = only + "\nkac_fee GMP: KrairportRateLimitError"
     assert parse_isolated_rows(mixed) == ({"kac_parking": 1, "incheon_parking": 2}, True)
     assert parse_isolated_rows(None) == ({}, False)
+
+
+def test_all_rows_unparsable_is_deterministic_and_reconfirm_failure_keeps_the_first_error(tmp_path):
+    """사후 리뷰 P2: 모든 행 해석 실패는 재조회하지 않고, 재조회가 시간 초과로 실패하면 첫 파싱 오류를 남긴다."""
+    from krex import KrexParseError, KrexQuotaExceededError
+
+    async def run():
+        provider = FakeTransportProvider()
+        original = await provider.collect_highway()
+        service = TransportCollectionService(build_settings(tmp_path), provider)
+        provider.collect_highway = AsyncMock(return_value=original)
+        all_rows = KrexParseError("failed to parse response record: 'conzoneId'")
+        kept = await service._confirm_highway_payload(
+            replace(original, traffic=all_rows), (TRAFFIC_SOURCE,), {TRAFFIC_SOURCE: 1})
+        assert kept.traffic is all_rows
+        provider.collect_highway.assert_not_awaited()
+
+        truncated = KrexParseError("JSON parse failure")
+        provider.collect_highway = AsyncMock(side_effect=TimeoutError("bounded reconfirm timeout"))
+        result = await service._confirm_highway_payload(
+            replace(original, traffic=truncated), (TRAFFIC_SOURCE,), {TRAFFIC_SOURCE: 1})
+        assert result.traffic is truncated
+        quota = KrexQuotaExceededError("quota")
+        provider.collect_highway = AsyncMock(side_effect=quota)
+        result = await service._confirm_highway_payload(
+            replace(original, traffic=truncated), (TRAFFIC_SOURCE,), {TRAFFIC_SOURCE: 1})
+        assert result.traffic is quota  # 쿼터는 호출 유예를 걸어야 하므로 그대로
+    asyncio.run(run())

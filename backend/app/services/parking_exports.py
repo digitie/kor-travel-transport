@@ -12,7 +12,9 @@ from sqlalchemy import delete, select
 
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import ParkingCurrent, ReferenceExportState
-from app.services.parsers import parse_incheon_parking, parse_kac_parking
+from app.services.parsers import (
+    parking_row_identity, parse_incheon_parking, parse_kac_parking, reported_capacity_is_zero,
+)
 from app.services.reference_exports import promote_reference
 
 KIND = "parking-current"
@@ -102,9 +104,11 @@ def validate_parking_payload(settings, source, response) -> ParkingPayload:
                 raise ValueError("주차장 관측시각이 미래입니다")
         except Exception:  # noqa: BLE001 — SDK 정본 검증 오류 종류와 무관하게 그 행만 격리한다.
             invalid += 1
-            if legacy_row is not None and legacy_row.lot_id and legacy_row.total_spaces > 0:
-                # 주차장은 알지만 이번 값이 무효다(깨진 시각·수치 등). 용량 0은 폐쇄 신호라 넘기지 않는다.
-                carry.add((legacy_row.airport_code, legacy_row.lot_id))
+            # 주차장은 알지만 이번 값이 무효다(깨진 시각·수치 등 — 기존 parser가 행 전체를 해석하지 못해도 식별자는 안다).
+            # 원천이 용량을 정확히 0으로 보고한 행은 폐쇄 신호라 넘기지 않는다(해석할 수 없는 용량 값은 폐쇄가 아니다).
+            identity = parking_row_identity(item, kac=kac)
+            if identity is not None and not reported_capacity_is_zero(item, kac=kac):
+                carry.add(identity)
             continue
         current_rows.append(row)
     if not current_rows:

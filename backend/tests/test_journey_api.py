@@ -311,11 +311,16 @@ def test_provider_status_shows_isolation_only_runs_as_partial_success(client, ex
         # 격리 말고 다른 오류(요금 429)가 섞이면 지금처럼 실패 표시다(상태는 job 상태 그대로, 오류 코드).
         assert rows["kac_parking"]["status"] == "shared_job_partial_success"
         assert rows["kac_parking"]["error_code"] == "collection_failed" and rows["kac_parking"]["isolated_rows"] is None
+        assert rows["kac_parking"]["job_isolated_rows"] is None and rows["kac_parking"]["last_success_at"] is None
     else:
         assert rows["kac_parking"]["status"] == "shared_job_partial_success"
         assert rows["kac_parking"]["error_code"] is None and rows["kac_parking"]["isolated_rows"] == 1
+        assert rows["kac_parking"]["job_isolated_rows"] == 1
+        # 격리만 있는 실행은 정상 행을 저장했으므로 공동 job의 최근 성공 시각도 그 실행으로 앞선다.
+        assert rows["kac_parking"]["last_success_at"] is not None
         assert rows["incheon_parking"]["status"] == "shared_job_success"
         assert rows["incheon_parking"]["isolated_rows"] is None
     assert rows["krex_traffic_flow"]["status"] == "partial_success"
     assert rows["krex_traffic_flow"]["isolated_rows"] == 3 and rows["krex_traffic_flow"]["error_code"] is None
+    assert rows["krex_traffic_incident"]["job_isolated_rows"] == 3
     assert rows["krex_traffic_incident"]["status"] == "success" and rows["krex_traffic_incident"]["isolated_rows"] is None

@@ -1039,6 +1039,8 @@ class ProviderCollectionStatus(BaseModel):
     error_code: str | None = None
     #: 최근 실행이 무효 원천 행을 격리하고 나머지를 저장했을 때 그 원천의 격리 행 수(`status`는 부분 성공).
     isolated_rows: int | None = None
+    #: 최근 job 실행이 무효 원천 행 격리 말고는 오류가 없는 부분 성공이면 그 실행 전체의 격리 행 수(`job_status` 해석용).
+    job_isolated_rows: int | None = None
 
 
 class KricCoverage(BaseModel):

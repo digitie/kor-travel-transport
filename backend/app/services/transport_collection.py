@@ -405,6 +405,10 @@ def parse_isolated_rows(message: str | None) -> tuple[dict[str, int], bool]:
     return isolated, other
 
 
+#: 재조회해도 같은 SDK 파싱 오류의 문장 앞머리(`_transient_parse_error`).
+DETERMINISTIC_PARSE_PREFIXES = ("failed to parse response record",)
+
+
 def _public_error_marker(message: str | None) -> str | None:
     """공개 collector-status의 안정된 오류 표지. 격리만 있는 부분 성공은 `rows_isolated`다."""
     if not message:
@@ -944,8 +948,13 @@ class TransportCollectionService:
 
     @staticmethod
     def _transient_parse_error(result: Any) -> bool:
-        """다시 조회할 만한 파싱 오류인가. 행 단위 결정적 실패(`KrexPartialParseError`)는 아니다."""
-        return isinstance(result, KrexParseError) and not isinstance(result, KrexPartialParseError)
+        """다시 조회할 만한 파싱 오류인가.
+
+        행 단위 결정적 실패(`KrexPartialParseError`)와 모든 행의 해석 실패(SDK `failed to parse response record` — 행
+        스키마가 바뀐 결정적 원인)는 아니다. 잘린 JSON·게이트웨이 본문·목록/건수 누락 같은 나머지는 한 번 다시 본다.
+        """
+        return (isinstance(result, KrexParseError) and not isinstance(result, KrexPartialParseError)
+                and not str(result).startswith(DETERMINISTIC_PARSE_PREFIXES))
 
     @staticmethod
     def _empty_incident_set(source: str, result: Any) -> bool:
@@ -994,6 +1003,11 @@ class TransportCollectionService:
             field = fields[source]
             first = getattr(payload, field)
             result = retried if isinstance(retried, Exception) else getattr(retried, field)
+            if (isinstance(result, Exception) and isinstance(first, Exception)
+                    and not isinstance(result, KrexQuotaExceededError)):
+                # 재조회도 실패하면 첫 파싱 오류를 근거로 남긴다(재조회의 시간 초과 등이 원인을 덮지 않게).
+                # 쿼터 초과는 호출 유예를 걸어야 하므로 그대로 둔다.
+                result = first
             if not isinstance(retried, Exception):
                 # 재조회 응답에서 무효 행을 격리했으면 그 기록을 이어받는다(첫 응답의 격리 기록은 버린다).
                 isolated.extend(entry for entry in retried.isolated if entry[0] == source)

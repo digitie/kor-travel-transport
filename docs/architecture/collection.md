@@ -30,8 +30,8 @@
 `raw_api_responses`에 남긴다. API는 외부 원본을 매 요청마다 호출하지 않는다.
 실행 transaction이 DB flush 단계에서 rollback되더라도 실패한
 `CollectionRun(trigger LIKE 'transport_%')`을 별도 transaction으로 보존한다.
-`collector-status.last_run`은 이 durable 실행 결과와 안정적인 `collection_failed`
-오류 코드만 외부에 노출해, 이전 성공 상태를 현재 성공으로 오인하지 않게 한다.
+`collector-status.last_run`은 이 durable 실행 결과와 안정적인 오류 표지(`collection_failed`, 무효 행 격리만 있는
+부분 성공은 `rows_isolated` — 아래 "무효 행 격리의 상태 표시")만 외부에 노출해, 이전 성공 상태를 현재 성공으로 오인하지 않게 한다.
 
 오피넷은 병합된 provider `8708f10`의 60초 화면 대기 상한을 transport 설정과 Compose에도
 동일하게 전달한다. 8시간 간격·24시간 3회 및 자동 재시도 금지는 유지한다. 대기 상한 변경은
@@ -200,3 +200,12 @@ cutover 동안 HTTP read-only source로 유지하며 Docker를 조작하지 않�
 - 현재 localhost 스택이 sample 모드여도 UTC 저장과 KST 표시는 정상 동작한다.
 - UI의 `데이터 기준 시각` 표기와 API의 UTC 시각 변환은 일치한다.
 - 강제 수집 버튼은 정상 동작하고, 제한 시간 이내 재실행은 UI와 백엔드 양쪽에서 차단된다.
+
+### 무효 행 격리의 상태 표시(2026-11-24)
+
+수집이 원천 응답의 무효 행만 격리하고 나머지를 저장한 실행은 부분 성공이다. 운영 상태(`/v1/transport/providers`)는 격리만 있는
+실행을 실패와 구분한다: 원천 `status=partial_success`(공항 `shared_job_partial_success`)·`isolated_rows=N`·`error_code=null`, 같은 job의
+`job_isolated_rows`. 공개 collector-status의 실행 `error`는 격리만 있으면 `rows_isolated`, 그 밖의 실패는 `collection_failed`다 —
+`rows_isolated`는 실패가 아니다(정상 행은 저장됐다).
+
+고속도로 소통의 격리 행 넘김은 건수 기준이다(SDK가 무효 행의 구간 식별자를 주지 않는다). 주차는 격리 행의 `(airport_code, lot_id)` 기준이다.
