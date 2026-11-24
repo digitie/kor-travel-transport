@@ -24,6 +24,7 @@
     "components/daily-flight-overlay-chart.tsx",
     "hooks/use-analytics-data.ts",
     "lib/api.ts",
+    "lib/analytics-basis.ts",
     "lib/types.ts",
     "lib/format.ts",
     "lib/dashboard-context.tsx",
