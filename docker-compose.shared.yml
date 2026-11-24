@@ -273,6 +273,8 @@ services:
       PLACES_MAX_RUNNING: "${PLACES_MAX_RUNNING:-4}"
       PLACES_MAX_WAITING: "${PLACES_MAX_WAITING:-8}"
       PLACES_DEADLINE_SECONDS: "${PLACES_DEADLINE_SECONDS:-25}"
+      # slow_request 로그 임계(ms). export 요청은 값과 무관하게 항상 남는다(docs/runbooks/request-timing-logs.md).
+      SLOW_REQUEST_THRESHOLD_MS: "${SLOW_REQUEST_THRESHOLD_MS:-1000}"
     depends_on:
       migrate:
         condition: service_completed_successfully

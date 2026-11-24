@@ -813,7 +813,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return response
 
-    app.add_middleware(ReadTimingMiddleware)
+    app.add_middleware(ReadTimingMiddleware, slow_threshold_ms=resolved_settings.slow_request_threshold_ms)
 
     def custom_openapi() -> dict:
         """Keep the committed schema aligned with the RFC 7807 error handlers."""
