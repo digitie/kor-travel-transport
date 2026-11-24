@@ -106,7 +106,9 @@ Compose에 명시적으로 추가한다. 렌더된 command와 healthcheck가 모
 소비자 export는 GET과 기존 승인 IP/CIDR에 한정하고 빈 설정은 모두 거부한다.
 기존 env 보호 exclude를 지우거나 HAProxy를 직접 수정하지 않는다. 공용 daemon RUNNING을 유지한다. DB 조회·worker 확인에 상한을 두고, 배포 시간 초과로 하위 작업의 종료가 불명확하면 pause를 유지한 채 별도 정산한다. 종료를 증명하기 전에 자동 rollback과 정방향 배포를 겹치지 않는다.
 
-### 배포 보류: export 503 상태 코드 변경(2026-11-24, PR #277)
+### 배포 보류(해제됨): export 503 상태 코드 변경(2026-11-24, PR #277)
+
+**해제(2026-11-25, 소유자 결정)**: Map #1542(e2e7e66, 2026-11-24 11:44Z 머지)가 #1549의 transport 503 code 분류와 "나이 기준 혼합" 정책을 흡수했다. 소유자가 이 보류를 해제했다. #277 이후 릴리스는 일반 절차로 배포한다. 배포 뒤 Map 상태 job metadata에서 503 code가 정책대로(경고 기준 안 초록·넘으면 빨강) 분류되는지 한두 주기 확인한다.
 
 PR #277(export 503 `code`·`Retry-After`)부터의 transport 릴리스는 아래 조건이 서기 전에는 Odroid에 배포하지 않는다.
 이 릴리스는 export 경로의 두 가지 500을 503으로 바꾼다 — 일시 DB 불가(`TRANSIENT_DB`)와 T2/T3 snapshot statement
