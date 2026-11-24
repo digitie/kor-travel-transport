@@ -1,8 +1,10 @@
-"""공개·export gateway의 소요 시간 access log, places limit 상한, export 버퍼, 공개 유가 gzip 계약.
+"""공개·export gateway의 소요 시간 access log, places limit 상한, export 버퍼·동시 상한, Server-Timing 숨김,
+공개 유가 gzip 계약.
 
 실제 nginx 동작(반복·인코딩 query, 정규화 경로, temp file 경고, gzip 이중 압축 여부)은 PR에서
 nginx:1.27-alpine과 loopback stub으로 따로 확인했다. 이 시험은 그 동작을 만드는 설정 문장을 고정한다.
 """
+import json
 import re
 from pathlib import Path
 
@@ -55,7 +57,7 @@ def _nginx_map(text: str, variable: str, arg_limit: str) -> str:
     ("", "900"), ("1", "1"), ("10", "10"), ("99", "99"), ("100", "100"), ("300", "300"), ("899", "899"),
     ("900", "900"), ("901", "900"), ("999", "900"), ("1000", "900"), ("5000", "900"),
     ("99999999999999999999", "900"),
-    # 0·부호·앞자리 0·소수·지수·인코딩 숫자·문자는 backend까지 가지 않고 400이다.
+    # 0·부호·앞자리 0·소수·지수·인코딩 숫자·문자는 backend까지 가지 않고 422다.
     ("0", ""), ("00", ""), ("0300", ""), ("-1", ""), ("+5", ""), ("5.0", ""), ("1e3", ""),
     ("%35000", ""), ("abc", ""), ("10%26limit%3D5000", ""), (" 5", ""),
 ])
@@ -64,21 +66,33 @@ def test_places_limit_map_clamps_to_admin_map_maximum(name, arg_limit, effective
     assert _nginx_map(_text(path), variable, arg_limit) == effective
 
 
+def _returned_json(block: str, status: int) -> dict:
+    match = re.search(rf"return {status} '([^']*)';", block)
+    assert match, status
+    return json.loads(match.group(1))
+
+
 @pytest.mark.parametrize(("name", "location", "upstream"), [
-    ("admin", "location = /v1/transport/features/places",
+    ("admin", "/v1/transport/features/places",
      "proxy_pass http://127.0.0.1:12302/v1/transport/features/places?$args&limit=$transport_places_limit;"),
-    ("fuel", "location = /v1/transport/fuel/places",
+    ("fuel", "/v1/transport/fuel/places",
      "proxy_pass http://127.0.0.1:12302/v1/transport/features/places?$args&kind=fuel_station"
      "&limit=$fuel_places_limit;"),
 ])
 def test_places_limit_is_the_last_upstream_query_value_and_invalid_is_problem_json(name, location, upstream):
     path, variable = TEMPLATES[name]
-    block = _block(_text(path), "    " + location)
+    block = _block(_text(path), "    location = " + location)
     # Starlette는 반복 query의 마지막 값을 쓴다. 판정 값이 마지막이라 limit=10&limit=5000·%6cimit 우회가 없다.
     assert upstream in block
     assert f'if (${variable} = "") {{' in block
-    assert "return 400 '{" in block and '"status":400' in block
     assert "default_type application/problem+json;" in block
+    # ADR-005: 다섯 항목 모두, backend의 query 검증 오류와 같은 422, instance는 클라이언트가 부른 경로.
+    problem = _returned_json(block, 422)
+    assert set(problem) == {"type", "title", "status", "detail", "instance"}
+    assert problem["type"] == "about:blank" and problem["title"] == "Unprocessable Entity"
+    assert problem["status"] == 422 and problem["instance"] == location
+    assert "900" in problem["detail"] and re.search(r"[가-힣]", problem["detail"])
+    assert "return 400" not in block
 
 
 def test_public_transport_places_exact_location_keeps_read_only_public_contract():
@@ -98,26 +112,72 @@ def test_timing_access_log_has_durations_but_no_query_or_request_line(name, form
     match = re.search(rf"log_format {format_name} ((?:'[^']*'\s*)+);", text)
     assert match, format_name
     fmt = "".join(re.findall(r"'([^']*)'", match.group(1)))
+    path_variable = {"admin": "$transport_log_path", "fuel": "$fuel_log_path"}[name]
     for field in ("$time_iso8601", "$status", "$body_bytes_sent", "$request_time", "$upstream_connect_time",
-                  "$upstream_header_time", "$upstream_response_time", "$upstream_status", '"$request_method $uri"'):
+                  "$upstream_header_time", "$upstream_response_time", "$upstream_status",
+                  f'"$request_method {path_variable}"'):
         assert field in fmt, field
-    # cursor·토큰·좌표가 남는 변수는 쓰지 않는다.
+    # cursor·토큰·좌표가 남는 변수는 쓰지 않는다. 디코드한 $uri도 쓰지 않는다(%20이 공백이 되어 필드가 밀린다).
     for forbidden in ("$request ", '$request"', "$request_uri", "$args", "$query_string", "$arg_",
-                      "$http_authorization", "$http_cookie"):
+                      "$http_authorization", "$http_cookie", "$uri"):
         assert forbidden not in fmt, forbidden
+    # 경로 변수는 디코드 전 요청 경로에서 query(? 뒤)를 뗀 값이다.
+    path_map = text.split(f"map $request_uri {path_variable} {{", 1)[1].split("\n}", 1)[0]
+    assert "~^([^?]*) $1;" in path_map
+    assert re.match(r"^([^?]*)", "/v1/service/exports/fuel-stations?cursor=SECRET").group(1) == (
+        "/v1/service/exports/fuel-stations")
     server = text.split("server {", 1)[1]
     assert f"    access_log /dev/stdout {format_name};" in server.split("location", 1)[0]
     assert "access_log off;" in _block(text, "    location = /health")
 
 
-def test_export_location_never_buffers_large_pages_to_temp_files():
-    block = _block(_text(ADMIN), "    location ^~ /v1/service/exports/")
+def test_export_location_never_buffers_large_pages_to_temp_files_and_bounds_total_memory():
+    text = _text(ADMIN)
+    block = _block(text, "    location ^~ /v1/service/exports/")
     assert "proxy_max_temp_file_size 0;" in block
     match = re.search(r"proxy_buffers (\d+) (\d+)k;", block)
     assert match
-    # 요청당 메모리 버퍼는 64MiB gateway에서 동시 export 여러 개를 감당할 수 있게 4MiB 이하로 둔다.
-    assert int(match.group(1)) * int(match.group(2)) * 1024 <= 4 * 1024 * 1024
+    per_request = int(match.group(1)) * int(match.group(2)) * 1024
     assert "proxy_buffering off;" not in block
+    # 동시 상한 × 요청당 버퍼가 64MiB gateway(공개 API·MCP 공유)의 1/4(16MiB)을 넘지 않는다.
+    limit = re.search(r"limit_conn transport_export (\d+);", block)
+    assert limit
+    assert int(limit.group(1)) * per_request <= 16 * 1024 * 1024
+    assert "limit_conn_zone $transport_export_slot zone=transport_export:1m;" in text
+    assert "limit_conn_status 503;" in block
+    assert "error_page 503 = @transport_export_busy;" in block
+    # 거절은 Retry-After가 있는 problem+json이다. instance는 JSON에 안전한 문자만 허용한 map 값이다.
+    busy = _block(text, "    location @transport_export_busy")
+    assert "add_header Retry-After 5 always;" in busy
+    assert "default_type application/problem+json;" in busy
+    problem = json.loads(re.search(r"return 503 '([^']*)';", busy).group(1).replace(
+        "$transport_export_instance", "/v1/service/exports/airports"))
+    assert set(problem) == {"type", "title", "status", "detail", "instance"} and problem["status"] == 503
+    instance_map = text.split("map $uri $transport_export_instance {", 1)[1].split("\n}", 1)[0]
+    pattern = re.search(r"~(\S+) \$uri;", instance_map).group(1)
+    assert re.match(pattern, "/v1/service/exports/fuel-stations/opinet:A0001/price-history")
+    for unsafe in ('/v1/service/exports/a"b', "/v1/service/exports/a\\b", "/v1/service/exports/a b"):
+        assert not re.match(pattern, unsafe), unsafe
+
+
+@pytest.mark.parametrize("location", [
+    "location = /health", "location = /v1/transport/features/places", "location ~ ^/v1/transport/(",
+    "location ~ ^/v1/transport/rail/general/", "location = /mcp",
+])
+def test_public_transport_locations_hide_server_timing(location):
+    text = _text(ADMIN)
+    header = text[text.index("    " + location):].split(" {\n", 1)[0]
+    assert "proxy_hide_header Server-Timing;" in _block(text, header), location
+
+
+def test_export_keeps_server_timing_and_fuel_server_hides_it():
+    assert "Server-Timing" not in _block(_text(ADMIN), "    location ^~ /v1/service/exports/")
+    fuel = _text(FUEL)
+    server = fuel.split("server {", 1)[1].split("    location", 1)[0]
+    assert "proxy_hide_header Server-Timing;" in server
+    # location 안에 proxy_hide_header를 두면 server 단위 목록 상속이 끊긴다.
+    for block in fuel.split("    location")[1:]:
+        assert "proxy_hide_header" not in block
 
 
 def test_public_fuel_gateway_compresses_json_cheaply_without_recompressing():
@@ -127,5 +187,7 @@ def test_public_fuel_gateway_compresses_json_cheaply_without_recompressing():
                       "gzip_vary on;"):
         assert directive in server, directive
     assert re.search(r"gzip_types [^;]*application/json", server)
+    # nginx gzip은 200·403·404만 압축하므로 오류 본문 형식은 대상에 넣지 않는다.
+    assert "application/problem+json" not in re.search(r"gzip_types [^;]*;", server).group(0)
     # 모바일 NAT 뒤의 정상 사용자를 막지 않도록 IP별 요청 제한은 두지 않는다(PR 설명 참고).
     assert "limit_req" not in text
