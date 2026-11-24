@@ -49,7 +49,9 @@ def test_fuel_compose_is_separate_two_role_reader_without_database_or_secrets():
 def test_gateway_uses_fixed_fuel_alias_and_rejects_other_readers_and_credentials():
     text = (ROOT / "deploy/transport-fuel/api-gateway.conf.template").read_text()
     assert "location = /v1/transport/fuel/places" in text
-    assert "http://127.0.0.1:12302/v1/transport/features/places?$args&kind=fuel_station;" in text
+    # kind와 판정한 limit을 마지막에 붙여 Starlette의 마지막 값 규칙으로 고정한다.
+    assert ("http://127.0.0.1:12302/v1/transport/features/places?$args&kind=fuel_station"
+            "&limit=$fuel_places_limit;") in text
     assert "proxy_method GET;" in text
     assert "proxy_set_header Host 127.0.0.1;" in text
     assert 'proxy_set_header Authorization "";' in text

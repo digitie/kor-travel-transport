@@ -15,9 +15,26 @@ map "$request_method:$http_origin:$http_access_control_request_method" $fuel_pre
     "OPTIONS:https://fuel.digitie.mywire.org:HEAD" 1;
     ~^OPTIONS: 2;
 }
+# places 한 번의 개수 상한. 공개 UI는 종류당 300·합계 900 이하만 요청한다(transport-map.tsx).
+# $arg_limit은 첫 값(이름 대소문자 무시, 디코드 없음)이고 Starlette는 마지막 값을 쓰므로, 판정한 값을
+# upstream query 끝에 다시 붙여 backend가 실제로 쓰는 값을 고정한다(반복·인코딩 이름 우회 차단).
+# 생략=900, 1~900=그대로, 900 초과 정수=900으로 낮춤, 그 밖(0·부호·앞자리 0·인코딩·문자)=400.
+map $arg_limit $fuel_places_limit {
+    default "";
+    "" 900;
+    ~^([1-9][0-9]?|[1-8][0-9][0-9]|900)$ $arg_limit;
+    ~^[1-9][0-9]*$ 900;
+}
+# 소요 시간 access log 형식. 요청 줄($request)·query($args) 대신 $uri만 남긴다.
+# rt=gateway 전체, uct=upstream 연결, uht=upstream 첫 응답 header, urt=upstream 응답 끝까지(초),
+# gz=gzip 압축비(압축하지 않으면 -). 읽는 법: docs/runbooks/request-timing-logs.md
+log_format fuel_timing '$time_iso8601 $remote_addr "$request_method $uri" $status $body_bytes_sent '
+                       'rt=$request_time uct=$upstream_connect_time uht=$upstream_header_time '
+                       'urt=$upstream_response_time ust=$upstream_status gz=$gzip_ratio';
 server {
     listen 0.0.0.0:${TRANSPORT_FUEL_API_PORT};
     server_name _;
+    access_log /dev/stdout fuel_timing;
     if ($fuel_read_method = 0) { return 405; }
 
     add_header Access-Control-Allow-Origin $fuel_cors_origin always;
@@ -40,8 +57,18 @@ server {
     proxy_method GET;
     proxy_connect_timeout 5s;
     proxy_read_timeout 30s;
+    # backend는 places JSON을 압축하지 않는다(공개 상세 300곳 약 0.4MB). 낮은 수준으로 압축한다.
+    # 이미 Content-Encoding이 있는 응답(가격 이력 gzip)은 nginx가 다시 압축하지 않는다.
+    # 앞단 ingress가 Via를 붙여도 압축하도록 gzip_proxied any를 쓴다.
+    gzip on;
+    gzip_comp_level 1;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_types application/json application/problem+json;
+    gzip_vary on;
 
     location = /health {
+        access_log off;
         if ($fuel_preflight = 2) { return 403; }
         if ($fuel_preflight = 1) { return 204; }
         proxy_pass http://127.0.0.1:12302;
@@ -50,9 +77,13 @@ server {
     location = /v1/transport/fuel/places {
         if ($fuel_preflight = 2) { return 403; }
         if ($fuel_preflight = 1) { return 204; }
+        default_type application/problem+json;
+        if ($fuel_places_limit = "") {
+            return 400 '{"type":"about:blank","title":"Bad Request","status":400,"detail":"limit must be an integer from 1 to 900."}';
+        }
         # Starlette/FastAPI는 반복 query의 마지막 값을 사용한다.
         # kinds 혼용은 기존 reader가 422로 거절한다. 실제 zoom/bbox는 변경하지 않는다.
-        proxy_pass http://127.0.0.1:12302/v1/transport/features/places?$args&kind=fuel_station;
+        proxy_pass http://127.0.0.1:12302/v1/transport/features/places?$args&kind=fuel_station&limit=$fuel_places_limit;
     }
 
     location ~ ^/v1/transport/fuel/(stations|statistics|price-distribution|area-catalog|stations/[1-9][0-9]*/price-history)$ {

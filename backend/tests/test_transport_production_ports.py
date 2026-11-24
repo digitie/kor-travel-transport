@@ -61,9 +61,10 @@ def test_gateway_and_admin_capability_use_current_api_port():
     } <= locations.keys()
     assert any(location.startswith("~ ^/v1/transport/(") for location in locations)
     for location, block in locations.items():
-        assert re.findall(r"^\s*proxy_pass (\S+);", block, re.MULTILINE) == [
-            "http://127.0.0.1:12302",
-        ], location
+        # 공개 장소 조회만 같은 upstream의 고정 경로에 판정한 limit을 마지막 query로 붙인다.
+        expected = ("http://127.0.0.1:12302/v1/transport/features/places?$args&limit=$transport_places_limit"
+                    if location == "= /v1/transport/features/places" else "http://127.0.0.1:12302")
+        assert re.findall(r"^\s*proxy_pass (\S+);", block, re.MULTILINE) == [expected], location
     assert "http://127.0.0.1:12302/v1/transport/admin/place-locations/capability" in admin
     assert "127.0.0.1:14001" not in gateway + admin
 

@@ -93,8 +93,9 @@ def test_fuel_viewport_get_never_writes_or_collects(published_fuel, monkeypatch)
 @pytest.mark.parametrize("query,expected", KIND_QUERY_CASES)
 def test_public_alias_effective_query_uses_real_fastapi_parser(published_fuel, query, expected):
     # 실제 nginx와 같은 마지막 query 고정. kind/kinds는 정규식으로 삭제하지 않는다.
+    # limit이 없는 요청에 gateway가 붙이는 상한(900)도 같은 위치에 둔다.
     params = ("min_longitude=126&max_longitude=129&min_latitude=37&max_latitude=38"
-              "&zoom=10&include_sources=false&" + query + "&kind=fuel_station")
+              "&zoom=10&include_sources=false&" + query + "&kind=fuel_station&limit=900")
     response = published_fuel.get("/v1/transport/features/places?" + params)
     assert response.status_code == expected, response.text
     if expected == 200:
