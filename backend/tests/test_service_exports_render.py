@@ -63,6 +63,12 @@ PATHS = (
 )
 
 
+def _current(collection):
+    """legacy router는 200 바이트 비교 전용이라 503 판정(`_require_current`, export 실패 계약이 바꾸는 곳)에 기대지 않는다."""
+    assert collection.last_success_at is not None and not collection.failed and not collection.stale
+    return collection
+
+
 def _legacy_router() -> APIRouter:
     """바뀌기 전(origin/main 156bf5c) 핸들러 본문 그대로 — 바이트 동등성의 기준이다.
 
@@ -83,7 +89,7 @@ def _legacy_router() -> APIRouter:
     ) -> FuelStationExportPage:
         await se._begin_snapshot(session)
         state = await se._state(session, OPINET_SOURCE)
-        collection = se._require_current(se._reference_collection(OPINET_SOURCE, state))
+        collection = _current(se._reference_collection(OPINET_SOURCE, state))
         after = se._decode_cursor(cursor)
         query = (
             select(FuelStation)
@@ -129,7 +135,7 @@ def _legacy_router() -> APIRouter:
     ) -> RestAreaExportPage:
         await se._begin_snapshot(session)
         state = await se._state(session, REST_AREA_SOURCE)
-        collection = se._require_current(se._reference_collection(REST_AREA_SOURCE, state))
+        collection = _current(se._reference_collection(REST_AREA_SOURCE, state))
         query = (
             select(RestAreaReference)
             .where(RestAreaReference.source == REST_AREA_SOURCE, RestAreaReference.id > se._decode_cursor(cursor))
@@ -160,7 +166,7 @@ def _legacy_router() -> APIRouter:
     ) -> RestAreaFuelPriceExportPage:
         await se._begin_snapshot(session)
         state = await se._state(session, REST_AREA_FUEL_SOURCE)
-        collection = se._require_current(se._reference_collection(REST_AREA_FUEL_SOURCE, state))
+        collection = _current(se._reference_collection(REST_AREA_FUEL_SOURCE, state))
         query = (
             select(RestAreaFuelPrice)
             .where(RestAreaFuelPrice.source == REST_AREA_FUEL_SOURCE, RestAreaFuelPrice.id > se._decode_cursor(cursor))
