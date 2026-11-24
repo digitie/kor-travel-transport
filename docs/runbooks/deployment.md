@@ -126,6 +126,15 @@ timeout(`EXPORT_PREPARE_TIMEOUT`). Map이 이 503을 초록 건너뜀으로 다�
 ([ADR-013 개정 2026-11-24](../adr/013-internal-service-exports-for-map.md),
 [Map 인계 문서](../map-service-exports-handoff.md#503-사유-code와-retry-after-2026-11-24)).
 
+### 장소 지도 관리·공개 몫(2026-11-24, PR #289)
+
+backend와 관리 웹(transport-admin-web)을 **같은 배포에서**(관리 웹을 backend와 함께 또는 바로 뒤에) 올린다. backend만
+새 판정으로 올라가면 옛 관리 웹은 관리 줄 증명(`x-transport-places-lane`)을 보내지 않아 관리 화면이 공개 몫을 쓰고, 관리용으로
+남겨 둔 1슬롯은 관리 웹이 올라올 때까지 쉰다(공개 동시 3건). 관리 웹만 먼저 올라가면 옛 backend는 모르는 header를 무시한다.
+배포 뒤 backend 로그 `places_admission_configured`에서 `admin_lane=enabled`·`admin_reserved=1`을 확인한다(disabled면
+`TRANSPORT_ADMIN_WRITE_TOKEN` 32자 이상인지 본다). 공개 parking-radar 웹(:12303)·두 공개 gateway는 표지를 덮어쓰도록
+같은 릴리스에 들어 있다. 확인 절차는 [성능 기준](../architecture/performance.md) "25초 시한과 앞단 30초 여유".
+
 ### Manager current release 표식(2026-10-28, Manager #568·ADR-60)
 
 현재 실행 이미지의 정본은 Manager의 `/srv/ktdm-releases/current/transport` 표식이다(Manager
