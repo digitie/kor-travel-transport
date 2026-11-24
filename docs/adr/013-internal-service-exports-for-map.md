@@ -137,3 +137,26 @@ KREX 실시간 문자정보가 `count=0`·빈 목록을 정상 응답으로 돌�
 ## 2026-10-23 추가: 요청 시 프록시하는 가격 이력(T4)
 
 현재/참조 집합 계약의 예외로, 주유소 가격은 기존 이력 표에서 주유소·기간을 제한해 읽는 service API를 추가한다. Map은 요청 시 프록시하고 저장하지 않는다. token/peer 인증은 기존과 같으며 기존 endpoint/이력 저장은 바꾸지 않는다. 새 경로는 공통meta·ETag·gzip·keyset cursor와 수집 revision 재시작을 갖는다. 휴게소 이력은 저장하지 않아501이며 새 이력 표를 만들지 않는다. [세부 계약](../map-service-price-history.md).
+
+## 개정 2026-11-24 (T1 전송)
+
+Map 호출 감사(T1-03·T1-04·T1-05·T1-06·T1-08·T1-09·RT-04)에 따른 T1 5종(`fuel-stations`, `rest-areas`,
+`rest-area-fuel-prices`, `highway-incidents/active`, `airports`)의 전송 방식 변경이다. JSON 본문(필드·순서·값)과
+현재 집합 의미(결정 3), 200/503 판정은 바꾸지 않는다. 소비자가 볼 수 있는 차이는 아래 네 가지다.
+
+- **gzip**: 요청의 `Accept-Encoding`이 gzip을 허용하고(q=0은 거절) 본문이 512B 이상이면 gzip level 1과
+  `Content-Encoding: gzip`으로 보낸다. 모든 T1 200 응답에 `Vary: Accept-Encoding`이 붙는다. gzip을 받지 않는
+  요청은 예전처럼 평문이다. Map httpx는 기본으로 gzip을 받고 자동으로 푼다.
+- **cursor 범위**: `cursor`가 int4 PK 범위(0..2147483647) 밖이면 422다(예전에는 DB bind 오류로 500).
+  서버가 준 `next_cursor`만 쓰는 소비자에게는 일어나지 않는다.
+- **상한과 503**: 한 요청은 `REPEATABLE READ READ ONLY` snapshot 하나에서 읽고, 문장마다
+  `statement_timeout` 20초·`lock_timeout` 3초, 요청 전체(DB 단계 + 본문 구성)에 25초 상한을 둔다(Map read
+  timeout 30초 안). 넘으면 원인 불명 500 대신 503 problem+json과 `Retry-After`다 — 잠금 대기(55P03, 예: migration의
+  AccessExclusive)와 본문 구성 slot 대기 5초 초과는 `Retry-After: 10`, 문장 상한(57014)과 요청 전체 상한은
+  `Retry-After: 60`. 같은 날의 export 실패 계약(503 사유 `code`) 개정이 적용되면 이 503들의 `code`는 각각
+  `EXPORT_BUSY`·`EXPORT_PREPARE_TIMEOUT`이다. 이 503은 "지금 집합을 낼 수 없다"는 일시 상태이며 소비자는 기존
+  503 처리처럼 재시도하고 마지막 적재분을 지우지 않는다.
+- **끊긴 요청**: 본문 구성 slot을 얻었을 때 소비자가 이미 연결을 끊었으면 본문을 만들지 않는다(받을 쪽이 없으므로
+  소비자에게는 보이지 않는다. 접근 로그에는 499).
+
+구현과 측정은 [performance](../architecture/performance.md)의 "Map T1 export 본문 구성과 연결 반납" 절이다.

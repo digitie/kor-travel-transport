@@ -10,7 +10,9 @@
 Map PR1355의 기존 consumer는 T1의 `collection/has_more/next_cursor` 페이지를 읽는다.
 새 T2/T3는 `meta/snapshot_id/snapshot_expires_at/total_count/items/has_more/next_cursor`의 별도
 고정 집합 계약이다. 기존 T1 parser로 직접 읽지 말고 Map 쪽에 새 reader를 추가해야 한다.
-기존 fuel/rest-area/T1 응답은 이 작업에서 변경하지 않았다.
+기존 fuel/rest-area/T1 응답은 T2/T3 작업에서 변경하지 않았다. 2026-11-24 T1 전송 개정(gzip 협상·`Vary`,
+int4 밖 cursor 422, snapshot 상한 초과 503 + `Retry-After`)은 본문 JSON을 바꾸지 않는다 —
+[ADR-013 개정 2026-11-24 (T1 전송)](adr/013-internal-service-exports-for-map.md#개정-2026-11-24-t1-전송).
 
 | 구분 | 경로 suffix | Transport PR | 운영 상태 |
 | --- | --- | --- | --- |

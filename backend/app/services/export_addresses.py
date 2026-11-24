@@ -23,6 +23,17 @@ def _text(value: Any) -> str | None:
 async def export_admin_addresses(
     session: AsyncSession, kind: str, rows: Sequence[Any],
 ) -> dict[int, ExportAdminAddress]:
+    return build_admin_addresses(await fetch_admin_address_rows(session, kind, rows))
+
+
+async def fetch_admin_address_rows(
+    session: AsyncSession, kind: str, rows: Sequence[Any],
+) -> list[tuple[int, Any, Any]]:
+    """현재 좌표와 일치하는 주소 행만 `(row_id, payload, resolved_at)`으로 읽는다(DB 단계).
+
+    DTO 구성(`build_admin_addresses`)과 나눠 두어, 호출자가 읽기 transaction을 끝낸 뒤 worker thread에서
+    구성할 수 있게 한다(감사 T1-03·T1-04).
+    """
     targets: dict[str, tuple[int, AddressTarget]] = {}
     for row in rows:
         if row.longitude is None or row.latitude is None:
@@ -33,7 +44,7 @@ async def export_admin_addresses(
             continue
         targets[target.key] = (row.id, target)
     if not targets:
-        return {}
+        return []
     entries, _ = reverse_address_tables(Base.metadata)
     payload = entries.c.payload
     if session.bind.dialect.name == "postgresql":
@@ -44,13 +55,20 @@ async def export_admin_addresses(
         entries.c.status.in_(("ok", "error")),
         entries.c.target_key.in_(targets),
     )
-    result: dict[int, ExportAdminAddress] = {}
+    fetched: list[tuple[int, Any, Any]] = []
     for row in (await session.execute(query)).mappings():
         row_id, target = targets[row["target_key"]]
         if row["coordinate_key"] != target.coordinate_key:
             continue
-        payload = row["payload"]
-        if not isinstance(payload, dict) or not isinstance(row["resolved_at"], datetime):
+        fetched.append((row_id, row["payload"], row["resolved_at"]))
+    return fetched
+
+
+def build_admin_addresses(fetched: Sequence[tuple[int, Any, Any]]) -> dict[int, ExportAdminAddress]:
+    """`fetch_admin_address_rows` 결과로 export 주소 DTO를 만든다. 세션을 쓰지 않아 thread에서 불러도 된다."""
+    result: dict[int, ExportAdminAddress] = {}
+    for row_id, payload, resolved_at in fetched:
+        if not isinstance(payload, dict) or not isinstance(resolved_at, datetime):
             continue
         provider = payload.get("provider")
         if not isinstance(provider, str) or provider not in {"vworld", "kakao"}:
@@ -71,6 +89,6 @@ async def export_admin_addresses(
             road_address=_text(address.get("road_address")),
             parcel_address=_text(address.get("parcel_address")),
             postal_code=_text(address.get("postal_code")), provider=provider,
-            resolved_at=serialize_utc(row["resolved_at"]),
+            resolved_at=serialize_utc(resolved_at),
         )
     return result
