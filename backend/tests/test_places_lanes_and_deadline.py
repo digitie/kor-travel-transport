@@ -1,6 +1,8 @@
 """장소 지도 입장 제한의 호출자별 몫(관리·공개)과 25초 시한 대 앞단 30초 여유(PR #273 후속) 회귀 검사."""
 
 import asyncio
+import hashlib
+import hmac
 import logging
 import threading
 import time
@@ -21,12 +23,16 @@ from app.services.place_map_admission import (
     TIMEOUT_RETRY_AFTER_SECONDS,
     UPSTREAM_PROXY_TIMEOUT_SECONDS,
     PlaceMapGate,
+    admin_lane_proof,
     place_map_admission,
     run_in_thread_holding,
 )
 
 PLACES = "/v1/transport/features/places"
 TOKEN = "a" * 40
+# 관리 BFF(route.ts)와 같은 방식으로 만든 증명. 쓰기 토큰 자체는 조회 경로에 실리지 않는다.
+PROOF = hmac.new(TOKEN.encode(), b"places-admin-lane", hashlib.sha256).hexdigest()
+LANE = "x-transport-places-lane"
 
 
 async def settle(rounds: int = 10) -> None:
@@ -40,7 +46,7 @@ async def wait_until(condition, timeout: float = 5) -> None:
             await asyncio.sleep(0.005)
 
 
-def fake_request(gate, headers=None):
+def fake_request(gate, headers=None, peer="127.0.0.1"):
     gone = asyncio.Event()
 
     async def receive():
@@ -48,22 +54,33 @@ def fake_request(gate, headers=None):
         return {"type": "http.disconnect"}
 
     return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(place_map_gate=gate)), receive=receive,
-                           headers=Headers(headers or {}))
+                           headers=Headers(headers or {}), client=SimpleNamespace(host=peer))
 
 
-def test_lane_needs_admin_token_and_no_gateway_marker():
+def test_admin_lane_needs_derived_proof_loopback_peer_and_no_public_markers():
     gate = PlaceMapGate(admin_token=TOKEN)
-    assert gate.lane_for(Headers({"x-transport-admin-token": TOKEN})) == ADMIN
-    # 공개 gateway가 덮어쓴 표지는 값과 관계없이(빈 값 포함) 공개다. 토큰이 새어도 공개 몫을 쓴다.
+    assert admin_lane_proof(TOKEN) == PROOF.encode()
+    assert gate.lane_for(Headers({LANE: PROOF}), "127.0.0.1") == ADMIN
+    assert gate.lane_for(Headers({LANE: PROOF}), "::1") == ADMIN
+    # 쓰기 토큰 자체는 관리 줄 증명이 아니다(지도 조회 경로에 쓰기 토큰을 싣지 않는다).
+    assert gate.lane_for(Headers({LANE: TOKEN}), "127.0.0.1") == PUBLIC
+    assert gate.lane_for(Headers({"x-transport-admin-token": TOKEN}), "127.0.0.1") == PUBLIC
+    # 공개 gateway·공개 BFF가 덮어쓴 표지는 값과 관계없이(빈 값 포함) 공개다. 증명이 새어도 공개 몫을 쓴다.
     for marker in ("public", "", "admin"):
-        assert gate.lane_for(Headers({"x-transport-admin-token": TOKEN, "x-transport-listener": marker})) == PUBLIC
-    assert gate.lane_for(Headers({"x-transport-admin-token": TOKEN[:-1] + "b"})) == PUBLIC
-    assert gate.lane_for(Headers({})) == PUBLIC
-    assert gate.lane_for(None) == PUBLIC
+        assert gate.lane_for(Headers({LANE: PROOF, "x-transport-listener": marker}), "127.0.0.1") == PUBLIC
+    # gateway를 거친 요청(forwarded header)·loopback 밖 peer·peer 모름은 공개다.
+    for forwarded in ({"x-forwarded-for": "203.0.113.9"}, {"forwarded": "for=203.0.113.9"}, {"x-forwarded-for": ""}):
+        assert gate.lane_for(Headers({LANE: PROOF, **forwarded}), "127.0.0.1") == PUBLIC
+    for peer in ("192.168.1.13", None, "not-an-ip"):
+        assert gate.lane_for(Headers({LANE: PROOF}), peer) == PUBLIC
+    assert gate.lane_for(Headers({LANE: PROOF[:-1] + "0"}), "127.0.0.1") == PUBLIC
+    assert gate.lane_for(Headers({}), "127.0.0.1") == PUBLIC
+    assert gate.lane_for(None, "127.0.0.1") == PUBLIC
     # 토큰을 설정하지 않았거나 32자 미만이면 관리 줄이 없고 남겨 둘 몫도 없다.
     for configured in (None, "", "short-token"):
         unconfigured = PlaceMapGate(admin_token=configured, admin_reserved=1)
-        assert unconfigured.lane_for(Headers({"x-transport-admin-token": configured or ""})) == PUBLIC
+        assert admin_lane_proof(configured) is None and not unconfigured.admin_lane_enabled
+        assert unconfigured.lane_for(Headers({LANE: PROOF}), "127.0.0.1") == PUBLIC
         assert unconfigured.admin_reserved == 0
     with pytest.raises(ValueError):
         PlaceMapGate(max_running=2, admin_reserved=2, admin_token=TOKEN)
@@ -71,7 +88,7 @@ def test_lane_needs_admin_token_and_no_gateway_marker():
         asyncio.run(PlaceMapGate().run(None, lambda: None, lane="other"))
 
 
-def test_public_flood_cannot_take_the_reserved_admin_slot_and_admin_waiters_go_first():
+def test_public_flood_cannot_take_the_reserved_admin_slot_and_admin_cannot_take_the_public_minimum():
     async def exercise():
         gate = PlaceMapGate(max_running=2, admin_reserved=1, max_waiting=2, admin_max_waiting=1, admin_token=TOKEN)
         releases = {name: asyncio.Event() for name in ("p1", "p2", "p3", "a1", "a2")}
@@ -105,19 +122,84 @@ def test_public_flood_cannot_take_the_reserved_admin_slot_and_admin_waiters_go_f
         with pytest.raises(HTTPException) as admin_rejected:
             await gate.run(("a3",), lambda: compute("a3"), lane=ADMIN)
         assert admin_rejected.value.status_code == 429
-        # 공개 계산이 끝나 슬롯이 비면 먼저 와 있던 공개 대기 요청보다 관리 대기 요청을 먼저 깨운다.
+        # 공개 계산이 끝나 빈 슬롯은 공개 최소 몫이다. 공개가 기다리는 동안 관리는 남겨 둔 1건을 넘겨 시작하지 않는다.
         releases["p1"].set()
         await p1
         await settle()
-        assert order == ["p1", "a1", "a2"]
+        assert order == ["p1", "a1", "p2"]
+        # 관리 계산이 끝나 빈 남겨 둔 슬롯은 기다리던 관리 요청이 먼저 받는다.
         releases["a1"].set()
         await a1
         await settle()
-        assert order == ["p1", "a1", "a2", "p2"]
+        assert order == ["p1", "a1", "p2", "a2"]
         for name in ("a2", "p2", "p3"):
             releases[name].set()
         assert [(await task).body for task in (a2, p2, p3)] == [b"a2", b"p2", b"p3"]
         assert gate.running == gate.waiting == 0 and not gate.pending and gate.stats["rejected"] == 2
+
+    asyncio.run(exercise())
+
+
+def test_admin_burst_does_not_starve_waiting_public_requests_past_the_deadline():
+    """관리 목록 8건이 한꺼번에 와도 기다리는 공개 요청은 시한 안에 처리된다(Popper P1)."""
+    async def exercise():
+        work = 0.4
+        gate = PlaceMapGate(max_running=4, admin_reserved=1, max_waiting=8, admin_max_waiting=8,
+                            deadline_seconds=1.0, admin_token=TOKEN)
+        finished = {}
+        loop = asyncio.get_running_loop()
+        began = loop.time()
+
+        async def compute(name):
+            await asyncio.sleep(work)
+            finished[name] = loop.time() - began
+            return Response(content=name.encode())
+
+        admins = [asyncio.create_task(gate.run((f"a{n}",), lambda n=n: compute(f"a{n}"), lane=ADMIN)) for n in range(8)]
+        await settle()
+        # 공개가 기다리지 않는 동안 관리는 공개 최소 몫(1슬롯)을 남기고 3건까지 시작한다.
+        assert gate.lane_running(ADMIN) == 3 and gate.lane_waiting(ADMIN) == 5
+        publics = [asyncio.create_task(gate.run((f"p{n}",), lambda n=n: compute(f"p{n}"), lane=PUBLIC)) for n in range(2)]
+        await settle()
+        assert gate.lane_running(PUBLIC) == 1 and gate.lane_waiting(PUBLIC) == 1
+        results = await asyncio.gather(*publics, return_exceptions=True)
+        assert all(isinstance(result, Response) for result in results), results
+        # 첫 공개 요청은 남은 공개 슬롯에서 바로, 둘째는 첫 물결 뒤(≈ 2 × 작업 시간 = 0.8초)에 끝난다. 관리 우선
+        # 깨우기에 관리 상한이 없던 때는 관리 둘째 물결 4건이 먼저 들어가 둘째 공개 요청이 ≈ 1.2초에 시한(1초)을 넘겼다.
+        assert finished["p0"] < 0.6 and finished["p1"] < 1.0
+        admin_results = await asyncio.gather(*admins, return_exceptions=True)
+        # 관리 요청도 결국 모두 끝난다(이 짧은 시한에서는 마지막 물결이 504일 수 있다).
+        assert all(isinstance(result, Response) or getattr(result, "status_code", None) == 504 for result in admin_results)
+        assert gate.running == gate.waiting == 0 and not gate.pending
+
+    asyncio.run(exercise())
+
+
+def test_admin_alone_may_use_all_but_the_public_minimum_and_single_slot_is_shared():
+    async def exercise():
+        release = asyncio.Event()
+
+        async def hold():
+            await release.wait()
+            return Response(content=b"")
+
+        gate = PlaceMapGate(max_running=4, admin_reserved=1, admin_token=TOKEN)
+        admins = [asyncio.create_task(gate.run((n,), hold, lane=ADMIN)) for n in range(4)]
+        await settle()
+        assert gate.lane_running(ADMIN) == 3 and gate.lane_waiting(ADMIN) == 1
+        public = asyncio.create_task(gate.run(("p",), hold, lane=PUBLIC))
+        await settle()
+        assert gate.lane_running(PUBLIC) == 1
+        release.set()
+        await asyncio.gather(*admins, public)
+        # 동시 1건 설정에서는 공개 최소 몫이 없다. 관리·공개가 한 슬롯을 나눈다.
+        single = PlaceMapGate(max_running=1, admin_reserved=0, admin_token=TOKEN)
+        release.clear()
+        first = asyncio.create_task(single.run(("a",), hold, lane=ADMIN))
+        await settle()
+        assert single.lane_running(ADMIN) == 1
+        release.set()
+        await first
 
     asyncio.run(exercise())
 
@@ -156,7 +238,7 @@ def test_cancelled_waiters_do_not_leak_lane_slots():
 
 def test_admin_requests_do_not_join_a_waiting_public_leader():
     async def exercise():
-        gate = PlaceMapGate(max_running=2, admin_reserved=1, max_waiting=2, admin_token=TOKEN)
+        gate = PlaceMapGate(max_running=3, admin_reserved=1, max_waiting=2, admin_token=TOKEN)
         release = asyncio.Event()
         calls = []
 
@@ -165,26 +247,27 @@ def test_admin_requests_do_not_join_a_waiting_public_leader():
             await release.wait()
             return Response(content=name.encode())
 
-        holder = asyncio.create_task(gate.run(("hold",), lambda: compute("hold"), lane=PUBLIC))
+        holders = [asyncio.create_task(gate.run((f"hold{n}",), lambda n=n: compute(f"hold{n}"), lane=PUBLIC))
+                   for n in range(2)]
         await settle()
         public = asyncio.create_task(gate.run(("same",), lambda: compute("public"), lane=PUBLIC))
         await settle()
         admin = asyncio.create_task(gate.run(("same",), lambda: compute("admin"), lane=ADMIN))
         await settle()
-        assert calls == ["hold", "admin"] and gate.stats["coalesced"] == 0
+        assert calls == ["hold0", "hold1", "admin"] and gate.stats["coalesced"] == 0
         release.set()
         assert (await admin).body == b"admin" and (await public).body == b"public"
-        await holder
+        await asyncio.gather(*holders)
 
     asyncio.run(exercise())
 
 
-def test_places_route_classifies_admin_bff_and_public_gateway_requests(test_settings):
+def test_places_route_classifies_admin_bff_and_public_requests(test_settings):
     async def exercise():
         app = create_app(test_settings.model_copy(update={"transport_admin_write_token": TOKEN}))
         async with app.router.lifespan_context(app):
             default = app.state.place_map_gate
-            assert (default.admin_reserved, default.admin_max_waiting) == (1, 4)
+            assert (default.admin_reserved, default.admin_max_waiting, default.admin_lane_enabled) == (1, 4, True)
             gate = app.state.place_map_gate = PlaceMapGate(
                 max_running=2, admin_reserved=1, max_waiting=0, admin_max_waiting=0, admin_token=TOKEN)
             release = asyncio.Event()
@@ -196,24 +279,31 @@ def test_places_route_classifies_admin_bff_and_public_gateway_requests(test_sett
             # 공개 몫(1건)을 막아 둔다. 공개 대기열 0이라 공개 요청은 곧바로 429다.
             holder = asyncio.create_task(gate.run(("hold",), hold, lane=PUBLIC))
             await settle()
-            transport = httpx.ASGITransport(app=app)
+            # ASGI 시험 client의 peer는 127.0.0.1이다(관리 BFF가 loopback backend를 직접 부르는 것과 같다).
+            transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 50000))
             async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http:
                 path = f"{PLACES}?kinds=rail_station,airport&limit=5"
-                admin = await http.get(path, headers={"x-transport-admin-token": TOKEN})
-                via_gateway = await http.get(path, headers={"x-transport-admin-token": TOKEN,
-                                                            "x-transport-listener": "public"})
-                anonymous = await http.get(path)
-                forged = await http.get(path, headers={"x-transport-admin-token": "b" * 40})
+                admin = await http.get(path, headers={LANE: PROOF})
+                rejected = [
+                    await http.get(path, headers={LANE: PROOF, "x-transport-listener": "public"}),
+                    await http.get(path, headers={LANE: PROOF, "x-forwarded-for": "203.0.113.9"}),
+                    await http.get(path),
+                    await http.get(path, headers={"x-transport-admin-token": TOKEN}),
+                    await http.get(path, headers={LANE: "b" * 64}),
+                ]
+            remote = httpx.ASGITransport(app=app, client=("192.168.1.50", 50000))
+            async with httpx.AsyncClient(transport=remote, base_url="http://testserver") as http:
+                rejected.append(await http.get(f"{PLACES}?kinds=rail_station,airport&limit=5", headers={LANE: PROOF}))
             release.set()
             await holder
         assert admin.status_code == 200, admin.text
-        assert [response.status_code for response in (via_gateway, anonymous, forged)] == [429, 429, 429]
+        assert [response.status_code for response in rejected] == [429] * 6
         assert gate.running == gate.waiting == 0
 
     asyncio.run(exercise())
 
 
-def test_lane_settings_reach_the_gate_and_are_bounded(test_settings):
+def test_lane_settings_reach_the_gate_are_validated_and_logged(test_settings, caplog):
     from pydantic import ValidationError
 
     async def gate_for(**update):
@@ -221,17 +311,31 @@ def test_lane_settings_reach_the_gate_and_are_bounded(test_settings):
         async with app.router.lifespan_context(app):
             return app.state.place_map_gate
 
-    gate = asyncio.run(gate_for(transport_admin_write_token=TOKEN, places_max_running=3,
-                                places_admin_reserved_running=2, places_admin_max_waiting=6))
+    with caplog.at_level(logging.INFO, logger="app.main"):
+        gate = asyncio.run(gate_for(transport_admin_write_token=TOKEN, places_max_running=3,
+                                    places_admin_reserved_running=2, places_admin_max_waiting=6))
     assert (gate.max_running, gate.admin_reserved, gate.admin_max_waiting) == (3, 2, 6)
-    # 동시 1건이면 남길 몫이 없다(공개 요청이 아예 못 도는 설정은 만들지 않는다).
+    configured = [record.getMessage() for record in caplog.records if "places_admission_configured" in record.getMessage()]
+    assert configured and "public_max_running=1" in configured[-1] and "admin_lane=enabled" in configured[-1]
+    # 동시 1건이면 남길 몫이 없다(관리·공개가 한 슬롯을 나눈다).
     gate = asyncio.run(gate_for(transport_admin_write_token=TOKEN, places_max_running=1))
     assert gate.admin_reserved == 0
     # 토큰이 없으면 관리 요청을 알아볼 수 없으므로 몫을 남기지 않는다.
-    assert asyncio.run(gate_for(transport_admin_write_token=None)).admin_reserved == 0
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="app.main"):
+        assert asyncio.run(gate_for(transport_admin_write_token=None)).admin_reserved == 0
+    assert any("admin_lane=disabled" in record.getMessage() and "admin_reserved=0" in record.getMessage()
+               for record in caplog.records)
     assert (test_settings.places_admin_reserved_running, test_settings.places_admin_max_waiting) == (1, 4)
+    Settings = type(test_settings)
     with pytest.raises(ValidationError):
-        type(test_settings).model_validate({**test_settings.model_dump(), "places_admin_reserved_running": 8})
+        Settings.model_validate({**test_settings.model_dump(), "places_admin_reserved_running": 8})
+    # 공개가 한 건도 못 도는 조합은 조용히 줄이지 않고 거절한다.
+    with pytest.raises(ValidationError, match="PLACES_ADMIN_RESERVED_RUNNING"):
+        Settings.model_validate({**test_settings.model_dump(), "places_max_running": 3,
+                                 "places_admin_reserved_running": 3})
+    assert Settings.model_validate({**test_settings.model_dump(), "places_max_running": 1,
+                                    "places_admin_reserved_running": 1}).places_max_running == 1
 
 
 # --- 25초 시한 대 앞단 30초: 504가 시한 직후에 나가는지 -------------------------------------------------
@@ -328,7 +432,7 @@ def test_admin_lane_deadline_log_names_the_lane(caplog):
 
         with pytest.raises(HTTPException):
             await place_map_admission(handler)(
-                request=fake_request(gate, {"x-transport-admin-token": TOKEN}), session=None, limit=1)
+                request=fake_request(gate, {LANE: PROOF}), session=None, limit=1)
 
     with caplog.at_level(logging.WARNING, logger="app.services.place_map_admission"):
         started = time.monotonic()
@@ -352,3 +456,76 @@ def test_public_gateways_overwrite_the_listener_marker_for_places():
     # server 단계 proxy_set_header는 자체 proxy_set_header가 없는 location에 그대로 이어진다.
     assert marker in server_level
     assert all("proxy_set_header" not in block.split("}")[0] for block in fuel.split("location ")[1:])
+
+
+def _pool_events(engine):
+    from sqlalchemy import event
+
+    seen = {"invalidate": 0, "checkin": 0, "reset": 0}
+    for name in seen:
+        event.listen(engine.sync_engine.pool, name, lambda *args, _name=name: seen.__setitem__(_name, seen[_name] + 1))
+    return seen
+
+
+@pytest.mark.parametrize("path", ["deadline", "disconnect", "stuck_rollback"])
+def test_real_pool_connection_is_returned_or_invalidated_after_cancel(test_settings, monkeypatch, path):
+    """시한·끊김·rollback 상한 경로 모두 풀(1개) 연결을 돌려주고, 상한으로 rollback을 끊으면 그 연결은 버린다(Popper P2-6)."""
+    if not test_settings.database_url.startswith("postgresql"):
+        pytest.skip("실제 PostgreSQL 풀 반납·무효화 검증")
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    async def exercise():
+        engine = create_async_engine(test_settings.database_url, pool_size=1, max_overflow=0, pool_timeout=5)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        seen = _pool_events(engine)
+        entered, gone = asyncio.Event(), asyncio.Event()
+
+        async def sleeper(*, request, session, limit):
+            await session.execute(text("SELECT 1"))
+            entered.set()
+            await session.execute(text("SELECT pg_sleep(5)"))
+
+        gate = PlaceMapGate(deadline_seconds=0.4 if path != "disconnect" else 5)
+        request = fake_request(gate)
+        if path == "disconnect":
+            async def receive():
+                await gone.wait()
+                return {"type": "http.disconnect"}
+            request.receive = receive
+        try:
+            async with factory() as session:
+                if path == "stuck_rollback":
+                    monkeypatch.setattr(admission, "TIMEOUT_CLEANUP_GRACE_SECONDS", 0.05)
+                    original = session.rollback
+
+                    async def slow_rollback():
+                        await asyncio.sleep(1)
+                        await original()
+                    monkeypatch.setattr(session, "rollback", slow_rollback)
+                call = asyncio.create_task(place_map_admission(sleeper)(request=request, session=session, limit=1))
+                await asyncio.wait_for(entered.wait(), 5)
+                if path == "disconnect":
+                    await asyncio.sleep(0.1)
+                    gone.set()
+                started = time.monotonic()
+                outcome = await asyncio.gather(call, return_exceptions=True)
+                assert time.monotonic() - started < 2
+                if path == "disconnect":
+                    assert outcome[0].status_code == 499
+                else:
+                    assert getattr(outcome[0], "status_code", None) == 504
+            # session 종료 뒤 풀에 빌린 연결이 없다.
+            assert engine.sync_engine.pool.checkedout() == 0
+            # 다음 요청이 유일한 연결로 바로 성공한다(무효화됐다면 새 연결을 연다).
+            async with factory() as session:
+                assert await asyncio.wait_for(session.scalar(text("SELECT 1")), 3) == 1
+            assert engine.sync_engine.pool.checkedout() == 0
+            return dict(seen)
+        finally:
+            await engine.dispose()
+
+    seen = asyncio.run(exercise())
+    # 문장 도중 취소된 연결은 SQLAlchemy가 무효화한다(서버 쪽 상태를 모르는 연결을 풀에 되돌리지 않는다).
+    # 그 뒤 다음 요청은 새 연결로 성공하고 둘 다 풀에 돌아온다.
+    assert seen["invalidate"] == 1 and seen["checkin"] == 2

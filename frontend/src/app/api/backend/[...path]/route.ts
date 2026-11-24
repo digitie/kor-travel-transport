@@ -87,6 +87,8 @@ function buildForwardHeaders(request: NextRequest): Headers {
 
   headers.set("x-forwarded-host", request.headers.get("host") ?? "");
   headers.set("x-forwarded-proto", request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", ""));
+  // 공개 웹(:12303)도 공개 listener다. backend 장소 지도 입장 제한은 이 표지가 있으면 관리 몫을 쓰지 않는다.
+  headers.set("x-transport-listener", "public");
   return headers;
 }
 

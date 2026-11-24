@@ -43,6 +43,20 @@ describe("backend proxy route", () => {
     );
   });
 
+  test("marks every proxied request as public so places admission never grants the admin lane", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { GET } = await import("@/app/api/backend/[...path]/route");
+    const request = new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/transport/features/places?kind=airport", {
+      headers: { "x-transport-listener": "admin", "x-transport-places-lane": "forged", "x-transport-admin-token": "forged" },
+    });
+    await GET(request, { params: Promise.resolve({ path: ["v1", "transport", "features", "places"] }) });
+    const sent = new Headers((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers);
+    expect(sent.get("x-transport-listener")).toBe("public");
+    expect(sent.has("x-transport-places-lane")).toBe(false);
+    expect(sent.has("x-transport-admin-token")).toBe(false);
+  });
+
   test("does not forward compressed Content-Length after fetch decodes JSON", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response('{"items":[1,2,3]}', {
       headers: { "content-type": "application/json", "content-length": "4" },
