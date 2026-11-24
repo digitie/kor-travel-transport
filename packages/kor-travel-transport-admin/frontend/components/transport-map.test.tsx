@@ -498,7 +498,8 @@ async function withMapClock(run: (host: HTMLDivElement, root: ReturnType<typeof 
   }
 }
 const alerts = (host: HTMLElement) => [...host.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "").join("|");
-const retryButton = (host: HTMLElement) => [...host.querySelectorAll<HTMLButtonElement>('[role="alert"] button')].find(button => button.textContent?.includes("다시 조회"));
+// 다시 조회 버튼은 알림 밖(같은 실패 줄)에 있다. 버튼 이름이 바뀌어도 알림 전체가 다시 읽히지 않는다.
+const retryButton = (host: HTMLElement) => [...host.querySelectorAll<HTMLButtonElement>('.map-failure > button')].find(button => button.textContent?.includes("다시 조회"));
 
 test("일시 혼잡(429, Retry-After 1초)은 Retry-After 뒤 같은 조건으로 한 번만 다시 묻고 실패 안내 없이 결과를 그린다", async () => {
   vi.mocked(fetch).mockImplementation(async input => countOf(String(input)) === 1
@@ -510,9 +511,9 @@ test("일시 혼잡(429, Retry-After 1초)은 Retry-After 뒤 같은 조건으�
     const real = placesCalls().at(-1)!;
     expect(real).not.toBe(initial);
     expect(countOf(real)).toBe(1);
-    // 재조회를 기다리는 동안 실패 안내 없이 조회 중으로 둔다.
+    // 재조회를 기다리는 동안 실패 안내 없이 "다시 조회 중…"으로 둔다.
     expect(alerts(host)).not.toContain("조회 실패");
-    expect(host.querySelector(".kt-map-count")?.textContent).toBe("조회 중…");
+    expect(host.querySelector(".kt-map-count")?.textContent).toBe("다시 조회 중…");
     await tick(900);
     expect(countOf(real)).toBe(1); // Retry-After(1초)가 지나기 전에는 다시 묻지 않는다.
     await tick(200);
@@ -647,29 +648,47 @@ test("공개 유가 지도(publicFuelGet)도 혼잡을 한 번 다시 묻고, �
 // 유가 화면: 한 번의 조회 실패는 한 알림(role=alert)으로만 읽힌다. 범위 통계 칸은 글만 보인다.
 const visibleAlerts = (host: HTMLElement) => [...host.querySelectorAll('[role="alert"]')]
   .filter(node => !node.closest('[hidden], [data-state="inactive"]')).map(node => node.textContent ?? "");
+const loadFuel: typeof publicFuelGet = (path, signal) => publicFuelGet(path.replace(/^transport\//, ""), signal);
+const fuelMap = (isPublic: boolean) => isPublic
+  ? <TransportMap mode="fuel" mapOnly load={loadFuel} publicFuel={{ products: ["B027"], onProductsChange: vi.fn() }} />
+  : <TransportMap mode="fuel" />;
 
-test.each([["관리 /fuel", false], ["공개 유가 지도", true]])("%s 조회 실패는 범위 통계를 담은 알림 하나로만 알린다", async (_name, isPublic) => {
+test.each([["관리 /fuel", false], ["공개 유가 지도", true]])("%s 조회 실패는 범위 통계를 담은 알림 하나로만 알리고 버튼은 알림 밖에 둔다", async (_name, isPublic) => {
   vi.mocked(fetch).mockImplementation(async input => String(input).includes("places") ? problem(504, TIMEOUT, "10") : Response.json({}));
   Object.assign(mapState, { zoom: 12 });
-  const loadFuel: typeof publicFuelGet = (path, signal) => publicFuelGet(path.replace(/^transport\//, ""), signal);
   await withMapClock(async (host, root) => {
-    await act(async () => root.render(isPublic
-      ? <TransportMap mode="fuel" mapOnly load={loadFuel} publicFuel={{ products: ["B027"], onProductsChange: vi.fn() }} />
-      : <TransportMap mode="fuel" />));
+    await act(async () => root.render(fuelMap(isPublic)));
     await tick(300);
     await tick(100);
     const shown = visibleAlerts(host);
     expect(shown).toHaveLength(1);
-    expect(shown[0]).toContain("주유소 조회 실패(범위 통계 포함)");
+    expect(shown[0]).toContain("주유소·범위 통계 조회 실패");
     expect(shown[0]).toContain("지도 범위를 좁히거나");
+    expect(shown[0]).not.toContain("다시 조회");
+    expect(host.querySelector('[role="alert"] button')).toBeNull();
+    expect(retryButton(host)?.textContent).toBe("잠시 후 다시 조회");
     const summary = host.querySelector('[aria-label="현재 지도 범위 유가 통계"]')!;
     expect(summary.textContent).toContain("통계를 불러오지 못했습니다");
     expect(summary.querySelector('[role="alert"]')).toBeNull();
+    // Retry-After가 지나 버튼 이름이 바뀌어도 알림 문구는 그대로다(다시 읽히지 않는다).
+    const before = host.querySelector('[role="alert"]');
+    await tick(10_000);
+    expect(retryButton(host)?.textContent).toBe("다시 조회");
+    expect(host.querySelector('[role="alert"]')).toBe(before);
+    expect(visibleAlerts(host)).toEqual(shown);
   });
 });
 
-test("교통 지도 실패 안내에는 범위 통계 문구를 붙이지 않는다", async () => {
+test("목록 보기 유가 실패는 묻지 않은 범위 통계를 말하지 않고, 교통 지도도 범위 통계 문구가 없다", async () => {
   vi.mocked(fetch).mockImplementation(async () => problem(504, TIMEOUT, "10"));
+  await withMapClock(async (host, root) => {
+    await act(async () => root.render(<TransportMap mode="fuel" />));
+    await tick(300);
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.includes("목록"))!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
+    await tick(400);
+    expect(visibleAlerts(host).join("|")).toContain("주유소 조회 실패");
+    expect(visibleAlerts(host).join("|")).not.toContain("범위 통계");
+  });
   await withMapClock(async (host, root) => {
     await act(async () => root.render(<TransportMap mode="transport" />));
     await tick(400);
@@ -678,42 +697,59 @@ test("교통 지도 실패 안내에는 범위 통계 문구를 붙이지 않는
   });
 });
 
-test.each([["공개 유가 지도", true], ["관리 /fuel", false]])("%s는 자동 재조회를 기다리는 동안 지도 위에 '다시 조회 중…'을 알린다", async (_name, isPublic) => {
+// 자동 재조회 대기(Retry-After): 새 요소 없이 기존 줄의 글을 "다시 조회 중…"으로 바꾼다.
+const firstPlacesSucceeds = (retryAfter: string) => vi.mocked(fetch).mockImplementation(async input => {
+  const url = String(input);
+  if (!url.includes("places")) return Response.json({});
+  // 첫 기본 범위 요청은 바로 성공시키고, 실제 범위 요청의 첫 응답만 혼잡으로 둔다.
+  return url !== placesCalls()[0] && countOf(url) === 1 ? problem(429, BUSY, retryAfter) : Response.json({ items: [], total: 0, truncated: false });
+});
+const publicSummaryStatus = (host: HTMLElement) => host.querySelector('[aria-label="현재 지도 범위 유가 통계"] .public-fuel-summary-body [role="status"]')?.textContent ?? null;
+
+test("공개 유가 지도는 재조회를 기다리는 동안 범위 요약 줄에서 '다시 조회 중…'을 알린다", async () => {
+  firstPlacesSucceeds("2");
+  Object.assign(mapState, { zoom: 12 });
+  await withMapClock(async (host, root) => {
+    await act(async () => root.render(fuelMap(true)));
+    await tick(300);
+    expect(publicSummaryStatus(host)).toBe("다시 조회 중…");
+    expect(visibleAlerts(host)).toHaveLength(0);
+    expect(host.querySelector(".map-retry-status")).toBeNull();
+    await tick(2100);
+    expect(publicSummaryStatus(host)).toBeNull();
+    expect(visibleAlerts(host)).toHaveLength(0);
+  });
+});
+
+test.each([["지도", false], ["목록", true]])("관리 화면은 %s 보기에서도 결과 줄(role=status)이 '다시 조회 중…'을 알린다", async (_name, list) => {
   vi.mocked(fetch).mockImplementation(async input => {
     const url = String(input);
     if (!url.includes("places")) return Response.json({});
-    // 첫 기본 범위 요청은 바로 성공시키고, 실제 범위 요청의 첫 응답만 혼잡으로 둔다.
+    const listRequest = new URL(url, "http://test").searchParams.has("kind");
+    if (list && !listRequest) return Response.json({ items: [], total: 0, truncated: false });
     return url !== placesCalls()[0] && countOf(url) === 1 ? problem(429, BUSY, "2") : Response.json({ items: [], total: 0, truncated: false });
   });
-  Object.assign(mapState, { zoom: 12 });
-  const loadFuel: typeof publicFuelGet = (path, signal) => publicFuelGet(path.replace(/^transport\//, ""), signal);
   await withMapClock(async (host, root) => {
-    await act(async () => root.render(isPublic
-      ? <TransportMap mode="fuel" mapOnly load={loadFuel} publicFuel={{ products: ["B027"], onProductsChange: vi.fn() }} />
-      : <TransportMap mode="fuel" />));
-    const indicator = () => host.querySelector<HTMLElement>(".map-retry-status");
-    // 알림 영역은 처음부터 있고 비어 있다(글이 들어올 때 읽히도록).
-    expect(indicator()?.getAttribute("role")).toBe("status");
-    expect(indicator()?.textContent).toBe("");
+    await act(async () => root.render(<TransportMap mode="transport" />));
+    if (list) await act(async () => [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.includes("목록"))!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
     await tick(300);
-    expect(indicator()?.textContent).toBe("다시 조회 중…");
-    expect(visibleAlerts(host)).toHaveLength(0);
+    const count = host.querySelector(".kt-map-count");
+    expect(count?.textContent).toBe("다시 조회 중…");
+    expect(count?.closest('[role="status"]')).not.toBeNull();
     await tick(2100);
-    expect(indicator()?.textContent).toBe("");
-    expect(visibleAlerts(host)).toHaveLength(0);
+    expect(host.querySelector(".kt-map-count")?.textContent).not.toContain("조회 중");
   });
 });
 
 test("재조회 뒤에도 실패하면 '다시 조회 중…'을 지우고 실패 알림 하나만 남긴다", async () => {
   vi.mocked(fetch).mockImplementation(async input => String(input).includes("places") ? problem(429, BUSY, "1") : Response.json({}));
   Object.assign(mapState, { zoom: 12 });
-  const loadFuel: typeof publicFuelGet = (path, signal) => publicFuelGet(path.replace(/^transport\//, ""), signal);
   await withMapClock(async (host, root) => {
-    await act(async () => root.render(<TransportMap mode="fuel" mapOnly load={loadFuel} publicFuel={{ products: ["B027"], onProductsChange: vi.fn() }} />));
+    await act(async () => root.render(fuelMap(true)));
     await tick(300);
-    expect(host.querySelector(".map-retry-status")?.textContent).toBe("다시 조회 중…");
+    expect(publicSummaryStatus(host)).toBe("다시 조회 중…");
     await tick(1200);
-    expect(host.querySelector(".map-retry-status")?.textContent).toBe("");
+    expect(publicSummaryStatus(host)).toBeNull();
     expect(visibleAlerts(host)).toHaveLength(1);
     expect(visibleAlerts(host)[0]).toContain("혼잡합니다");
   });

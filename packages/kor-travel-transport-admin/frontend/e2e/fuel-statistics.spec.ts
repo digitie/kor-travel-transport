@@ -157,7 +157,8 @@ for (const width of [375, 1440]) test(`${width}px 가격 갱신 지연은 요약
     // 한 실패는 지도 안내 하나로만 알린다(범위 요약은 글만 보인다).
     await expect(summary).toContainText("통계를 불러오지 못했습니다");
     await expect(summary.getByRole("alert")).toHaveCount(0);
-    await expect(page.getByRole("alert").filter({ hasText: "주유소 조회 실패(범위 통계 포함)" })).toHaveCount(1);
+    await expect(page.getByRole("alert").filter({ hasText: "조회 실패" })).toHaveCount(1);
+    await expect(page.getByRole("alert").filter({ hasText: "조회 실패" })).toContainText("주유소·범위 통계 조회 실패");
     await expect(summary).not.toContainText("갱신 지연");
     await page.getByLabel("장소 검색", { exact: true }).fill("unknown");
     await expect(stale).toHaveText("갱신 지연 시각 미확인");
@@ -246,6 +247,9 @@ test("안내를 키보드로 연 뒤 재조회·실패·성공에도 초점과 �
     release();
     await expect(popup).toContainText("통계를 불러오지 못했습니다");
     await expect(popup.getByRole("alert")).toHaveCount(0);
+    // 한 실패는 페이지 전체에서 알림 하나다. 초점은 안내 닫기에 그대로 있다.
+    await expect(page.getByRole("alert").filter({ hasText: "조회 실패" })).toHaveCount(1);
+    await expect(page.getByRole("alert").filter({ hasText: "조회 실패" })).toContainText("주유소·범위 통계 조회 실패");
     await expect(popup).not.toContainText("1,700");
     await expect(close).toBeFocused();
     await changeQueryWithoutMovingFocus("success");

@@ -116,6 +116,8 @@ export function FuelPriceStatus({ stale, lastRefreshedAt }: { stale: boolean; la
 type FuelViewportSummaryProps = {
   items: FuelViewportStatistics[];
   pending: boolean;
+  /** 자동 재조회(Retry-After) 대기 중. 공개 범위 요약이 "다시 조회 중…"으로 알린다. */
+  retrying?: boolean;
   failed?: boolean;
   pricesStale?: boolean;
   pricesLastRefreshedAt?: string | null;
@@ -163,7 +165,7 @@ function AdminFuelViewportSummary({ items, pending, failed = false, pricesStale 
   </section>;
 }
 
-/** 범위 통계는 지도 장소 조회와 같은 응답에 실려 오므로 그 실패는 지도 안내("주유소 조회 실패(범위 통계 포함)")가
+/** 범위 통계는 지도 장소 조회와 같은 응답에 실려 오므로 그 실패는 지도 안내("주유소·범위 통계 조회 실패")가
  * 한 번만 알린다(role=alert). 여기서는 보이는 글만 남기고 따로 알리지 않는다 — 한 실패에 경고가 두 번 읽히지 않게 한다. */
 function FuelMapStatisticsFailed() {
   return <p className="fuel-statistics-failed">통계를 불러오지 못했습니다.</p>;
@@ -172,7 +174,7 @@ function FuelMapStatisticsFailed() {
 // 공개 유가는 범위 요약을 접지 않는다. 맨 위 줄은 지역 이동 아이콘과 유종·필터 선택(제목 글자 없음 — 소유자 지시
 // 2026-11-22 "'지도 범위' 글씨 제거"; 영역 이름은 aria-label로 남는다), 그 아래 고른 지역 칩 하나와 평균·최저가.
 function PublicFuelViewportSummary({
-  items, pending, failed, pricesStale, pricesLastRefreshedAt, publicFuel,
+  items, pending, retrying = false, failed, pricesStale, pricesLastRefreshedAt, publicFuel,
 }: Omit<FuelViewportSummaryProps, "publicFuel"> & { publicFuel: NonNullable<FuelViewportSummaryProps["publicFuel"]> }) {
   const regionButton = useRef<HTMLButtonElement>(null);
   const selectedProducts = new Set(publicFuel.products);
@@ -185,7 +187,8 @@ function PublicFuelViewportSummary({
     {publicFuel.load ? <FuelRegionStats region={region} product={FUEL_CHART_ORDER.find(code => selectedProducts.has(code)) ?? "B027"}
       load={publicFuel.load} filterQuery={publicFuel.filterQuery} onClear={publicFuel.onClearRegion} focusFallback={regionButton} /> : null}
     <div className="fuel-summary-body public-fuel-summary-body">
-      {pending ? <p role="status">통계 조회 중…</p> : failed ? <FuelMapStatisticsFailed /> :
+      {/* 공개 지도에는 결과 줄이 없어 자동 재조회 대기(Retry-After)를 이 줄에서 알린다(같은 자리라 화면이 밀리지 않는다). */}
+      {pending ? <p role="status">{retrying ? "다시 조회 중…" : "통계 조회 중…"}</p> : failed ? <FuelMapStatisticsFailed /> :
         <PublicFuelRangeValues items={displayed} />}
     </div>
   </section>;

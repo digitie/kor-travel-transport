@@ -148,7 +148,7 @@ test("지도 통계 유종을 바꾸면 같은 서버 집계의 가격과 주유
 
 test("지도 통계 실패는 이전 응답의 가격이나 0원으로 표시하지 않는다", () => {
   const html = renderToStaticMarkup(<FuelViewportSummary items={[metrics]} pending={false} failed />);
-  // 실패는 지도 안내("주유소 조회 실패(범위 통계 포함)")가 한 번만 알린다. 범위 요약은 글만 보인다.
+  // 실패는 지도 안내("주유소·범위 통계 조회 실패")가 한 번만 알린다. 범위 요약은 글만 보인다.
   expect(html).not.toContain('role="alert"');
   expect(html).toContain("통계를 불러오지 못했습니다");
   expect(html).not.toContain("1,700");
