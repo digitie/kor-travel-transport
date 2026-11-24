@@ -156,8 +156,9 @@ stale 기준(24시간 → 27.5시간), export 경로의 두 가지 500 → 503, 
 - **handler 전체 상한(보장 범위)**: 15초 예산은 본문 구성 몫이고 재시도의 pool checkout 대기(최대 10초)는 덮지
   않는다. 요청 전체는 **T2/T3/T4 handler 상한 25초**(`ExportDeadlineRoute`)가 끊는다 — 넘으면 본문 구성 중이면
   `EXPORT_PREPARE_TIMEOUT`, 그 밖(pool·pre-ping·멈춘 PG)이면 `TRANSIENT_DB`다. 그래서 보장하는 것은 "T2/T3/T4
-  응답이 25초 안에 200이거나 code 있는 503"이고, 25초가 Map read timeout(30초)보다 작다. T1 handler의 상한은
-  T1 export 작업(#279)이 따로 둔다. 연결이 반쯤 끊겨 cleanup(rollback)까지 멈추는 경우는 이 상한이 덮지 못한다
+  응답이 25초 안에 200이거나 code 있는 503"이고, 25초가 Map read timeout(30초)보다 작다. T1 handler의 상한(25초)·
+  55P03·57014 503은 T1 전송 개정(#279, 아래 "개정 2026-11-24 (T1 전송)")이 두며 각각 `EXPORT_PREPARE_TIMEOUT`·
+  `EXPORT_BUSY`·`EXPORT_PREPARE_TIMEOUT` code를 싣는다. 연결이 반쯤 끊겨 cleanup(rollback)까지 멈추는 경우는 이 상한이 덮지 못한다
   (API 엔진에 클라이언트 `command_timeout` 없음).
 - **API DB 엔진**: asyncpg 새 접속 상한 10초(기본 60초 > Map read 30초), pool checkout 상한 10초(기본 30초),
   `application_name`(`kor-travel-transport-api`/`kor-travel-transport-collector`)을 둔다. **pool checkout 상한은

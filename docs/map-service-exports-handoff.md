@@ -92,8 +92,8 @@ transport 앱이 `/v1/service/exports/*`에서 내는 모든 503(T1·T2·T3·T4�
 | `EXPORT_NO_HISTORY` | 근거 수집이 한 번도 성공하지 않았다(T2/T3는 설정에 활성인 scope의 승인 head가 아직 없다) | 5분 주기 집합(교통 current·주차장 current·돌발) 300, 그 밖 3600 | 모든 export, T4 가격 이력 | 위와 같다 |
 | `EXPORT_INCIDENTS_NOT_CURRENT` | 돌발 활성 집합이 "지금"이 아니다(마지막 시도 실패·30분 초과). #265 뒤 0건 수집도 실패(`last_error`)로 남으므로 **운영의 0건은 이 code**다 | 300 | highway-incidents/active | 위와 같다 |
 | `EXPORT_EMPTY_SET` | 상태는 현재인데 낼 집합이 0건이다 — 돌발의 옛 "0건 성공" 같은 **안전망 분기**, T3 완결 head의 membership 0건 | 300(돌발·5분 주기), 3600(그 밖 T3) | highway-incidents/active, T3 | 위와 같다 |
-| `EXPORT_BUSY` | snapshot admission 경합(55P03·40P01을 한 번 새 RR로 재시도한 뒤에도, 반복된 40001·SnapshotRace, 경합 뒤 재시도가 예산을 다 씀) | 10 | T2/T3 | 같은 요청(같은 cursor)을 Retry-After 뒤 짧게 유한 재시도 |
-| `EXPORT_PREPARE_TIMEOUT` | 요청 경로 본문 구성 15초 예산 초과, snapshot 안의 statement timeout(57014), 본문 구성 중 handler 상한 25초 초과 | 60 | T2/T3 | 위와 같다 |
+| `EXPORT_BUSY` | T2/T3 snapshot admission 경합(55P03·40P01을 한 번 새 RR로 재시도한 뒤에도, 반복된 40001·SnapshotRace, 경합 뒤 재시도가 예산을 다 씀), T1 snapshot 잠금 대기(55P03, lock_timeout 3초)·본문 구성 slot 대기 5초 초과 | 10 | T1·T2/T3 | 같은 요청(같은 cursor)을 Retry-After 뒤 짧게 유한 재시도 |
+| `EXPORT_PREPARE_TIMEOUT` | T2/T3 요청 경로 본문 구성 15초 예산 초과·snapshot 안의 statement timeout(57014)·본문 구성 중 handler 상한 25초 초과, T1 문장 상한(57014, 20초)·요청 전체 상한 25초 초과 | 60 | T1·T2/T3 | 위와 같다 |
 | `EXPORT_QUERY_TIMEOUT` | T4 가격 이력 문장 상한(기본 3초, 57014)을 넘었다. 이 503에는 `meta`가 없다 | 5 | T4 가격 이력 | 같은 조회를 곧바로 반복하지 않고 Retry-After 뒤 유한 재시도 |
 | `TRANSIENT_DB` | pool checkout timeout·DB 접속 실패/timeout·PG 기동 중(57P03)·관리자 종료(57P01/57P02)·접속 수 초과(53300)·연결 예외(class 08, 08P01 제외)·끊긴 연결, 본문 구성 밖의 handler 상한 25초 초과(T2/T3/T4) | 15 | 모든 export | 위와 같다 |
 | `EXPORT_DISABLED` | `TRANSPORT_MAP_CURRENT_ENABLED=false`라 T2/T3 export가 꺼져 있거나, 그 기준정보의 source가 하나도 설정되지 않았다 | 3600 | T2/T3 | 재시도해도 같다 — 운영 설정 문제로 경보 |
