@@ -1,24 +1,30 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TransportError } from "./journey";
-import { loadWithTransientRetry, transientRetryDelay } from "./place-retry";
+import { loadWithTransientRetry, retryNotice, transientRetryDelay } from "./place-retry";
 
 afterEach(() => { vi.useRealTimers(); });
 
 describe("장소 지도 일시 실패 재조회 규칙", () => {
-  it("429·503·504 중 Retry-After 5초 이하(없으면 약 1초)만 재조회 대상이다", () => {
-    const fixed = () => 0.5;
-    expect(transientRetryDelay(new TransportError("혼잡", 429, 2), fixed)).toBe(2125);
-    expect(transientRetryDelay(new TransportError("혼잡", 503, 5), fixed)).toBe(5125);
-    expect(transientRetryDelay(new TransportError("gateway", 504, 0), fixed)).toBe(1000);
+  it("429·503은 Retry-After 5초 이하(없으면 약 1초)만, 504는 Retry-After가 5초 이하로 있을 때만 다시 묻는다", () => {
+    const half = () => 0.5;
+    // 서버가 준 최소 대기를 지키고 그 절반까지 비례해 흩뜨린다.
+    expect(transientRetryDelay(new TransportError("혼잡", 429, 2), half)).toBe(2500);
+    expect(transientRetryDelay(new TransportError("혼잡", 429, 2), () => 0)).toBe(2000);
+    expect(transientRetryDelay(new TransportError("혼잡", 429, 2), () => 0.999)).toBeLessThan(3000);
+    expect(transientRetryDelay(new TransportError("gateway", 503, 5), half)).toBe(6250);
+    expect(transientRetryDelay(new TransportError("gateway", 503, 0), half)).toBe(1250);
+    expect(transientRetryDelay(new TransportError("짧은 시한", 504, 3), half)).toBe(3750);
+    // Retry-After 없는 504는 BFF·gateway가 30초를 기다린 끝의 시한 초과다. 곧바로 되풀이하지 않는다.
+    expect(transientRetryDelay(new TransportError("gateway 시한", 504, 0), half)).toBeNull();
     // backend 시한 초과(504, Retry-After 10초)는 25초를 쓴 계산이라 곧바로 되풀이하지 않는다.
-    expect(transientRetryDelay(new TransportError("시한", 504, 10), fixed)).toBeNull();
-    for (const status of [400, 401, 404, 422, 500, 502]) expect(transientRetryDelay(new TransportError("x", status, 0), fixed)).toBeNull();
-    expect(transientRetryDelay(new Error("network"), fixed)).toBeNull();
-    expect(transientRetryDelay(new DOMException("aborted", "AbortError"), fixed)).toBeNull();
+    expect(transientRetryDelay(new TransportError("시한", 504, 10), half)).toBeNull();
+    for (const status of [400, 401, 404, 422, 500, 502]) expect(transientRetryDelay(new TransportError("x", status, 0), half)).toBeNull();
+    expect(transientRetryDelay(new Error("network"), half)).toBeNull();
+    expect(transientRetryDelay(new DOMException("aborted", "AbortError"), half)).toBeNull();
   });
 
-  it("같은 signal로 한 번만 다시 묻고 두 번째 실패는 그대로 던진다", async () => {
+  it("같은 signal로 Retry-After가 지난 뒤 한 번만 다시 묻고 두 번째 실패는 그대로 던진다", async () => {
     vi.useFakeTimers();
     const second = new TransportError("다시 혼잡", 429, 2);
     const load = vi.fn().mockRejectedValueOnce(new TransportError("혼잡", 429, 2)).mockRejectedValueOnce(second);
@@ -37,7 +43,7 @@ describe("장소 지도 일시 실패 재조회 규칙", () => {
     vi.useFakeTimers();
     const load = vi.fn().mockRejectedValueOnce(new TransportError("gateway", 503, 0)).mockResolvedValueOnce({ items: [] });
     const result = loadWithTransientRetry(load, "transport/features/places", new AbortController().signal, () => 0);
-    await vi.advanceTimersByTimeAsync(750);
+    await vi.advanceTimersByTimeAsync(1000);
     await expect(result).resolves.toEqual({ items: [] });
   });
 
@@ -58,5 +64,12 @@ describe("장소 지도 일시 실패 재조회 규칙", () => {
     const load = vi.fn().mockRejectedValue(failure);
     await expect(loadWithTransientRetry(load, "transport/features/places", new AbortController().signal)).rejects.toBe(failure);
     expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("혼잡·시한 실패만 서버 안내와 다시 조회 허락 시각을 낸다", () => {
+    expect(retryNotice(new TransportError("장소 지도 조회가 혼잡합니다.", 429, 2), 1_000)).toEqual({ message: "장소 지도 조회가 혼잡합니다.", retryAt: 3_000 });
+    expect(retryNotice(new TransportError("시간이 초과되었습니다.", 504, 10), 1_000)).toEqual({ message: "시간이 초과되었습니다.", retryAt: 11_000 });
+    expect(retryNotice(new TransportError("검색 조건을 다시 확인해 주세요.", 422, 0), 1_000)).toBeNull();
+    expect(retryNotice(new Error("network"), 1_000)).toBeNull();
   });
 });
