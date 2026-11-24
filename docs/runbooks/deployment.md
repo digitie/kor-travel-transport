@@ -670,7 +670,10 @@ Dockerfile은 #129부터 `uv.lock`을 따른다. 그래도 lock과 운영 `:code
 끊겨 data.go.kr 오퍼레이션별 한도를 버린다. 상한에 닿거나 대기 중에 끊기면 새 daemon을 다시 띄우고
 아무것도 옮기지 않은 채 멈춘다. run을 끊어도 되는 비상시에는 `rollback --no-drain`으로 기다리지 않는다
 (끊긴 run은 되살린 옛 daemon의 run monitoring이 실패로 정리한다). 새 webserver가 떠 있지 않아 run을 셀
-수 없을 때도 `--no-drain`이 필요하다.
+수 없을 때도 `--no-drain`이 필요하다. 이렇게 끊긴 유가 run은 결과를 남기지 못하므로 회수 sensor가 오피넷 상태에
+`실행 소실`을 기록하고 `transport_fuel_freshness.lost_attempt` 한 줄을 남긴다(`docs/runbooks/dagster-recovery.md`). 복구가
+끝나면 관리 화면에서 그 run을 "재시도"해 같은 회차를 체크포인트에서 이어 한다(정기 예약은 옮기지 않는다). 재시도하지
+않으면 다음 정기 tick(최대 8시간)까지 유가가 갱신되지 않는다.
 
 그다음 나머지 새 project를 멈추고, 옛 env를 되돌리고, 옛 스택을 rollback 태그로 재생성한다
 (code-server·webserver → backend·gateway·frontend → daemon 마지막, `--no-deps --no-build

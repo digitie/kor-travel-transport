@@ -24,3 +24,17 @@ export function jobStatusLabel(item: {job_status?: string | null; job_isolated_r
   const isolated = typeof item.job_isolated_rows === "number" && item.job_isolated_rows > 0 ? item.job_isolated_rows : null;
   return isolated === null ? fallback(item.job_status) : `부분 성공(격리 ${isolated.toLocaleString("ko-KR")}건)`;
 }
+
+/** 운영 상태 목록의 오류 안내. 실행 소실(collection_lost)은 원인 미상 실패와 달리 같은 회차를 재시도로 이어 할 수 있다. */
+export function providerErrorMessage(item: {source: string; error_code?: string | null}): string | null {
+  if (!item.error_code) return null;
+  if (item.source === "fuel_latest_prices") {
+    return item.error_code === "read_model_refresh_pending"
+      ? "유가 원본이 최신 가격 읽기 모델보다 새롭습니다. 다음 고속도로 수집에서 갱신합니다."
+      : "유가 원본은 저장됐지만 최신 가격 읽기 모델 갱신이 지연됩니다. 상단 경고와 다음 재시도 시각을 확인해 주세요.";
+  }
+  if (item.error_code === "collection_lost") {
+    return "실행 소실 · 수집 실행이 결과를 남기지 못하고 끝났습니다(작업자 재시작·강제 종료). 마지막 정상 자료는 그대로입니다. 실패한 실행의 재시도로 저장된 진행분에서 이어 할 수 있습니다.";
+  }
+  return "수집 실패 · Dagster 실행 로그에서 원인을 확인해 주세요.";
+}

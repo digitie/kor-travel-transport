@@ -48,11 +48,11 @@ from app.services.kakao_place_locations import KakaoPlaceCollectionService
 from app.services.place_locations import PlaceLocationCollectionService
 from app.services.rail_maritime_collection import RailMaritimeCollectionService
 from app.services.vadahub_collection import VadaHubCollectionService
-from app.services.rest_area_collection import RestAreaCollectionService
+from app.services.rest_area_collection import REST_AREA_FUEL_SOURCE, RestAreaCollectionService
 from app.services.public_parking_collection import PublicParkingCollectionService
 from app.services.reference_export_preparation import prepare_reference_exports as prepare_reference_export_bodies
 from app.services.transport_collection import (
-    CollectionScope, TransportCollectionService, _is_transient_database_error,
+    OPINET_SOURCE, CollectionScope, TransportCollectionService, _is_transient_database_error,
 )
 
 #: 실행 상한(초). 공용 Dagster instance의 전역 상한(6시간, Manager `config/dagster-shared/dagster.yaml`)은
@@ -1181,9 +1181,21 @@ _TRIGGER_SCHEDULES = {
     recovery.FIVE_MINUTE_TRIGGERS[1]: f"{highway_collection_job.name}_schedule",
 }
 _LOCATION_NAME = "kor-travel-transport"
+#: 유가 신선도 경보가 보는 원천의 정기 schedule. STOPPED면 그 원천은 경보에서 뺀다(`paused`).
+_FUEL_SCHEDULES = {
+    OPINET_SOURCE: f"{fuel_collection_job.name}_schedule",
+    REST_AREA_FUEL_SOURCE: f"{rest_area_fuel_price_collection_job.name}_schedule",
+}
 
 
-def _stopped_schedules(instance) -> set[str]:
+def _fuel_provider_enabled(settings: Settings, source: str) -> bool:
+    """그 유가 원천의 수집이 설정상 켜져 있는가(관리 화면 `provider_status`의 `enabled`와 같은 조건)."""
+    if source == OPINET_SOURCE:
+        return bool(settings.transport_collection_enabled and settings.opinet_browser_enabled)
+    return bool(settings.rest_area_collection_enabled and settings.kex_ex_api_key)
+
+
+def _stopped_schedules(instance, names: set[str] | None = None) -> set[str]:
     """이 location에서 사용자가 STOPPED로 바꾼 schedule 이름. 상태 행이 없거나 RUNNING/DECLARED_IN_CODE면
     코드 기본값(RUNNING)이다. 같은 이름의 상태가 여럿이면(옛 repository origin) 모두 STOPPED일 때만 멈춘
     것으로 본다(애매하면 경보 쪽)."""
@@ -1197,7 +1209,7 @@ def _stopped_schedules(instance) -> set[str]:
             location = state.origin.repository_origin.code_location_origin.location_name
         except AttributeError:
             continue
-        if location == _LOCATION_NAME and state.instigator_name in _TRIGGER_SCHEDULES.values():
+        if location == _LOCATION_NAME and state.instigator_name in (names or set(_TRIGGER_SCHEDULES.values())):
             statuses.setdefault(state.instigator_name, set()).add(state.status)
     return {name for name, seen in statuses.items() if seen == {InstigatorStatus.STOPPED}}
 
@@ -1221,6 +1233,23 @@ async def _reconcile_workers(
                 raise recovery.RecoveryMetadataUnavailable("schedule 상태를 확인하지 못했습니다.") from exc
         return _TRIGGER_SCHEDULES[trigger] not in stopped_cache[0]
 
+    fuel_stopped: list[set[str]] = []
+
+    def fuel_monitored(source: str) -> bool:
+        # 경고 이상인 원천에만 불린다. 확인할 예산이 없거나 확인이 실패하면 경보 쪽(감시 중)으로 본다.
+        if not _fuel_provider_enabled(_settings(), source):
+            return False
+        if not fuel_stopped:
+            if work_remaining() <= recovery.METADATA_TIMEOUT_SECONDS:
+                return True
+            try:
+                fuel_stopped.append(call_with_deadline(
+                    lambda: _stopped_schedules(instance, set(_FUEL_SCHEDULES.values())),
+                    timeout_seconds=recovery.METADATA_TIMEOUT_SECONDS))
+            except Exception:  # noqa: BLE001
+                fuel_stopped.append(set())
+        return _FUEL_SCHEDULES[source] not in fuel_stopped[0]
+
     engine, factory = create_engine_and_session_factory(
         _settings().database_url, collector=True, statement_timeout_seconds=recovery.RECOVERY_STATEMENT_TIMEOUT_SECONDS,
     )
@@ -1230,6 +1259,7 @@ async def _reconcile_workers(
             return await run_recovery_tick(
                 factory, instance, position=_RECOVERY_POSITION, remaining=work_remaining,
                 collection_scheduled=collection_scheduled, paused=paused, fuel_report=fuel_report,
+                fuel_monitored=fuel_monitored,
             )
     finally:
         # dispose도 정리 시간 안에서 끝낸다. 넘으면 연결 정리를 포기한다(프로세스가 GC로 닫는다).
@@ -1252,6 +1282,9 @@ def _reconcile_tick(context, remaining) -> int:
     if paused and remaining() > 0:
         # 점검으로 멈춘 schedule은 정체가 아니다. traceback 없이 한 줄만 남긴다.
         context.log.warning("5분 수집 schedule이 STOPPED라 신선도 판정에서 제외합니다: " + ", ".join(sorted(paused)))
+    if fuel_report.paused and remaining() > 0:
+        context.log.warning("유가 수집이 설정에서 꺼졌거나 schedule이 STOPPED라 유가 신선도 경보에서 제외합니다: "
+                            + ", ".join(sorted(fuel_report.paused)))
     return recovered
 
 
@@ -1275,12 +1308,14 @@ _FUEL_FRESHNESS_ALERTS = FuelFreshnessAlerts()
 def _report_fuel_freshness(context, report: FuelFreshnessReport) -> None:
     """유가 시도 소실·신선도 경보(G1-F5·G1-F6). `_alert_stall`과 같이 고정 event 이름 한 줄을 두 곳에 남긴다.
 
-    경고·위험은 정체가 아니라 정체 시계를 건드리지 않는다. 경보를 남기는 일이 회수 tick을 실패시키지 않게 한다.
+    경고·위험·만료는 정체가 아니라 정체 시계를 건드리지 않는다. 경보를 남기는 일이 회수 tick을 실패시키지 않게 한다. 경보
+    기억은 줄을 두 곳에 다 남긴 뒤에만 반영한다 — 기록이 실패한 줄은 다음 tick에 다시 만든다(`report_failed` 한 줄).
     """
     try:
-        for level, line in _FUEL_FRESHNESS_ALERTS.lines(report, now=time.time()):
-            (context.log.error if level >= logging.ERROR else context.log.warning)(line)
-            _STALL_LOGGER.log(level, line)
+        for line in _FUEL_FRESHNESS_ALERTS.lines(report, now=time.time()):
+            (context.log.error if line.level >= logging.ERROR else context.log.warning)(line.text)
+            _STALL_LOGGER.log(line.level, line.text)
+            _FUEL_FRESHNESS_ALERTS.commit(line)
     except Exception:  # noqa: BLE001
         with contextlib.suppress(Exception):
             _STALL_LOGGER.warning("transport_fuel_freshness.report_failed")

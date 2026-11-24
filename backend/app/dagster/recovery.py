@@ -20,9 +20,19 @@ from sqlalchemy.orm import Session
 
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import CollectionRun, TransportCollectionState
-from app.service_exports import REFERENCE_STALE_AFTER
-from app.services.rest_area_collection import REST_AREA_FUEL_SOURCE
-from app.services.transport_collection import OPINET_SOURCE, TRANSPORT_TRIGGER_PREFIX, _fuel_last_attempt_failed
+from app.services.rest_area_collection import REST_AREA_FUEL_SOURCE, REST_AREA_FUEL_TRIGGER
+from app.services.transport_collection import (
+    DAGSTER_FUEL_TRIGGER,
+    FUEL_IN_FLIGHT_WINDOW,
+    LOST_FUEL_ATTEMPT_ERROR,
+    OPINET_SOURCE,
+    TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY,
+    TRANSPORT_TRIGGER_PREFIX,
+    _fuel_last_attempt_failed,
+    fuel_claim_owner,
+    fuel_runs_in_flight,
+    lost_fuel_claim_owner,
+)
 
 OWNER: ContextVar[str | None] = ContextVar("transport_dagster_owner", default=None)
 
@@ -68,24 +78,25 @@ COLLECTION_STALE_AFTER = timedelta(minutes=20)
 #: 정체 경보의 안정적인 event 이름(로그 검색·런북 기준). 형식은 `format_stall_alert`가 정본이다.
 STALL_EVENT = "transport_worker_recovery.stalled"
 
-#: Dagster 유가 op가 저장하는 `CollectionRun.trigger`(`definitions._collect_transport_in_one_loop`의 `dagster_{scope}`에
-#: 서비스가 접두를 붙인다). 회수 sensor의 유가 시도 소실 판정이 이 값으로 claim의 주인 실행을 찾는다.
-FUEL_TRIGGER = f"{TRANSPORT_TRIGGER_PREFIX}dagster_fuel"
-#: 결과(성공·실패)를 남기지 못하고 끝난 유가 시도에 회수 sensor가 남기는 `last_error`(G1-F5). 실행이 op 밖에서 죽으면
-#: (code-server 재기동·worker 소실·SIGKILL) `_mark_fuel_failure`가 불리지 않아 직전 성공의 `last_error=None`이 남고,
-#: 그러면 관리자 "재시도"도 "직전 시도 성공"으로 보고 호출 유예로 건너뛰었다. 실패 1회와 같게 보이게 한다.
-LOST_FUEL_ATTEMPT_ERROR = "실행 소실: 유가 수집 실행이 결과를 기록하지 못하고 끝났습니다(회수 sensor 기록)."
-#: 유가 신선도 점검 한 번(상태 읽기·소실 기록·판정)의 상한(초). 느린 DB에서 회수 예산을 다 쓰지 않게 끊고 회수로 넘어간다.
-FUEL_CHECK_TIMEOUT_SECONDS = 2 * RECOVERY_STATEMENT_TIMEOUT_SECONDS
-#: 유가 신선도 event 이름 접두(로그 검색·런북 기준). 형식은 `FuelFreshnessAlerts`가 정본이다.
+#: Dagster 유가 op가 저장하는 `CollectionRun.trigger`. 정본은 서비스(`DAGSTER_FUEL_TRIGGER`)다.
+FUEL_TRIGGER = DAGSTER_FUEL_TRIGGER
+#: 원천별 정기 수집 실행의 trigger. "진행 중인 실행" 판정에 쓴다.
+FUEL_SOURCE_TRIGGERS = {OPINET_SOURCE: DAGSTER_FUEL_TRIGGER, REST_AREA_FUEL_SOURCE: REST_AREA_FUEL_TRIGGER}
+#: 유가 시도 소실 기록 단계의 상한(초). 잠금 시도·상태·주인·진행 중 확인·갱신·commit(문장마다 5초 상한)을 이 안에서 끊는다.
+FUEL_LOST_STEP_SECONDS = 2 * RECOVERY_STATEMENT_TIMEOUT_SECONDS
+#: 유가 신선도 판정 단계의 상한(초). 상태 행·진행 중 실행·소실 주인 조회를 이 안에서 끊는다. 두 단계는 따로 끊고 따로
+#: 실패한다 — 소실 기록이 실패해도 신선도(특히 위험·만료) 판정은 한다. 판정 단계의 예산을 먼저 남긴다(`check_fuel_freshness`).
+FUEL_LEVEL_STEP_SECONDS = 2 * RECOVERY_STATEMENT_TIMEOUT_SECONDS
+#: 유가 신선도 event 이름 접두(로그 검색·런북 기준). 형식은 `FuelFreshnessAlerts`·`format_fuel_freshness`가 정본이다.
 FUEL_FRESHNESS_EVENT = "transport_fuel_freshness"
 #: 정기 수집 주기. 경고 기준(2주기)에 쓴다. `definitions`의 유가 `0 */8 * * *`·휴게소 유가 `25 */4 * * *`와 같아야 한다
 #: (`test_fuel_freshness_cycles_follow_the_schedules`).
 FUEL_FRESHNESS_CYCLES = {OPINET_SOURCE: timedelta(hours=8), REST_AREA_FUEL_SOURCE: timedelta(hours=4)}
-#: 경고: 마지막 성공 나이 > 이만큼의 주기이고 마지막 시도가 실패. 유가는 16시간 = 연속 2회 실패로, 다음 실패가 곧
-#: export 503(`REFERENCE_STALE_AFTER`)이 되는 선행 신호다.
+#: 경고: 마지막 성공 나이 > 이만큼의 주기이고 마지막으로 **끝난** 시도가 실패(진행 중인 실행이 있으면 실패로 세지 않는다).
+#: 유가는 16시간 = 연속 2회 실패로, 다음 실패가 곧 export 503(`REFERENCE_STALE_AFTER`)이 되는 선행 신호다.
 FUEL_FRESHNESS_WARNING_CYCLES = 2
 #: 위험: 마지막 성공 나이 > export stale 기준(`REFERENCE_STALE_AFTER`)의 이 비율. 실패 여부와 무관하다(수집이 멈춰도 잡는다).
+#: 기준 자체를 넘으면 `expired`(export가 지금 503)다.
 FUEL_FRESHNESS_CRITICAL_RATIO = 0.8
 #: 같은 단계를 다시 남기는 간격(초). 정체 경보의 재경보 간격(common `realert_after_seconds`)과 같다.
 FUEL_FRESHNESS_REALERT_SECONDS = 3600
@@ -285,131 +296,134 @@ async def stale_five_minute_triggers(
 # 유가 시도 소실 기록과 신선도 단계 (2026-11-24 감사 G1-F5·G1-F6)
 #
 # 2026-11-23 08:17Z~11-24 00:17Z T1 주유소 export가 16.6시간 503이었는데 아무 경보도 없었다(정체 경보는 5분 수집만
-# 본다). 유가 신선도는 이 sensor tick에서 같이 본다 — 새 run이나 schedule을 만들지 않고, 오피넷을 더 부르지도 않는다.
+# 본다). 유가 신선도는 이 sensor tick에서 회수 뒤에 같이 본다 — 새 run이나 schedule을 만들지 않고, 오피넷을 더 부르지도 않는다.
 
 
 @dataclass(frozen=True)
 class LostFuelAttempt:
-    """회수 sensor가 `LOST_FUEL_ATTEMPT_ERROR`를 남긴 유가 시도. 로그 한 줄에 싣는 고정 필드만 둔다."""
+    """결과를 잃은 오피넷 유가 시도(claim). 로그 한 줄에 싣는 고정 필드만 둔다."""
 
-    collection_run_id: int
+    collection_run_id: int | None
+    orchestrator_run_id: str | None
     last_started_at: datetime
 
 
 @dataclass(frozen=True)
 class FuelFreshness:
-    """한 유가 원천의 신선도 단계. `level`은 `ok`·`warning`·`critical`이다."""
+    """한 유가 원천의 신선도 단계. `level`은 `ok`·`warning`·`critical`·`expired`다.
+
+    `cause`는 마지막 시도의 사정이다: `running`(진행 중인 실행이 있음), `lost`(결과 없이 끝남 — `LOST_FUEL_ATTEMPT_ERROR`),
+    `failed`(실패 기록), `none`(실패 기록도 진행 중인 실행도 없음 — 수집이 돌지 않거나 아직 예정 전).
+    """
 
     source: str
     level: str
     age_seconds: int
     last_success_at: datetime
     last_attempt_failed: bool
+    cause: str
     warning_after: timedelta
     critical_after: timedelta
+    expired_after: timedelta
 
 
 @dataclass
 class FuelFreshnessReport:
-    """한 tick의 유가 점검 결과. `failure`는 점검 실패의 서명(형식 이름[:SQLSTATE])이다. 회수·정체 판정은 계속한다.
+    """한 tick의 유가 점검 결과. 회수·정체 판정은 이 점검의 성패와 무관하게 계속한다.
 
-    `checked`는 단계 판정을 끝까지 했는가다. 점검 자체를 하지 못한 tick(예산 부족, 앞 단계의 DB 장애로 tick이 먼저
-    끝남)은 `levels`가 비어도 "판단 대상 없음"이 아니다 — 경보 기억을 지우거나 회복으로 보지 않는다.
+    - `recorded`: 이번 tick에 `LOST_FUEL_ATTEMPT_ERROR`를 기록한 시도. `lost_attempt`: 상태 행 기준으로 지금 결과를 잃은
+      시도(기록이 앞 tick이었어도 — 경보 줄을 놓치지 않게 상태에서 다시 만든다).
+    - `lost_failure`·`failure`: 소실 기록 단계·판정 단계의 실패 서명(형식 이름[:SQLSTATE]).
+    - `checked`: 판정 단계를 끝까지 했는가. 점검을 하지 못한 tick(예산 부족·앞 단계 장애)은 `levels`가 비어도 "판단 대상
+      없음"이 아니다 — 경보 기억을 지우거나 회복으로 보지 않는다.
+    - `paused`: provider가 꺼졌거나 schedule이 STOPPED라 경보에서 뺀 원천(정체 판정의 `paused`와 같은 뜻).
     """
 
+    recorded: LostFuelAttempt | None = None
     lost_attempt: LostFuelAttempt | None = None
     levels: list[FuelFreshness] = field(default_factory=list)
+    paused: list[str] = field(default_factory=list)
+    lost_failure: str | None = None
     failure: str | None = None
     checked: bool = False
 
 
-#: claim(`last_started_at`)이 그 실행의 시작(`CollectionRun.started_at`)보다 늦을 수 있는 최대 폭. 둘은 같은 transaction에서
-#: 유가 advisory lock을 쥔 채 몇 초 안에 정해진다(체크포인트 확인·예약 조회). 이보다 먼 Dagster 유가 실행은 그 claim의
-#: 주인이 아니다(in-process·수동 실행의 claim) — 판단하지 않는다.
-FUEL_CLAIM_MAX_DELAY = timedelta(minutes=15)
+def fuel_freshness_thresholds(source: str) -> tuple[timedelta, timedelta, timedelta]:
+    """(경고 기준 나이, 위험 기준 나이, 만료 = export stale 기준). 위험·만료는 `REFERENCE_STALE_AFTER`를 따라 바뀐다.
 
+    export 모듈(FastAPI router 정의)을 Dagster 프로세스가 import하지 않게 여기서만 늦게 읽는다.
+    """
+    from app.service_exports import REFERENCE_STALE_AFTER
 
-def fuel_freshness_thresholds(source: str) -> tuple[timedelta, timedelta]:
-    """(경고 기준 나이, 위험 기준 나이). 위험 기준은 export stale 기준(`REFERENCE_STALE_AFTER`)을 따라 바뀐다."""
+    expired_after = REFERENCE_STALE_AFTER[source]
     return (
         FUEL_FRESHNESS_WARNING_CYCLES * FUEL_FRESHNESS_CYCLES[source],
-        FUEL_FRESHNESS_CRITICAL_RATIO * REFERENCE_STALE_AFTER[source],
+        FUEL_FRESHNESS_CRITICAL_RATIO * expired_after,
+        expired_after,
     )
 
 
-def evaluate_fuel_freshness(source: str, state: TransportCollectionState | None, *, now: datetime) -> FuelFreshness | None:
+def evaluate_fuel_freshness(
+    source: str, state: TransportCollectionState | None, *, now: datetime, in_flight: bool = False,
+) -> FuelFreshness | None:
     """마지막 성공 나이로 단계를 정한다. 성공 이력이 없으면(새 DB·쓰지 않는 원천) 판단하지 않는다 — export가 이미 503이다.
 
-    - 위험: 나이 > export stale 기준의 80%(유가 19.2시간·휴게소 유가 9.6시간). 실패 여부와 무관하다 — 수집이 멈춰도 잡는다.
-    - 경고: 나이 > 2주기(유가 16시간·휴게소 유가 8시간)이고 마지막 시도가 실패(`_fuel_last_attempt_failed`: 오류가 남아 있고
-      마지막 성공이 마지막 시작보다 앞섬. 휴게소 유가 상태 행도 같은 규칙으로 쓴다).
+    - 만료: 나이 > export stale 기준(`REFERENCE_STALE_AFTER`). export가 지금 503이다.
+    - 위험: 나이 > 그 기준의 80%. 실패 여부와 무관하다 — 수집이 멈춰도 잡는다.
+    - 경고: 나이 > 2주기(유가 16시간·휴게소 유가 8시간)이고 마지막으로 **끝난** 시도가 실패(`_fuel_last_attempt_failed`).
+      claim은 이전 오류를 지우지 않으므로, 진행 중인 실행(`in_flight`)이 있으면 실패로 세지 않는다 — 실패 1회 뒤 다음
+      정기 실행이 수집 중인 동안 경고하지 않는다.
     """
     if state is None or state.last_success_at is None:
         return None
-    warning_after, critical_after = fuel_freshness_thresholds(source)
+    warning_after, critical_after, expired_after = fuel_freshness_thresholds(source)
     last_success = serialize_utc(state.last_success_at)
     age = now - last_success
-    failed = _fuel_last_attempt_failed(state)
-    level = "critical" if age > critical_after else "warning" if age > warning_after and failed else "ok"
+    failed = _fuel_last_attempt_failed(state) and not in_flight
+    cause = ("running" if in_flight else "lost" if failed and state.last_error == LOST_FUEL_ATTEMPT_ERROR
+             else "failed" if failed else "none")
+    level = ("expired" if age > expired_after else "critical" if age > critical_after
+             else "warning" if age > warning_after and failed else "ok")
     return FuelFreshness(
         source=source, level=level, age_seconds=max(0, int(age.total_seconds())), last_success_at=last_success,
-        last_attempt_failed=failed, warning_after=warning_after, critical_after=critical_after,
+        last_attempt_failed=failed, cause=cause, warning_after=warning_after, critical_after=critical_after,
+        expired_after=expired_after,
     )
 
 
 async def record_lost_fuel_attempt(session_factory, *, now: datetime | None = None) -> LostFuelAttempt | None:
     """결과 없이 끝난 오피넷 유가 시도에 `LOST_FUEL_ATTEMPT_ERROR`를 남긴다. `last_success_at`·`next_due_at`은 그대로다.
 
-    claim(`_mark_source_started`)은 `last_started_at`만 바꾸고, 시도는 끝날 때 성공(`last_success_at` + `last_error=None`)이나
-    실패(`last_error`)를 남긴다. 둘 다 없는 claim의 주인 — claim 시각 직전(`FUEL_CLAIM_MAX_DELAY` 안)에 시작한 마지막 Dagster
-    유가 실행 — 이 failed로 끝났고 그 뒤에 시작한 유가 실행(체크포인트 저장 재개 포함)도 모두 끝났으면, 그 시도는 결과를
-    잃었다. 유가 claim은 실행 행 INSERT와 같은 transaction에서 유가 advisory lock을 쥔 채 하므로 주인이 하나로 정해진다.
-    정상 종료한 실행은 결과를 상태 행에 먼저 남기므로 주인이 failed가 아니면 판단하지 않는다. 잡는 경우:
+    판정은 서비스의 `lost_fuel_claim_owner`(관리자 재시도와 같은 규칙)다: claim에 결과가 없고, 그 주인 Dagster 유가 실행이
+    failed로 끝났으며, 진행 중인 Dagster 유가 실행이 없다. 잡는 경우:
 
-    - op 밖에서 죽어(code-server 재기동·worker 소실·SIGKILL) 회수(`reconcile_collection_runs`)가 failed로 닫은 실행
+    - op 밖에서 죽어(code-server·run worker 재시작, SIGKILL, `--no-drain` 배포) 회수(`reconcile_collection_runs`)가 failed로
+      닫은 실행 — 같은 tick의 회수 직후에 기록한다
     - 실패 기록 commit 자체가 실패한 실행(실행 행은 failed인데 상태 행에는 오류가 없다)
 
-    갱신은 읽은 claim 그대로일 때만 한다(CAS). 그 사이 새 claim·성공·실패가 들어오면 0행이고, 실패 처리가 늦게 도착하면
-    원래 오류 문장이 이 값을 덮는다. 실행 중인 유가 실행이 있으면 건드리지 않는다. 운영 Dagster 유가 실행만 대상이다.
+    경합: PostgreSQL에서는 유가 수집기가 claim·저장에 쓰는 advisory lock(`TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 1`)을
+    try로 먼저 잡는다. 못 잡으면 수집기가 claim·저장 중이므로 이번 tick은 건너뛴다(기다리지 않는다). 갱신은 읽은 claim
+    그대로이고 결과가 여전히 없으며 진행 중인 유가 실행이 없을 때만 한다(CAS + NOT EXISTS) — 그 사이의 새 claim·성공·실패를
+    덮지 않는다. 늦게 도착한 실패 처리는 원래 오류 문장으로 이 값을 덮는다.
     """
     now = now or now_utc()
     async with session_factory() as session:
+        if session.get_bind().dialect.name == "postgresql":
+            locked = await session.scalar(
+                text("SELECT pg_try_advisory_xact_lock(:lock_key)"),
+                {"lock_key": TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 1},
+            )
+            if not locked:
+                return None
+            # 상태 행을 쥔 다른 transaction 뒤에서 오래 기다리지 않는다(실패하면 다음 tick이 다시 본다).
+            await session.execute(text("SET LOCAL lock_timeout = '1s'"))
         state = await session.scalar(
             select(TransportCollectionState).where(TransportCollectionState.source == OPINET_SOURCE)
         )
-        if (
-            state is None
-            or state.last_started_at is None
-            or state.last_error is not None
-            or (state.last_success_at is not None
-                and serialize_utc(state.last_success_at) >= serialize_utc(state.last_started_at))
-        ):
+        owner = await lost_fuel_claim_owner(session, state)
+        if owner is None:
             return None
         claimed_at = state.last_started_at  # DB 값 그대로 비교한다(SQLite는 tz 없는 값을 돌려준다).
-        owner = (await session.execute(
-            select(CollectionRun.id, CollectionRun.status)
-            .where(
-                CollectionRun.trigger == FUEL_TRIGGER,
-                CollectionRun.started_at <= claimed_at,
-                CollectionRun.started_at >= claimed_at - FUEL_CLAIM_MAX_DELAY,
-            )
-            .order_by(CollectionRun.started_at.desc(), CollectionRun.id.desc())
-            .limit(1)
-        )).first()
-        # 주인이 failed(회수가 닫았거나 실패 기록 전에 끝남)일 때만이다. 정상 종료(success·skipped·partial_success)한
-        # 실행은 결과를 상태 행에 먼저 commit하므로, 성공 시각이 claim보다 이른 경우(시계·고정 시각 대역)를 소실로 오인하지 않는다.
-        if owner is None or owner.status != "failed":
-            return None
-        running = await session.scalar(
-            select(CollectionRun.id)
-            .where(CollectionRun.trigger == FUEL_TRIGGER, CollectionRun.id >= owner.id, CollectionRun.status == "running")
-            .limit(1)
-        )
-        if running is not None:
-            return None
-        if session.bind.dialect.name == "postgresql":
-            # 상태 행을 쥔 수집 transaction 뒤에서 오래 기다리지 않는다(실패하면 다음 tick이 다시 본다).
-            await session.execute(text("SET LOCAL lock_timeout = '1s'"))
         result = await session.execute(
             update(TransportCollectionState)
             .where(
@@ -420,6 +434,7 @@ async def record_lost_fuel_attempt(session_factory, *, now: datetime | None = No
                     TransportCollectionState.last_success_at.is_(None),
                     TransportCollectionState.last_success_at < TransportCollectionState.last_started_at,
                 ),
+                ~select(CollectionRun.id).where(fuel_runs_in_flight(DAGSTER_FUEL_TRIGGER, now=now)).exists(),
             )
             .values(last_error=LOST_FUEL_ATTEMPT_ERROR, updated_at=now)
             .execution_options(synchronize_session=False)
@@ -427,23 +442,52 @@ async def record_lost_fuel_attempt(session_factory, *, now: datetime | None = No
         await session.commit()
     if result.rowcount != 1:
         return None
-    return LostFuelAttempt(collection_run_id=owner.id, last_started_at=serialize_utc(claimed_at))
+    return LostFuelAttempt(
+        collection_run_id=owner.id, orchestrator_run_id=owner.orchestrator_run_id,
+        last_started_at=serialize_utc(claimed_at),
+    )
 
 
-async def fuel_freshness_levels(session_factory, *, now: datetime | None = None) -> list[FuelFreshness]:
-    """오피넷·휴게소 유가 상태 행을 한 번에 읽어 원천별 단계를 돌려준다(`ok` 포함 — 회복 줄에 쓴다)."""
+async def fuel_freshness_snapshot(
+    session_factory, *, now: datetime | None = None,
+) -> tuple[list[FuelFreshness], LostFuelAttempt | None]:
+    """오피넷·휴게소 유가 상태 행과 진행 중인 실행을 읽어 원천별 단계(`ok` 포함 — 회복 줄에 쓴다)를 돌려준다.
+
+    오피넷 claim이 지금 `실행 소실` 상태면(상태 문장이 `LOST_FUEL_ATTEMPT_ERROR`, 주인 실행 failed, 진행 중인 유가 실행
+    없음) 그 시도도 돌려준다. 소실 줄을 이번 tick의 기록 여부가 아니라 상태에서 만들므로 예산 부족으로 놓친 줄도 남긴다.
+    """
     now = now or now_utc()
     async with session_factory() as session:
         rows = (await session.scalars(
             select(TransportCollectionState).where(TransportCollectionState.source.in_(tuple(FUEL_FRESHNESS_CYCLES)))
         )).all()
-    states = {row.source: row for row in rows}
+        in_flight = set((await session.scalars(
+            select(CollectionRun.trigger).where(
+                CollectionRun.trigger.in_(tuple(FUEL_SOURCE_TRIGGERS.values())),
+                CollectionRun.status == "running",
+                CollectionRun.started_at >= now - FUEL_IN_FLIGHT_WINDOW,
+            ).distinct()
+        )).all())
+        states = {row.source: row for row in rows}
+        opinet = states.get(OPINET_SOURCE)
+        lost = None
+        if (opinet is not None and opinet.last_error == LOST_FUEL_ATTEMPT_ERROR and opinet.last_started_at is not None
+                and DAGSTER_FUEL_TRIGGER not in in_flight):
+            owner = await fuel_claim_owner(session, opinet.last_started_at)
+            if owner is not None and owner.status == "failed":
+                lost = LostFuelAttempt(collection_run_id=owner.id, orchestrator_run_id=owner.orchestrator_run_id,
+                                       last_started_at=serialize_utc(opinet.last_started_at))
     levels = []
-    for source in FUEL_FRESHNESS_CYCLES:
-        level = evaluate_fuel_freshness(source, states.get(source), now=now)
+    for source, trigger in FUEL_SOURCE_TRIGGERS.items():
+        level = evaluate_fuel_freshness(source, states.get(source), now=now, in_flight=trigger in in_flight)
         if level is not None:
             levels.append(level)
-    return levels
+    return levels, lost
+
+
+async def fuel_freshness_levels(session_factory, *, now: datetime | None = None) -> list[FuelFreshness]:
+    """원천별 단계만(`fuel_freshness_snapshot`의 앞 값)."""
+    return (await fuel_freshness_snapshot(session_factory, now=now))[0]
 
 
 def _failure_signature(exc: BaseException) -> str:
@@ -455,89 +499,159 @@ def _failure_signature(exc: BaseException) -> str:
 
 
 async def check_fuel_freshness(
-    session_factory, report: FuelFreshnessReport, *, now: datetime | None = None,
+    session_factory,
+    report: FuelFreshnessReport,
+    *,
+    now: datetime | None = None,
+    remaining: Callable[[], float] | None = None,
+    monitored: Callable[[str], bool] | None = None,
 ) -> None:
-    """유가 시도 소실 기록 → 신선도 판정. 부가 점검이라 실패해도 올리지 않고 `report.failure`에 서명만 남긴다.
+    """유가 시도 소실 기록 → 신선도 판정. 부가 점검이라 실패해도 올리지 않고 단계별 실패 서명만 `report`에 남긴다.
 
-    `FUEL_CHECK_TIMEOUT_SECONDS`에서 끊어 회수 예산을 지킨다. tick 전체의 취소(`CancelledError`)는 그대로 올린다.
+    두 단계는 각자의 상한(`FUEL_LOST_STEP_SECONDS`·`FUEL_LEVEL_STEP_SECONDS`)으로 따로 끊고 따로 실패한다. 남은 예산
+    (`remaining`)이 두 단계를 다 담지 못하면 소실 기록을 건너뛰고 판정만 한다(위험·만료 경보가 우선). 판정 단계도 담지
+    못하면 아무것도 하지 않는다(`checked=False`). tick 전체의 취소(`CancelledError`)는 그대로 올린다.
+
+    `monitored(source)`는 경고 이상인 원천에만 부른다. False면(provider 꺼짐·schedule STOPPED) `paused`로 옮긴다. 확인
+    자체가 실패하면 경보 쪽(감시 중)으로 본다.
     """
+
+    def has(seconds: float) -> bool:
+        return remaining is None or remaining() > seconds
+
+    if has(FUEL_LOST_STEP_SECONDS + FUEL_LEVEL_STEP_SECONDS):
+        try:
+            async with asyncio.timeout(FUEL_LOST_STEP_SECONDS):
+                report.recorded = await record_lost_fuel_attempt(session_factory, now=now)
+        except Exception as exc:  # noqa: BLE001 — 판정·회수·정체 판정을 막지 않는다.
+            report.lost_failure = _failure_signature(exc)
+    if not has(FUEL_LEVEL_STEP_SECONDS):
+        return
     try:
-        async with asyncio.timeout(FUEL_CHECK_TIMEOUT_SECONDS):
-            report.lost_attempt = await record_lost_fuel_attempt(session_factory, now=now)
-            report.levels = await fuel_freshness_levels(session_factory, now=now)
-            report.checked = True
-    except Exception as exc:  # noqa: BLE001 — 회수·정체 판정을 막지 않는다.
+        async with asyncio.timeout(FUEL_LEVEL_STEP_SECONDS):
+            report.levels, report.lost_attempt = await fuel_freshness_snapshot(session_factory, now=now)
+    except Exception as exc:  # noqa: BLE001
         report.failure = _failure_signature(exc)
+        return
+    report.checked = True
+    if monitored is None:
+        return
+    kept = []
+    for item in report.levels:
+        watched = True
+        if item.level != "ok":
+            try:
+                watched = bool(monitored(item.source))
+            except Exception:  # noqa: BLE001 — 애매하면 경보 쪽
+                watched = True
+        if watched:
+            kept.append(item)
+        else:
+            report.paused.append(item.source)
+    report.levels = kept
+
+
+@dataclass(frozen=True)
+class FuelAlertLine:
+    """남길 경보 한 줄과, 남긴 **뒤에** 경보 기억에 반영할 값(`remember=None`이면 그 key를 지운다)."""
+
+    level: int
+    text: str
+    key: str
+    remember: tuple[str, float] | None
 
 
 class FuelFreshnessAlerts:
     """유가 신선도 경보 줄(고정 event 이름 한 줄, `format_stall_alert`와 같은 관례).
 
-    단계가 바뀌면 바로, 같은 단계는 `FUEL_FRESHNESS_REALERT_SECONDS`마다 다시 남긴다. 경고·위험에서 `ok`로 돌아오면 회복 줄을
-    한 번 남긴다. sensor cursor는 정체 시계가 소유하므로 마지막 경보는 code-server 프로세스 안에 둔다(재시작하면 현재 단계를
-    한 번 더 남길 뿐이다). 줄은 실제로 남길 tick에서만 만든다 — 만든 뒤에는 남긴 것으로 기억한다.
+    단계가 바뀌면 바로, 같은 단계는 `FUEL_FRESHNESS_REALERT_SECONDS`마다 다시 남긴다. 경고 이상에서 `ok`로 돌아오면 회복
+    줄을 한 번 남긴다. 소실 줄은 claim마다 한 번이다. sensor cursor는 정체 시계가 소유하므로 마지막 경보는 code-server 프로세스
+    안에 둔다. 재시작하면 기억이 비어 현재 비정상 단계·소실을 한 번 더 남기고, 재시작 사이에 회복했으면 회복 줄은 없다
+    (그 원천의 경보 줄이 `FUEL_FRESHNESS_REALERT_SECONDS`보다 오래 없으면 정상이다).
+
+    `lines()`는 줄과 기억할 값만 만든다. 기억은 호출자가 줄을 실제로 남긴 뒤 `commit()`으로 반영한다 — 로그 기록이 실패한
+    줄은 다음 tick에 다시 만든다.
     """
 
-    _CHECK_FAILED = "check_failed"
+    _CHECK_FAILED = "check_failed:"
+    _LOST = "lost:"
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._last: dict[str, tuple[str, float]] = {}
 
-    def lines(self, report: FuelFreshnessReport, *, now: float) -> list[tuple[int, str]]:
-        """(logging 수준, 한 줄) 목록."""
-        out: list[tuple[int, str]] = []
-        if report.lost_attempt is not None:
-            lost = report.lost_attempt
-            out.append((logging.WARNING, (
-                f"{FUEL_FRESHNESS_EVENT}.lost_attempt source={OPINET_SOURCE} "
-                f"collection_run_id={lost.collection_run_id} last_started_at={lost.last_started_at.isoformat()}"
-            )))
+    def lines(self, report: FuelFreshnessReport, *, now: float) -> list[FuelAlertLine]:
+        out: list[FuelAlertLine] = []
         with self._lock:
-            if report.failure is not None:
-                # 판정하지 못한 tick은 원천별 단계 기억을 바꾸지 않는다.
-                if self._due(self._CHECK_FAILED, "failed", now):
-                    out.append((logging.WARNING, f"{FUEL_FRESHNESS_EVENT}.check_failed error={report.failure}"))
-                return out
+            for step, failure, ran in (("lost_attempt", report.lost_failure, report.lost_failure is not None
+                                        or report.recorded is not None or report.checked),
+                                       ("levels", report.failure, report.checked)):
+                key = self._CHECK_FAILED + step
+                if failure is not None:
+                    if self._due(key, failure, now):
+                        out.append(FuelAlertLine(
+                            logging.WARNING, f"{FUEL_FRESHNESS_EVENT}.check_failed step={step} error={failure}",
+                            key, (failure, now)))
+                elif ran:
+                    self._last.pop(key, None)
             if not report.checked:
-                # 점검을 시작하지 못한 tick(예산 부족·앞 단계 장애)도 기억을 바꾸지 않는다. 빈 `levels`를 "모두 판단 대상 아님"으로
-                # 읽어 경보 기억을 지우면, 다음 tick이 같은 단계를 즉시 다시 남기고 그 사이 회복 줄을 놓친다.
+                # 판정하지 못한 tick(실패·예산 부족·앞 단계 장애)은 원천별 단계와 소실 기억을 바꾸지 않는다. 빈 `levels`를
+                # "모두 판단 대상 아님"으로 읽어 기억을 지우면 다음 tick이 같은 단계를 즉시 다시 남기고 회복 줄을 놓친다.
                 return out
-            self._last.pop(self._CHECK_FAILED, None)
+            lost_key = self._LOST + OPINET_SOURCE
+            if report.lost_attempt is None:
+                self._last.pop(lost_key, None)
+            else:
+                lost = report.lost_attempt
+                claim = lost.last_started_at.isoformat()
+                if self._last.get(lost_key, ("", 0.0))[0] != claim:
+                    run_id = lost.collection_run_id if lost.collection_run_id is not None else "none"
+                    out.append(FuelAlertLine(logging.WARNING, (
+                        f"{FUEL_FRESHNESS_EVENT}.lost_attempt source={OPINET_SOURCE} collection_run_id={run_id} "
+                        f"orchestrator_run_id={lost.orchestrator_run_id or 'none'} last_started_at={claim}"
+                    ), lost_key, (claim, now)))
             seen = set()
             for item in report.levels:
                 seen.add(item.source)
                 previous = self._last.get(item.source)
                 if item.level == "ok":
                     if previous is not None:
-                        del self._last[item.source]
-                        out.append((logging.WARNING, (
+                        out.append(FuelAlertLine(logging.WARNING, (
                             f"{FUEL_FRESHNESS_EVENT}.recovered source={item.source} age_seconds={item.age_seconds} "
                             f"last_success_at={item.last_success_at.isoformat()} previous={previous[0]}"
-                        )))
+                        ), item.source, None))
                     continue
                 if self._due(item.source, item.level, now):
-                    out.append((logging.ERROR if item.level == "critical" else logging.WARNING, format_fuel_freshness(item)))
-            for source in [key for key in self._last if key not in seen]:
-                del self._last[source]  # 상태 행·성공 이력이 사라진 원천(판단 대상 아님)
+                    severity = logging.WARNING if item.level == "warning" else logging.ERROR
+                    out.append(FuelAlertLine(severity, format_fuel_freshness(item), item.source, (item.level, now)))
+            for source in FUEL_FRESHNESS_CYCLES:
+                if source not in seen:
+                    # 상태 행·성공 이력이 없거나 경보에서 뺀(provider 꺼짐·STOPPED) 원천 — 판단 대상이 아니다.
+                    self._last.pop(source, None)
         return out
+
+    def commit(self, line: FuelAlertLine) -> None:
+        """줄을 실제로 남긴 뒤 기억에 반영한다."""
+        with self._lock:
+            if line.remember is None:
+                self._last.pop(line.key, None)
+            else:
+                self._last[line.key] = line.remember
 
     def _due(self, key: str, level: str, now: float) -> bool:
         previous = self._last.get(key)
-        if previous is not None and previous[0] == level and now - previous[1] < FUEL_FRESHNESS_REALERT_SECONDS:
-            return False
-        self._last[key] = (level, now)
-        return True
+        return previous is None or previous[0] != level or now - previous[1] >= FUEL_FRESHNESS_REALERT_SECONDS
 
 
 def format_fuel_freshness(item: FuelFreshness) -> str:
-    """경고·위험 한 줄. 상태 행의 고정 필드만 싣는다(오류 원문 없음)."""
+    """경고·위험·만료 한 줄. 상태 행의 고정 필드만 싣는다(오류 원문 없음)."""
     return (
         f"{FUEL_FRESHNESS_EVENT}.{item.level} source={item.source} age_seconds={item.age_seconds} "
-        f"last_success_at={item.last_success_at.isoformat()} "
+        f"last_success_at={item.last_success_at.isoformat()} cause={item.cause} "
         f"last_attempt_failed={'true' if item.last_attempt_failed else 'false'} "
         f"warning_after_seconds={int(item.warning_after.total_seconds())} "
-        f"critical_after_seconds={int(item.critical_after.total_seconds())}"
+        f"critical_after_seconds={int(item.critical_after.total_seconds())} "
+        f"expired_after_seconds={int(item.expired_after.total_seconds())}"
     )
 
 
@@ -640,6 +754,7 @@ async def run_recovery_tick(
     collection_scheduled: Callable[[str], bool] | None = None,
     paused: list[str] | None = None,
     fuel_report: FuelFreshnessReport | None = None,
+    fuel_monitored: Callable[[str], bool] | None = None,
 ) -> int:
     """회수 sensor 한 tick.
 
@@ -649,8 +764,10 @@ async def run_recovery_tick(
     `collection_scheduled(trigger)`가 False인 trigger(예: 점검으로 schedule을 STOPPED)는 수집이 멈춘 것이
     의도이므로 정체로 세지 않고 `paused`에 담는다. 판정은 오래된 trigger가 있을 때만 부른다.
 
-    `fuel_report`를 주면 회수 전에 유가 시도 소실 기록과 신선도 판정(`check_fuel_freshness`)을 해 담는다. 유가 신선도는
-    정체가 아니다 — 정체 시계에 알리지 않고 경보 줄만 남긴다(`definitions._report_fuel_freshness`).
+    `fuel_report`를 주면 회수 **뒤에** 유가 시도 소실 기록과 신선도 판정(`check_fuel_freshness`)을 해 담는다. 회수가
+    예산을 먼저 쓰므로 회수는 굶지 않고, 이번 tick에 회수가 닫은 유가 실행의 소실도 같은 tick에 기록한다. 회수가 metadata
+    장애 등으로 실패해도 유가 점검은 하고 그 예외를 다시 올린다. 유가 신선도는 정체가 아니다 — 정체 시계에 알리지 않고
+    경보 줄만 남긴다(`definitions._report_fuel_freshness`). `fuel_monitored`는 `check_fuel_freshness(monitored=)`다.
     """
     stale = await stale_five_minute_triggers(session_factory)
     if stale and collection_scheduled is not None:
@@ -658,11 +775,17 @@ async def run_recovery_tick(
         if paused is not None:
             paused.extend(trigger for trigger, minutes in stale if (trigger, minutes) not in scheduled)
         stale = scheduled
-    if fuel_report is not None and _has_budget(remaining):
-        await check_fuel_freshness(session_factory, fuel_report)
-    recovered = await reconcile_collection_runs(
-        session_factory, instance, position=position, remaining=remaining
-    )
+    reconcile_error: Exception | None = None
+    try:
+        recovered = await reconcile_collection_runs(
+            session_factory, instance, position=position, remaining=remaining
+        )
+    except Exception as exc:  # 유가 점검은 하고 다시 올린다(정체 시계가 센다).
+        reconcile_error, recovered = exc, 0
+    if fuel_report is not None:
+        await check_fuel_freshness(session_factory, fuel_report, remaining=remaining, monitored=fuel_monitored)
+    if reconcile_error is not None:
+        raise reconcile_error
     if stale:
         detail = ", ".join(f"{trigger}={minutes}분" for trigger, minutes in stale)
         raise CollectionStalled(f"5분 수집의 마지막 시작이 오래됐습니다: {detail}")

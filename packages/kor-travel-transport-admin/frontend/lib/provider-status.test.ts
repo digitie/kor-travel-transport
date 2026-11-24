@@ -1,5 +1,5 @@
 import {expect, test} from "vitest";
-import {isolatedRows, jobStatusLabel, needsProviderAttention, providerStatusLabel} from "./provider-status";
+import {isolatedRows, jobStatusLabel, needsProviderAttention, providerErrorMessage, providerStatusLabel} from "./provider-status";
 
 test.each(["failed", "upstream_error", "not_collected", "shared_job_failed", "shared_job_upstream_error", "shared_job_not_collected"])("%s는 오류 코드가 없어도 확인이 필요하다", (status) => {
   expect(needsProviderAttention({enabled: true, status, error_code: null})).toBe(true);
@@ -26,4 +26,14 @@ test("공동 job 상태도 격리만 있으면 부분 성공이고, 오류 코�
   expect(jobStatusLabel({job_status: null}, fallback)).toBe("이력 없음");
   expect(providerStatusLabel({status: "shared_job_partial_success", isolated_rows: 1, error_code: "collection_failed"}, fallback))
     .toBe("fallback:shared_job_partial_success");
+});
+
+test("실행 소실은 원인 미상 실패와 다른 문구로 재시도 가능함을 알린다", () => {
+  const lost = providerErrorMessage({source: "opinet_browser", error_code: "collection_lost"});
+  expect(lost).toContain("실행 소실");
+  expect(lost).toContain("재시도");
+  expect(providerErrorMessage({source: "opinet_browser", error_code: "collection_failed"})).toBe("수집 실패 · Dagster 실행 로그에서 원인을 확인해 주세요.");
+  expect(providerErrorMessage({source: "fuel_latest_prices", error_code: "read_model_refresh_pending"})).toContain("다음 고속도로 수집에서 갱신합니다");
+  expect(providerErrorMessage({source: "opinet_browser", error_code: null})).toBeNull();
+  expect(needsProviderAttention({enabled: true, status: "failed", error_code: "collection_lost"})).toBe(true);
 });

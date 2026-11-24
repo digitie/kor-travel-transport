@@ -132,9 +132,10 @@ in-process는 이를 되돌려 실제 시작 간격을 보존한다. 주기는 p
 가능, ADR-013), in-process scheduler는 15분을 되돌려 기다려 시작 간격 8시간 이상을 지킨다.
 유가 scheduler는 다음 예정 시각까지 기다리므로 5분마다 불필요한 skipped 실행을 만들지 않는다.
 결과(성공·실패)를 남기지 못하고 끝난 Dagster 유가 시도(op 밖 프로세스 종료·실패 기록 commit 실패)는 회수 sensor가
-상태 행에 `실행 소실` `last_error`만 남긴다(성공 시각·예약 불변, 2026-11-24 감사 G1-F5). 그래서 관리자 재시도가 그
-시도를 실패로 보고 예약을 옮기지 않은 채 이어 한다. 같은 sensor tick이 오피넷·휴게소 유가의 신선도 경고·위험 줄
-(`transport_fuel_freshness.*`)을 남긴다(G1-F6). 경보로 유가 run을 더 띄우지는 않는다 — `docs/runbooks/dagster-recovery.md`.
+회수 직후 상태 행에 `실행 소실` `last_error`만 남긴다(성공 시각·예약 불변, 2026-11-24 감사 G1-F5). 관리자 재시도는 같은
+규칙(`lost_fuel_claim_owner`)으로 그 시도를 실패로 보고 예약을 옮기지 않은 채 이어 한다(sensor 기록 전이어도). 같은 sensor
+tick이 오피넷·휴게소 유가의 신선도 경고·위험·만료 줄(`transport_fuel_freshness.*`)을 남긴다(G1-F6). 경보로 유가 run을 더
+띄우지는 않는다 — `docs/runbooks/dagster-recovery.md`.
 
 Provider의 영속 체크포인트는 완료 지역과 요청 예산을 보존해 미완료 지역부터 재개한다.
 완료된 결과의 저장만 실패했으면 외부 조회 없이 원래 시각의 스냅샷 저장을 재개한다.

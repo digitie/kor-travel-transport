@@ -99,6 +99,19 @@ FUEL_PRICE_UPSERT_BATCH = 2_000
 TRAFFIC_SNAPSHOT_BATCH = 400
 #: 유가 스냅샷 저장 시도 횟수. 일시적 DB 오류(`_is_transient_database_error`)에만 한 번 더 저장한다.
 FUEL_STORE_ATTEMPTS = 2
+#: Dagster 유가 op가 저장하는 `CollectionRun.trigger`(op의 `dagster_fuel`에 이 서비스가 접두를 붙인다).
+DAGSTER_FUEL_TRIGGER = f"{TRANSPORT_TRIGGER_PREFIX}dagster_fuel"
+#: 결과(성공·실패)를 남기지 못하고 끝난 유가 시도에 회수 sensor가 남기는 `last_error`(2026-11-24 감사 G1-F5). 실행이 op
+#: 밖에서 죽으면(code-server·run worker 재시작, SIGKILL, 배포의 `--no-drain`) 실패 기록이 불리지 않는다. 관리자 화면은 이
+#: 문장으로 `collection_lost`를 구분한다(`provider_status`). 문장은 고정이다 — 비교는 같음으로 한다.
+LOST_FUEL_ATTEMPT_ERROR = "실행 소실: 유가 수집 실행이 결과를 기록하지 못하고 끝났습니다(회수 sensor 기록)."
+#: claim(`last_started_at`)이 그 실행의 시작(`CollectionRun.started_at`)보다 늦을 수 있는 최대 폭. 둘은 같은 transaction에서
+#: 유가 advisory lock을 쥔 채 몇 초 안에 정해진다(체크포인트 확인·예약 조회). 이보다 먼 Dagster 유가 실행은 그 claim의
+#: 주인이 아니다(in-process·수동 실행의 claim) — 소실로 판단하지 않는다.
+FUEL_CLAIM_MAX_DELAY = timedelta(minutes=15)
+#: "진행 중인 유가 실행" 판정이 보는 시작 시각 범위. 유가 실행 상한(4시간)·회수 grace(5시간)보다 넉넉하다. 이보다 오래된
+#: running 행은 회수가 닫지 못한 매달린 행이라 진행 중으로 세지 않는다(started_at 색인으로 범위를 좁힌다).
+FUEL_IN_FLIGHT_WINDOW = timedelta(hours=24)
 CollectionScope = Literal["all", "highway", "fuel"]
 
 T = TypeVar("T")
@@ -573,7 +586,8 @@ class TransportCollectionService:
         fuel_retry = False
         if fuel_enabled and not fuel_checkpoint_busy and not fuel_storage_only:
             regular_due = await self._fuel_is_due(session)
-            fuel_retry = not regular_due and retry_failed_fuel and await self._fuel_last_attempt_failed(session)
+            fuel_retry = not regular_due and retry_failed_fuel and await self._fuel_last_attempt_failed(
+                session, exclude_run_id=run.id)
         else:
             regular_due = False
         fuel_due = fuel_enabled and not fuel_checkpoint_busy and (fuel_storage_only or regular_due or fuel_retry)
@@ -1539,10 +1553,17 @@ class TransportCollectionService:
         next_due_at = self._effective_fuel_due_at(state)
         return next_due_at is None or now_utc() >= next_due_at
 
-    async def _fuel_last_attempt_failed(self, session: AsyncSession) -> bool:
-        return _fuel_last_attempt_failed(await session.scalar(
+    async def _fuel_last_attempt_failed(self, session: AsyncSession, *, exclude_run_id: int | None = None) -> bool:
+        """실패가 기록됐거나, 결과를 잃은 claim이면(주인 실행이 failed로 닫힘 — `lost_fuel_claim_owner`) 실패다.
+
+        후자는 회수 sensor가 `LOST_FUEL_ATTEMPT_ERROR`를 남기기 전(다음 tick)에도 관리자 재시도가 그 시도를 실패로 보게 한다.
+        """
+        state = await session.scalar(
             select(TransportCollectionState).where(TransportCollectionState.source == OPINET_SOURCE)
-        ))
+        )
+        if _fuel_last_attempt_failed(state):
+            return True
+        return await lost_fuel_claim_owner(session, state, exclude_run_id=exclude_run_id) is not None
 
     def _effective_fuel_due_at(self, state: TransportCollectionState | None) -> datetime | None:
         """수집 진입과 대기는 같은 예정 시각을 사용한다. 성공 예약의 tick 여유만 되돌린다."""
@@ -1990,6 +2011,69 @@ def _fuel_last_attempt_failed(state: TransportCollectionState | None) -> bool:
     if state is None or state.last_error is None or state.last_started_at is None:
         return False
     return state.last_success_at is None or serialize_utc(state.last_success_at) < serialize_utc(state.last_started_at)
+
+
+def _claim_without_outcome(state: TransportCollectionState | None) -> bool:
+    """claim(`last_started_at`) 뒤에 성공도 실패도 기록되지 않았는가(오류 없음, 마지막 성공이 claim보다 이름)."""
+    return (
+        state is not None and state.last_started_at is not None and state.last_error is None
+        and (state.last_success_at is None
+             or serialize_utc(state.last_success_at) < serialize_utc(state.last_started_at))
+    )
+
+
+def fuel_runs_in_flight(trigger: str, *, now: datetime | None = None, exclude_run_id: int | None = None):
+    """진행 중(running)인 그 trigger의 유가 실행을 찾는 조건(`FUEL_IN_FLIGHT_WINDOW` 안에서 시작한 행)."""
+    conditions = [
+        CollectionRun.trigger == trigger,
+        CollectionRun.status == "running",
+        CollectionRun.started_at >= (now or now_utc()) - FUEL_IN_FLIGHT_WINDOW,
+    ]
+    if exclude_run_id is not None:
+        conditions.append(CollectionRun.id != exclude_run_id)
+    return and_(*conditions)
+
+
+async def fuel_claim_owner(session: AsyncSession, claimed_at: datetime):
+    """claim의 주인 — claim 직전 `FUEL_CLAIM_MAX_DELAY` 안에 시작한 마지막 Dagster 유가 실행(id·status·Dagster run ID).
+
+    유가 claim은 실행 행 INSERT와 같은 transaction에서 유가 advisory lock을 쥔 채 하므로 주인이 하나로 정해진다.
+    `claimed_at`은 DB 값 그대로 넘긴다(SQLite는 tz 없는 값을 돌려준다).
+    """
+    return (await session.execute(
+        select(CollectionRun.id, CollectionRun.status, CollectionRun.orchestrator_run_id)
+        .where(
+            CollectionRun.trigger == DAGSTER_FUEL_TRIGGER,
+            CollectionRun.started_at <= claimed_at,
+            CollectionRun.started_at >= claimed_at - FUEL_CLAIM_MAX_DELAY,
+        )
+        .order_by(CollectionRun.started_at.desc(), CollectionRun.id.desc())
+        .limit(1)
+    )).first()
+
+
+async def lost_fuel_claim_owner(
+    session: AsyncSession, state: TransportCollectionState | None, *, exclude_run_id: int | None = None,
+):
+    """결과를 잃은 유가 claim의 주인 실행(없으면 None).
+
+    claim에 결과가 없고(`_claim_without_outcome`), 그 주인 Dagster 실행이 `failed`로 닫혔으며(회수가 닫았거나 실패 기록
+    commit 전에 끝남), 진행 중인 Dagster 유가 실행이 없을 때다. 정상 종료(success·skipped·partial_success)한 실행은 결과를
+    상태 행에 먼저 commit하므로 주인이 failed가 아니면 소실이 아니다 — 성공 시각(체크포인트 완료)이 claim보다 이른 경우를
+    오인하지 않는다. `exclude_run_id`는 지금 막 시작한 자기 실행(관리자 재시도)이다.
+
+    회수 sensor의 소실 기록(`app.dagster.recovery.record_lost_fuel_attempt`)과 관리자 재시도의 실패 판정이 같이 쓴다.
+    그래서 회수가 run 행을 닫은 직후, sensor가 `실행 소실`을 남기기 전에 누른 재시도도 건너뛰지 않는다.
+    """
+    if not _claim_without_outcome(state):
+        return None
+    owner = await fuel_claim_owner(session, state.last_started_at)
+    if owner is None or owner.status != "failed":
+        return None
+    running = await session.scalar(
+        select(CollectionRun.id).where(fuel_runs_in_flight(DAGSTER_FUEL_TRIGGER, exclude_run_id=exclude_run_id)).limit(1)
+    )
+    return owner if running is None else None
 
 
 def _is_transient_database_error(error: BaseException) -> bool:

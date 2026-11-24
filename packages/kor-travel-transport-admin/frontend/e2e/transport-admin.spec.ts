@@ -125,14 +125,16 @@ test("유가 현황에서도 최신 가격 반영 지연을 알린다", async ({
   await expect(alert.getByRole("link", { name: "수집 상태 확인" })).toHaveAttribute("href", "/collections");
 });
 
-test("읽기 모델 상태 행이 없어도 유가 현황에 지연을 알린다", async ({ page }) => {
+test("유가 수집이 실패·정체면 유가 현황에 수집 지연을 알린다(읽기 모델 지연과 구분)", async ({ page }) => {
   await page.route("**/api/transport/transport/collector-status", (route) => route.fulfill({ json: {
     scheduler_enabled: true, collection_enabled: true, client_mode: "live", enabled_sources: ["opinet"],
     fuel_prices_stale: true, sources: [],
   } }));
   await login(page);
   await page.goto("/transport");
-  await expect(page.getByRole("alert").filter({ hasText: "주유소별 최신 가격 반영 지연" })).toBeVisible();
+  const alert = page.getByRole("alert").filter({ hasText: "유가 수집 지연" });
+  await expect(alert).toContainText("마지막으로 성공한 수집 값");
+  await expect(page.getByRole("alert").filter({ hasText: "주유소별 최신 가격 반영 지연" })).toHaveCount(0);
 });
 
 test("지도는 최신 유가 읽기 모델 지연을 유종 필터와 함께 경고한다", async ({ page }) => {
