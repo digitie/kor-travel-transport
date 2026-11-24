@@ -15322,7 +15322,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "장소 지도 혼잡(입장 거절). 계산을 시작하지 않았으며 Retry-After 초 뒤 같은 조건으로 다시 조회할 수 있다.",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 조회하기 전에 기다릴 초",
+                "schema": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "500": {
             "content": {
@@ -15342,7 +15351,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "장소 지도 시한(기본 25초) 초과. 계산을 취소했다. 범위를 좁히거나 Retry-After 초 뒤 다시 조회한다.",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 조회하기 전에 기다릴 초",
+                "schema": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Transport Place Features"

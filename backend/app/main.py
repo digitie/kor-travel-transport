@@ -29,7 +29,7 @@ from types import SimpleNamespace
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from anyio import CapacityLimiter, to_thread
+from anyio import CapacityLimiter
 
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Path as ApiPath, Query, Request, UploadFile
 from fastapi.encoders import jsonable_encoder
@@ -163,7 +163,7 @@ from app.services.fuel_map import FUEL_FACILITY_LABELS, fuel_map_items_statement
 from app.services import place_map_cache
 from app.core.read_timing import observe_page_build
 from app.services.fuel_map_validation import validated_fuel_map_items, validated_place_map_items
-from app.services.place_map_admission import PlaceMapGate, place_map_admission
+from app.services.place_map_admission import PlaceMapGate, place_map_admission, run_in_thread_holding
 from app.services.rail_catalog import metro_station_catalog
 from app.services.reference_export_preparation import warm_rail_reference_revision
 from app.services.analytics import (
@@ -603,7 +603,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             resolved_settings.transport_statistics_max_concurrent_misses
         )
         # 장소 지도: 입장 제한·대기 중 동일 요청 합치기·25초 시한·연결 끊김 취소(MUI-02·04, app/services/place_map_admission.py).
-        app.state.place_map_gate = PlaceMapGate()
+        app.state.place_map_gate = PlaceMapGate(
+            max_running=resolved_settings.places_max_running,
+            max_waiting=resolved_settings.places_max_waiting,
+            deadline_seconds=resolved_settings.places_deadline_seconds,
+        )
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None
         app.state.fuel_scheduler_task = None
@@ -824,6 +828,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "instance": {"type": "string"},
             },
         }
+        # 장소 지도 입장 제한(app/services/place_map_admission.py)의 응답 설명. 둘 다 Retry-After를 준다.
+        retry_after_errors = {
+            ("/v1/transport/features/places", "get", "429"):
+                "장소 지도 혼잡(입장 거절). 계산을 시작하지 않았으며 Retry-After 초 뒤 같은 조건으로 다시 조회할 수 있다.",
+            ("/v1/transport/features/places", "get", "504"):
+                "장소 지도 시한(기본 25초) 초과. 계산을 취소했다. 범위를 좁히거나 Retry-After 초 뒤 다시 조회한다.",
+        }
+        retry_after_header = {
+            "description": "다시 조회하기 전에 기다릴 초",
+            "schema": {"type": "integer", "minimum": 0},
+        }
         documented_errors = {
             ("/v1/parking/analytics/timeseries", "get"): (400,),
             ("/v1/holidays/summary", "get"): (400,),
@@ -882,6 +897,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             }
                         },
                     }
+                    if (path, method, code) in retry_after_errors:
+                        operation["responses"][code]["description"] = retry_after_errors[(path, method, code)]
+                        operation["responses"][code]["headers"] = {"Retry-After": retry_after_header}
         document_history_retry_after(schema)
         app.openapi_schema = schema
         return schema
@@ -1910,21 +1928,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # 모든 SQL이 끝났다. limiter 대기와 thread 검증 동안 풀 연결·transaction을 쥐지 않게 먼저
             # 반납한다(MUI-02). close는 읽은 객체를 만료시키지 않으며 이후 DB를 다시 읽지 않는다.
             await session.close()
-            async with request.app.state.fuel_map_limiter:
-                if fuel_items_raw is not None:
-                    validated_items_json, validated_count = await to_thread.run_sync(
-                        validated_fuel_map_items, fuel_items_raw,
-                    )
-                    if validated_count != validated_items_count:
-                        raise RuntimeError("유가 지도 JSON 항목 수가 조회 결과와 다릅니다.")
-                else:
-                    # 현재 DB 행 전체로 만든 입력만 재사용한다. TTL 없이 가격·위치·원문 투영의
-                    # 변경을 즉시 검증하며, 매 요청 바뀌는 metadata는 캐시에 넣지 않는다.
-                    validated_items_json, validated_items_count = await to_thread.run_sync(
-                        validated_place_map_items, to_json(visible_items),
-                    )
-                    if validated_items_count != len(visible_items):
-                        raise RuntimeError("장소 지도 JSON 항목 수가 조회 결과와 다릅니다.")
+            # 연결이 끊기거나 시한이 지나 취소돼도 검증 thread는 끝까지 돈다. limiter 토큰은 thread가 끝날 때
+            # 반납해 끊김이 잦아도 동시 검증 수가 limiter 안에 머문다(run_in_thread_holding).
+            limiter = request.app.state.fuel_map_limiter
+            if fuel_items_raw is not None:
+                validated_items_json, validated_count = await run_in_thread_holding(
+                    limiter, validated_fuel_map_items, fuel_items_raw,
+                )
+                if validated_count != validated_items_count:
+                    raise RuntimeError("유가 지도 JSON 항목 수가 조회 결과와 다릅니다.")
+            else:
+                # 현재 DB 행 전체로 만든 입력만 재사용한다. TTL 없이 가격·위치·원문 투영의
+                # 변경을 즉시 검증하며, 매 요청 바뀌는 metadata는 캐시에 넣지 않는다.
+                validated_items_json, validated_items_count = await run_in_thread_holding(
+                    limiter, validated_place_map_items, to_json(visible_items),
+                )
+                if validated_items_count != len(visible_items):
+                    raise RuntimeError("장소 지도 JSON 항목 수가 조회 결과와 다릅니다.")
         result = TransportPlaceMapResponse(
             generated_at=now_utc(), kind=selected_kind, total=total,
             fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), truncated=total > (validated_items_count if validated_items_json is not None else len(visible_items)), kind_totals=kind_totals,

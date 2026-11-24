@@ -1,6 +1,7 @@
 """완전한 입력 vector와 RR/시간 경계가 증명한 장소 페이지 재사용."""
 import asyncio
 import json
+import re
 from datetime import timedelta
 from decimal import Decimal
 
@@ -46,8 +47,13 @@ def builds(response):
     return int(response.headers["server-timing"].split('page_builds;desc="')[1].split('"')[0])
 
 
-# 장소 지도 transaction은 시작 직후 서버 문장 상한을 둔다(place_map_admission.limit_statement_time).
-STATEMENT_LIMIT = "SET LOCAL statement_timeout = '25000ms'"
+# 장소 지도 transaction은 시작 직후 남은 시한으로 서버 문장 상한을 둔다(place_map_admission.limit_statement_time).
+STATEMENT_LIMIT = re.compile(r"SET LOCAL statement_timeout = '([1-9][0-9]*)ms'")
+
+
+def statement_limit(statement: str) -> bool:
+    found = STATEMENT_LIMIT.fullmatch(statement)
+    return found is not None and int(found.group(1)) <= 25_000
 
 
 def canonical(c, monkeypatch, path=PATH):
@@ -90,7 +96,7 @@ def test_warm_page_precedes_payload_reads_and_preserves_generated_at(cached, mon
         event.remove(engine, "before_cursor_execute", seen)
     assert body(warm) == expected == canonical(c, monkeypatch)
     assert warm.json()["generated_at"] != first.json()["generated_at"]
-    assert builds(warm) == 0 and len(statements) == 2 and statements[0] == STATEMENT_LIMIT
+    assert builds(warm) == 0 and len(statements) == 2 and statement_limit(statements[0])
     assert "r.versions" in statements[1] and "json_agg(" not in statements[1]
 
 
@@ -575,7 +581,7 @@ def test_warm_limit5000_keeps_full_body_with_one_statement_and_no_assembly(
             cpu.append((time.process_time() - cpu_start) * 1000)
             work["warm"].append(result.headers["server-timing"])
             assert body(result) == expected and builds(result) == 0
-            assert statements[0] == STATEMENT_LIMIT
+            assert statement_limit(statements[0])
             assert len(statements) == 2 and "r.versions" in statements[1]
     finally:
         event.remove(engine, "before_cursor_execute", seen)
