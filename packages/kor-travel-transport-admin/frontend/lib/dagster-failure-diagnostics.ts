@@ -4,6 +4,19 @@ export type FailureEvent = { __typename: string; message?: string; stepKey?: str
 const object = (value: unknown): ObjectValue => value !== null && typeof value === "object" && !Array.isArray(value) ? value as ObjectValue : {};
 const text = (value: unknown) => typeof value === "string" ? value : "";
 
+/** 소통 저장 실패·통계 재대조 지연의 고정 원인 코드(backend `DATABASE_FAILURE_REASONS`, `sqlstate_<등급>`). */
+export const TRAFFIC_REASON_LABELS: Record<string, string> = { statement_timeout: "DB 문장 시간 초과", lock_timeout: "DB 잠금 대기 초과", deadlock: "DB 교착", serialization: "DB 직렬화 충돌", unique_violation: "중복 키 충돌", connection: "DB 연결 오류", client_timeout: "DB 응답 대기 초과", cancelled: "실행 취소·시간 예산 종료", busy: "다른 실행이 통계 갱신 중", database: "기타 DB 오류", other: "기타 오류" };
+export const TRAFFIC_STEP_LABELS: Record<string, string> = { raw_response: "응답 원본 저장", history: "관측 이력 저장", current_upsert: "현재값 승격", touched_statistics: "원천 안 5분 통계", commit: "원천 확정", statistics: "최근 2시간 통계 재대조" };
+/** 허용된 원인 코드만 한국어로 바꾼다. 그 밖의 값은 null(화면에 싣지 않음). */
+export function trafficReasonLabel(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  if (Object.hasOwn(TRAFFIC_REASON_LABELS, value)) return TRAFFIC_REASON_LABELS[value];
+  const sqlstate = value.match(/^sqlstate_([0-9A-Z]{2})$/);
+  return sqlstate ? `DB 오류(SQLSTATE 등급 ${sqlstate[1]})` : null;
+}
+/** 소통 5분 통계 재대조 지연 안내(원본·이번 원본의 통계는 보존, 다음 수집이 자동 복구). */
+export const TRAFFIC_STATISTICS_DEFERRED_NOTE = "원본·통계 보존 · 소통 5분 통계 최근 2시간 재대조 대기 (다음 수집이 자동 복구)";
+
 export const GRID_FAILURE_LABELS:Record<string,string>={PROVIDER_NETWORK:"제공기관 연결 실패",PROVIDER_SERVER:"제공기관 서버 오류",PROVIDER_PARSE:"제공기관 응답 해석 실패",PROVIDER_NO_DATA:"제공기관 자료 없음",DB_LOCK_CONTENTION:"DB 잠금 경합"};
 
 /** JSON metadata 중 고정된 격자 오류 건수만 읽는다. 임의 키·값·원문은 반환하지 않는다. */
@@ -25,7 +38,7 @@ export function gridFailureCounts(raw:unknown):Record<string,number> {
 const reasons: Record<string, [string, string]> = {
   KMA_ALL_GRIDS_FAILED: ["이번 기상청 조회 대상 격자의 수집이 모두 미완료입니다.", "원인별 건수와 제공기관·DB 상태를 확인하고 다음 수집에서 재개하세요. 마지막 정상 자료를 빈 결과로 바꾸지 않습니다."],
   COLLECTION_DEFERRED: ["현재 수집이 진행 중이거나 수집 주기에 따라 이번 실행을 이월했습니다.", "기존 실행과 다음 수집 시각을 확인하세요. 기존 정상 자료는 유지합니다."],
-  DERIVED_CACHE_DEFERRED: ["관측 자료는 저장했지만 파생 조회 캐시 갱신이 지연됐습니다.", "저장 자료는 유지합니다. 다음 캐시 갱신 결과를 확인하세요."],
+  DERIVED_CACHE_DEFERRED: ["관측 자료는 저장했지만 파생 자료(조회 캐시 또는 통계) 갱신이 지연됐습니다.", "저장 자료는 유지합니다. 다음 갱신 결과를 확인하세요."],
   REFERENCE_EXPORT_DEFERRED: ["기준자료의 파생 읽기 본문 준비가 지연됐습니다.", "마지막 정상 읽기 본문을 유지합니다. 다음 준비 실행을 확인하세요."],
   ALERT_PAGE_METADATA: ["특보 응답의 페이지 번호·크기·전체 행 수가 완결성 조건과 다릅니다.", "페이지 진단값과 제공기관 응답 규격을 확인하세요. 잘못된 결과는 게시하지 않았습니다."],
   ALERT_PAGE_ROWS: ["특보 페이지의 선언된 행 수와 실제 행 수가 다릅니다.", "원천 응답을 확인하세요. 마지막 정상 자료를 유지합니다."],
@@ -61,7 +74,8 @@ const reasons: Record<string, [string, string]> = {
 };
 const stages: Record<string, string> = { run_start: "실행 시작", page_request: "원천 페이지 요청", page_validation: "페이지 완결성 검사", publication: "자료 게시", fetch: "원천 요청", normalize: "자료 정규화", publish: "DB 게시", storage: "DB 저장", provider_parse: "제공기관 응답 해석", provider_fetch: "제공기관 요청", collection: "수집 실행", validation: "원천 자료 규격 검사" };
 const steps: Record<string, string> = { kma_regional_alert_events_sync: "지역별 기상특보 수집", collect_highway_transport: "고속도로 소통·돌발 수집", collect_fuel_transport: "주유소·유가 수집", collect_vadahub_reference: "배편 기준자료 수집", weather_short_forecast_retention: "단기예보 정리" };
-const numbers: Record<string, string> = { planned_grids: "계획 격자 수", failed_grids: "미완료 격자 수", deferred_grids: "재개 대기 격자 수", requested_page: "요청 페이지", returned_page: "반환 페이지", page_size: "페이지 크기", total_count: "전체 행 수", expected_rows: "예상 행 수", returned_rows: "반환 행 수", requests_fetched: "요청 횟수", http_status: "HTTP 상태", received_rows: "수신 행 수", parsed_rows: "파싱 행 수", invalid_rows: "불량 행 수", fetch_ms: "요청 소요(ms)", normalize_ms: "정규화 소요(ms)", publish_ms: "게시 소요(ms)", published_values: "저장 값 수", completed_grids: "완료 격자 수", run_id: "저장 실행 ID", error_count: "오류 수", raw_response_count: "저장 원문 수", traffic_snapshot_count: "소통 저장 수", incident_snapshot_count: "돌발 저장 수", fuel_station_count: "주유소 저장 수", fuel_price_count: "가격 저장 수", failed_dataset_count: "실패 데이터셋 수", successful_dataset_count: "성공 데이터셋 수" };
+const trafficDeferredReason: [string, string] = ["고속도로 소통 원본과 이번 원본의 5분 통계는 저장했지만 최근 2시간 통계 재대조가 미뤄졌습니다.", "원본·성공 상태·이번 원본의 통계는 유지합니다. 다음 정기 수집이 최근 2시간을 다시 만듭니다. 여러 번 연속되면 지연 원인과 소통 통계 재대조 시간을 확인하세요."];
+const numbers: Record<string, string> = { planned_grids: "계획 격자 수", failed_grids: "미완료 격자 수", deferred_grids: "재개 대기 격자 수", requested_page: "요청 페이지", returned_page: "반환 페이지", page_size: "페이지 크기", total_count: "전체 행 수", expected_rows: "예상 행 수", returned_rows: "반환 행 수", requests_fetched: "요청 횟수", http_status: "HTTP 상태", received_rows: "수신 행 수", parsed_rows: "파싱 행 수", invalid_rows: "불량 행 수", fetch_ms: "요청 소요(ms)", normalize_ms: "정규화 소요(ms)", publish_ms: "게시 소요(ms)", published_values: "저장 값 수", completed_grids: "완료 격자 수", run_id: "저장 실행 ID", error_count: "오류 수", raw_response_count: "저장 원문 수", traffic_snapshot_count: "소통 저장 수", incident_snapshot_count: "돌발 저장 수", fuel_station_count: "주유소 저장 수", fuel_price_count: "가격 저장 수", failed_dataset_count: "실패 데이터셋 수", successful_dataset_count: "성공 데이터셋 수", traffic_history_seconds: "소통 이력 저장(초)", traffic_current_upsert_seconds: "소통 현재값 승격(초)", traffic_touched_statistics_seconds: "원천 안 5분 통계(초)", traffic_statistics_seconds: "소통 통계 재대조(초)", traffic_unchanged_rows: "소통 반복 관측(확인만)", traffic_touched_buckets: "원천 안 재집계 5분 구간" };
 const fieldNames = new Set(["totalCount", "pageNo", "numOfRows"]);
 const fieldTypes = new Set(["null", "boolean", "integer", "number", "string", "object", "array"]);
 const classNames = new Set(["Failure", "AlertCollectionError", "KrexParseError", "TimeoutError", "RuntimeError", "ValueError", "KeyError", "TypeError", "OperationalError", "IntegrityError", "DagsterExecutionStepExecutionError", "SchemaError", "ValidationError"]);
@@ -85,7 +99,9 @@ function metadata(raw: unknown): ObjectValue {
   for (const value of entries.slice(0, 64)) {
     const entry = object(value), label = text(entry.label);
     const number = entry.intValue ?? entry.floatValue;
-    if ((label === "retryable" || label === "successful_data_preserved" || label === "auto_retry") && typeof entry.boolValue === "boolean") result[label] = entry.boolValue;
+    if ((label === "retryable" || label === "successful_data_preserved" || label === "auto_retry" || label === "traffic_statistics_refreshed" || label === "traffic_source_committed") && typeof entry.boolValue === "boolean") result[label] = entry.boolValue;
+    else if ((label === "traffic_statistics_deferred_reason" || label === "traffic_store_failure_reason") && trafficReasonLabel(entry.text) !== null) result[label] = entry.text;
+    else if (label === "traffic_failed_step" && Object.hasOwn(TRAFFIC_STEP_LABELS, text(entry.text))) result[label] = entry.text;
     else if (Object.hasOwn(values, label) && Object.hasOwn(values[label], text(entry.text))) result[label] = entry.text;
     else if (label === "error_type" && classNames.has(text(entry.text))) result[label] = entry.text;
     else if (Object.hasOwn(numbers, label) && typeof number === "number" && Number.isFinite(number) && number >= 0 && number <= 1_000_000_000) result[label] = number;
@@ -123,7 +139,9 @@ export function failureDiagnostic(raw: unknown): string {
     const match = input.match(new RegExp(`\\b${key}=([0-9]{1,9})\\b`));
     if (match && data[key] === undefined) data[key] = Number(match[1]);
   }
-  const code = codeFor(input, data), [reason, retry] = reasons[code];
+  const code = codeFor(input, data);
+  // 같은 DERIVED_CACHE_DEFERRED라도 소통 5분 통계 재대조 지연은 "캐시"가 아니므로 고정 사유를 바꾼다.
+  const [reason, retry] = code === "DERIVED_CACHE_DEFERRED" && data.traffic_statistics_refreshed === false ? trafficDeferredReason : reasons[code];
   const lines = [`오류 코드: ${code}`, `실패 단계: ${(Object.hasOwn(stages, text(data.stage)) ? stages[text(data.stage)] : Object.hasOwn(steps, text(event.stepKey)) ? steps[text(event.stepKey)] : "작업 실행")}`, `원인: ${reason}`, `대응: ${retry}`];
   const classes = [...new Set(chain.map(item => text(item.className)).filter(name => classNames.has(name)))];
   if (classes.length) lines.push(`오류 유형: ${classes.join(" → ")}`);
@@ -133,6 +151,8 @@ export function failureDiagnostic(raw: unknown): string {
   if (typeof data.auto_retry === "boolean") lines.push(`자동 재시도: ${data.auto_retry ? "예 · 같은 실행에서 잠시 뒤 다시 시도" : "아니오 · 필요하면 재시도 버튼으로 다시 실행"}`);
   if (typeof data.successful_data_preserved === "boolean") lines.push(`성공 저장분 보존: ${data.successful_data_preserved ? "예" : "확인 필요"}`);
   if (data.metadata_field) lines.push(`검사 필드: ${data.metadata_field} · 응답 형식: ${data.metadata_type ?? "미제공"}`);
+  if (data.traffic_statistics_refreshed === false) lines.push(`소통 5분 통계 재대조: 대기${data.traffic_statistics_deferred_reason ? ` · 원인 ${trafficReasonLabel(data.traffic_statistics_deferred_reason)}` : ""} · 다음 수집이 자동 복구`);
+  if (data.traffic_source_committed === false) lines.push(`소통 원천 저장: 되돌림${data.traffic_failed_step ? ` · 단계 ${TRAFFIC_STEP_LABELS[text(data.traffic_failed_step)]}` : ""}${data.traffic_store_failure_reason ? ` · 원인 ${trafficReasonLabel(data.traffic_store_failure_reason)}` : ""} · 마지막 정상 자료 유지`);
   for (const [key, label] of Object.entries(numbers)) if (data[key] !== undefined) lines.push(`${label}: ${data[key]}`);
   for(const [code,count] of Object.entries(gridFailureCounts(object(event.failureMetadata).metadataEntries))) lines.push(`격자 원인 · ${GRID_FAILURE_LABELS[code]}: ${count}`);
   return lines.join("\n");

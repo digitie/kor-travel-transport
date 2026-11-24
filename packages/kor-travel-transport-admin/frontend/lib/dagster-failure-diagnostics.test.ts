@@ -136,3 +136,18 @@ describe("격자 실패 JSON의 고정 진단",()=>{
  it.each(["{","[]",JSON.stringify({PROVIDER_NETWORK:"2",PROVIDER_SERVER:-1,PROVIDER_PARSE:0.2,PROVIDER_NO_DATA:1e10,DB_LOCK_CONTENTION:{private:"private-canary"}}),JSON.stringify({PROVIDER_NETWORK:1,padding:"x".repeat(4096)}),JSON.stringify({PROVIDER_NETWORK:1,padding:"한".repeat(2000)})])("잘못되거나 4KB를 넘는 JSON은 원문 없이 제외한다",jsonString=>{expect(gridFailureCounts([{label:"grid_failure_counts",jsonString}])).toEqual({});});
  it("0은 보존하고 임의 metadata JSON은 읽지 않는다",()=>{expect(gridFailureCounts([{label:"grid_failure_counts",jsonString:'{"PROVIDER_NETWORK":0,"private":"private-canary"}'}])).toEqual({PROVIDER_NETWORK:0});expect(gridFailureCounts([{label:"private",jsonString:'{"PROVIDER_NETWORK":2}'}])).toEqual({});});
 });
+
+describe("소통 저장·통계 재대조 진단(WLH-06)",()=>{
+ const entries=(extra:unknown[])=>({failureMetadata:{metadataEntries:[{label:"error_code",text:"DERIVED_CACHE_DEFERRED"},...extra]}});
+ it("통계 재대조 지연은 캐시가 아닌 고정 사유·원인·시간으로 설명한다",()=>{
+  const text=failureDiagnostic(entries([{label:"traffic_statistics_refreshed",boolValue:false},{label:"traffic_statistics_deferred_reason",text:"lock_timeout"},{label:"traffic_statistics_seconds",floatValue:12.5}]));
+  expect(text).toContain("최근 2시간 통계 재대조가 미뤄졌습니다");expect(text).toContain("DB 잠금 대기 초과");expect(text).toContain("소통 통계 재대조(초): 12.5");expect(text).not.toContain("조회 캐시 또는 통계");
+ });
+ it("다른 파생 지연은 일반 사유를 유지한다",()=>{const text=failureDiagnostic(entries([]));expect(text).toContain("조회 캐시 또는 통계");});
+ it("소통 저장 실패의 단계·원인 코드만 고정 문구로 싣고 임의 값은 버린다",()=>{
+  const text=failureDiagnostic({failureMetadata:{metadataEntries:[{label:"error_code",text:"DATABASE_RETRYABLE"},{label:"traffic_source_committed",boolValue:false},{label:"traffic_failed_step",text:"touched_statistics"},{label:"traffic_store_failure_reason",text:"statement_timeout"},{label:"traffic_history_seconds",floatValue:3.25}]}});
+  expect(text).toContain("소통 원천 저장: 되돌림 · 단계 원천 안 5분 통계 · 원인 DB 문장 시간 초과");expect(text).toContain("소통 이력 저장(초): 3.25");
+  const unsafe=failureDiagnostic({failureMetadata:{metadataEntries:[{label:"traffic_source_committed",boolValue:false},{label:"traffic_failed_step",text:"private-canary"},{label:"traffic_store_failure_reason",text:"sqlstate_x; private-canary"}]}});
+  expect(unsafe).toContain("소통 원천 저장: 되돌림 · 마지막 정상 자료 유지");expect(unsafe).not.toContain("private-canary");
+ });
+});

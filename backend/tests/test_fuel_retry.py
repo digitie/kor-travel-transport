@@ -117,7 +117,8 @@ def test_last_attempt_failed_needs_an_error_newer_than_the_last_success() -> Non
 def test_highway_marks_source_success_only_after_storing(tmp_path: Path) -> None:
     """상태 행 UPDATE는 places revision 행(문장 trigger)을 commit까지 잠근다. 2026-11-23 odroid 표본에서 소통
     저장 transaction이 그 잠금을 175초 이상 쥐어 다른 수집기의 상태 claim이 lock_timeout(5초)으로 실패했다.
-    성공 표시는 저장·통계 갱신을 모두 마친 뒤여야 한다."""
+    성공 표시는 저장(이번 저장이 바꾼 bucket의 5분 통계 포함)을 모두 마친 뒤 commit 직전이다. 최근 두 시간 창
+    재대조는 원천 commit 뒤 별도 transaction이고(WLH-06), 돌발 원천까지 확정한 다음에 한다."""
     settings = build_settings(tmp_path)
     provider = FakeTransportProvider()
     order: list[str] = []
@@ -160,8 +161,8 @@ def test_highway_marks_source_success_only_after_storing(tmp_path: Path) -> None
 
     result, incident_state, collected, traffic_state = asyncio.run(run())
     assert result["status"] == "success"
-    assert order == ["store:traffic", "statistics", f"mark:{TRAFFIC_SOURCE}",
-                     "store:incident", f"mark:{INCIDENT_SOURCE}"]
+    assert order == ["store:traffic", f"mark:{TRAFFIC_SOURCE}",
+                     "store:incident", f"mark:{INCIDENT_SOURCE}", "statistics"]
     # 돌발 상태의 성공 시각은 저장 단계가 맞춘 관측 collected_at이다(ADR-013 현재 집합 경계).
     assert serialize_utc(incident_state.last_success_at) == serialize_utc(collected)
     assert incident_state.last_error is None and traffic_state.last_error is None

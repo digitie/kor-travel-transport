@@ -52,7 +52,8 @@ from app.services.rest_area_collection import REST_AREA_FUEL_SOURCE, RestAreaCol
 from app.services.public_parking_collection import PublicParkingCollectionService
 from app.services.reference_export_preparation import prepare_reference_exports as prepare_reference_export_bodies
 from app.services.transport_collection import (
-    OPINET_SOURCE, CollectionScope, TransportCollectionService, _is_transient_database_error,
+    DATABASE_FAILURE_REASONS, OPINET_SOURCE, TRAFFIC_STORE_STEPS, CollectionScope, TransportCollectionService,
+    _is_transient_database_error,
 )
 
 #: 실행 상한(초). 공용 Dagster instance의 전역 상한(6시간, Manager `config/dagster-shared/dagster.yaml`)은
@@ -490,6 +491,8 @@ def _collection_failure_metadata(result: dict[str, Any], scope: str) -> dict[str
         "retryable": retryable, "status": result["status"], "run_id": result["collection_run_id"],
         "error_count": len(errors) if isinstance(errors, (list, tuple)) else 0,
         "successful_data_preserved": True,
+        # 소통 저장이 rollback된 실행도 어느 단계에서 얼마를 썼는지 보이게 한다(WLH-06).
+        **_traffic_store_metadata(result),
     }
     for key in ("raw_response_count", "traffic_snapshot_count", "incident_snapshot_count", "fuel_station_count",
                 "fuel_price_count", "isolated_rows"):
@@ -513,6 +516,40 @@ def _has_collection_progress(result: dict[str, Any]) -> bool:
     ))
 
 
+#: 고속도로 소통 저장 계측 metadata 키(`TrafficStoreReport.summary`·`highway_fetch_seconds`, WLH-06).
+TRAFFIC_STORE_COUNT_KEYS = (
+    "traffic_inserted_rows", "traffic_changed_rows", "traffic_unchanged_rows", "traffic_touched_buckets",
+    "traffic_out_of_window_buckets",
+)
+TRAFFIC_STORE_SECONDS_KEYS = (
+    "highway_fetch_seconds", *(f"traffic_{step}_seconds" for step in TRAFFIC_STORE_STEPS),
+)
+TRAFFIC_STORE_REASON_KEYS = ("traffic_store_failure_reason", "traffic_statistics_deferred_reason")
+
+
+def _traffic_store_metadata(result: dict[str, Any]) -> dict[str, Any]:
+    """소통 저장의 행 분류·단계별 시간(초)·원인 코드. 값은 형식·범위를 검사한 고정 값만 싣는다."""
+    metadata: dict[str, Any] = {}
+    for key in TRAFFIC_STORE_COUNT_KEYS:
+        value = result.get(key)
+        if type(value) is int and 0 <= value <= 1_000_000_000:
+            metadata[key] = value
+    for key in TRAFFIC_STORE_SECONDS_KEYS:
+        value = result.get(key)
+        if type(value) is float and 0 <= value <= 86_400:
+            metadata[key] = value
+    for key in ("traffic_source_committed", "traffic_statistics_refreshed"):
+        if type(result.get(key)) is bool:
+            metadata[key] = result[key]
+    if result.get("traffic_failed_step") in TRAFFIC_STORE_STEPS:
+        metadata["traffic_failed_step"] = result["traffic_failed_step"]
+    for key in TRAFFIC_STORE_REASON_KEYS:
+        value = result.get(key)
+        if isinstance(value, str) and (value in DATABASE_FAILURE_REASONS or re.fullmatch(r"sqlstate_[0-9A-Z]{2}", value)):
+            metadata[key] = value
+    return metadata
+
+
 def _collection_output_metadata(result: dict[str, Any], scope: str) -> dict[str, Any]:
     """Dagster 실행 완료와 원천 전체 갱신을 구분하는 안전한 결과 metadata."""
     status = result.get("status", "unknown")
@@ -522,7 +559,8 @@ def _collection_output_metadata(result: dict[str, Any], scope: str) -> dict[str,
     )
     statistics_deferred = (
         status in {"success", "partial_success"}
-        and result.get("fuel_statistics_published") is False
+        and (result.get("fuel_statistics_published") is False
+             or result.get("traffic_statistics_refreshed") is False)
     )
     if statistics_deferred:
         outcome = "partial"
@@ -538,6 +576,8 @@ def _collection_output_metadata(result: dict[str, Any], scope: str) -> dict[str,
     for key in ("fuel_ready", "fuel_statistics_published", "cache_refresh_failed"):
         if type(result.get(key)) is bool:
             metadata[key] = result[key]
+    # 고속도로 소통 저장의 행 분류·단계별 시간(초)·원인 코드(WLH-06). 운영 175초+ 저장 transaction을 단계별로 본다.
+    metadata.update(_traffic_store_metadata(result))
     # 이전 통계 세대 정리(원천 성공과 분리). 실패·예산 소진도 결과 종류와 행 수로 보이게 한다.
     if result.get("fuel_statistics_cleanup") in {"done", "budget_exhausted", "failed"}:
         metadata["fuel_statistics_cleanup"] = result["fuel_statistics_cleanup"]
@@ -611,16 +651,26 @@ def _collect_transport(
     return result
 
 
+#: 고속도로 op 동안 Dagster event log로 넘기는 logger(소통 저장 단계 시간·통계 재대조 지연, WLH-06).
+HIGHWAY_PROGRESS_LOGGERS = ("app.services.transport_collection",)
+
+
 @op
 @_redact_op_errors
 def collect_highway_transport(context) -> dict[str, Any]:
-    with collection_owner(context.run_id, context.instance):
+    # 소통 저장 단계 시간 한 줄과 통계 재대조 지연 경고(가린 원인)를 Dagster event log로 넘긴다.
+    with collection_owner(context.run_id, context.instance), _forward_progress_logs(context, HIGHWAY_PROGRESS_LOGGERS):
         result = _collect_transport("highway", scheduled_at=_scheduled_execution_time(context))
         metadata = _collection_output_metadata(result, "highway")
         context.add_output_metadata(metadata)
         _record_collection_outcome(context, metadata["collection_outcome"])
         if result.get("collection_outcome") == "partial":
             context.log.warning("고속도로 수집의 정상 원천은 저장했습니다. 실패한 원천은 후속 주기에 다시 수집합니다.")
+        if result.get("traffic_statistics_refreshed") is False:
+            reason = metadata.get("traffic_statistics_deferred_reason", "unknown")
+            context.log.warning(f"고속도로 소통 5분 통계의 최근 두 시간 재대조가 미뤄졌습니다(reason={reason}). "
+                                "원본·current·이번 원본의 bucket 통계·성공 상태는 저장했고 다음 정기 수집이 최근 두 "
+                                "시간을 다시 만듭니다.")
         return result
 
 

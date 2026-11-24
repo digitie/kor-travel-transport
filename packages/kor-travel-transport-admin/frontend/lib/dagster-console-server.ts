@@ -3,7 +3,7 @@ import { ADMIN_ACTOR_TAG, ADMIN_RETRY_OF_TAG, DAGSTER_LOCATION_NAME, DAGSTER_REP
   CONSOLE_CATALOG_QUERY, CONSOLE_RUN_QUERY, BASIC_RUN_QUERY, CONSOLE_EVENTS_QUERY, FIND_REQUEST, ACTIVE_JOB, LAUNCH, CANCEL, START_SCHEDULE, STOP_SCHEDULE, START_SENSOR, STOP_SENSOR
 } from "./dagster-scope";
 export { CONSOLE_CATALOG_QUERY, CONSOLE_RUN_QUERY, CONSOLE_EVENTS_QUERY } from "./dagster-scope";
-import { failureDiagnostic, gridFailureCounts } from "./dagster-failure-diagnostics";
+import { TRAFFIC_STATISTICS_DEFERRED_NOTE, TRAFFIC_STEP_LABELS, failureDiagnostic, gridFailureCounts, trafficReasonLabel } from "./dagster-failure-diagnostics";
 import { CONSOLE_ACTIVE, CONSOLE_COUNT_LABELS, type ConsoleActionRequest, type ConsoleActionResult, type ConsoleAudit, type ConsoleCatalog, type ConsoleEvent, type ConsoleRequest, type ConsoleRunDetail } from "./dagster-console-model";
 
 type Row = Record<string, unknown>;
@@ -101,6 +101,12 @@ function safeMetadata(entries: unknown) {
     if (key === "fuel_statistics_cleanup" && item.text === "failed") { notes.push("원본 보존 · 이전 유가 통계 정리 실패 · 다음 수집에서 다시 정리"); warning = true; }
     if (key === "fuel_statistics_cleanup" && item.text === "budget_exhausted") notes.push("이전 유가 통계 정리 진행 중 · 남은 세대는 다음 수집에서 이어 정리");
     if (key === "cache_refresh_failed" && item.boolValue === true) { notes.push("읽기 캐시 갱신 지연 · 저장 자료는 유지"); warning = true; }
+    // 고속도로 소통 5분 통계 재대조 지연(WLH-06). error_code가 격리·제공기관 코드여도 따로 보인다.
+    if (key === "traffic_statistics_refreshed" && item.boolValue === false && !notExecuted) { notes.push(TRAFFIC_STATISTICS_DEFERRED_NOTE); warning = true; }
+    if (key === "traffic_statistics_deferred_reason" && trafficReasonLabel(item.text) !== null) notes.push(`재대조 지연 원인: ${trafficReasonLabel(item.text)}`);
+    if (key === "traffic_source_committed" && item.boolValue === false) { notes.push("소통 원천 저장 되돌림 · 마지막 정상 자료 유지"); warning = true; }
+    if (key === "traffic_failed_step" && Object.hasOwn(TRAFFIC_STEP_LABELS, string(item.text))) notes.push(`소통 저장 중단 단계: ${TRAFFIC_STEP_LABELS[string(item.text)]}`);
+    if (key === "traffic_store_failure_reason" && trafficReasonLabel(item.text) !== null) notes.push(`소통 저장 실패 원인: ${trafficReasonLabel(item.text)}`);
     if (["successful_data_preserved", "previous_data_preserved"].includes(key) && item.boolValue === true) notes.push("정상 저장분 보존");
     if (key === "deferred_reason" && item.text === "collector_busy") notes.push("같은 수집이 이미 진행 중입니다.");
     if (key === "deferred_reason" && item.text === "cooldown_or_disabled") notes.push("수집 주기 또는 원천 활성 상태에 따라 대기합니다.");

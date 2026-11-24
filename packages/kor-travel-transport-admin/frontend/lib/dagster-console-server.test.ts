@@ -278,3 +278,26 @@ describe("이전 유가 통계 정리 결과",()=>{
   expect(result.warning).toBe(false);expect(result.detail??"").not.toContain("정리");expect(JSON.stringify(result)).not.toContain("private-canary");
  });
 });
+
+describe("소통 5분 통계 재대조 지연(WLH-06)",()=>{
+ const note="원본·통계 보존 · 소통 5분 통계 최근 2시간 재대조 대기 (다음 수집이 자동 복구)";
+ const output=(metadataEntries:unknown[])=>sanitizeConsoleEvents([{__typename:"ExecutionStepOutputEvent",timestamp:"1780000000000",stepKey:"collect_highway_transport",metadataEntries}])[0];
+ it("명시적 False는 고정 안내·원인·단계 시간을 보이고 캐시 지연으로 설명하지 않는다",()=>{
+  const result=output([{label:"status",text:"success"},{label:"collection_outcome",text:"partial"},{label:"error_code",text:"DERIVED_CACHE_DEFERRED"},{label:"traffic_statistics_refreshed",boolValue:false},{label:"traffic_statistics_deferred_reason",text:"statement_timeout"},{label:"traffic_statistics_seconds",floatValue:61.2},{label:"traffic_unchanged_rows",intValue:830}]);
+  expect(result.warning).toBe(true);expect(result.detail).toContain(note);expect(result.detail).toContain("DB 문장 시간 초과");expect(result.detail).toContain("최근 2시간 통계 재대조가 미뤄졌습니다");
+  expect(result.detail).not.toContain("조회 캐시 또는 통계");expect(result.counts).toMatchObject({traffic_statistics_seconds:61.2,traffic_unchanged_rows:830});
+ });
+ it.each(["INVALID_ROWS_ISOLATED","PROVIDER_RATE_LIMIT"])("error_code %s여도 재대조 안내를 따로 보인다",code=>{
+  const result=output([{label:"status",text:"partial_success"},{label:"collection_outcome",text:"partial"},{label:"error_code",text:code},{label:"traffic_statistics_refreshed",boolValue:false},{label:"traffic_statistics_deferred_reason",text:"busy"}]);
+  expect(result.warning).toBe(true);expect(result.detail).toContain(note);expect(result.detail).toContain(code);expect(result.detail).toContain("다른 실행이 통계 갱신 중");
+ });
+ it("True·미제공은 안내를 만들지 않고 임의 원인 문자열은 버린다",()=>{
+  for(const entries of [[{label:"traffic_statistics_refreshed",boolValue:true}],[]]){const result=output([{label:"status",text:"success"},...entries]);expect(result.warning).toBe(false);expect(result.detail??"").not.toContain(note);}
+  const result=output([{label:"traffic_statistics_refreshed",boolValue:false},{label:"traffic_statistics_deferred_reason",text:"private-canary"}]);
+  expect(result.detail).toContain(note);expect(JSON.stringify(result)).not.toContain("private-canary");
+ });
+ it("원천 저장 되돌림은 단계·원인과 함께 경고로 보인다",()=>{
+  const result=output([{label:"status",text:"partial_success"},{label:"traffic_source_committed",boolValue:false},{label:"traffic_failed_step",text:"history"},{label:"traffic_store_failure_reason",text:"sqlstate_22"},{label:"traffic_history_seconds",floatValue:59.9}]);
+  expect(result.warning).toBe(true);expect(result.detail).toContain("소통 원천 저장 되돌림");expect(result.detail).toContain("관측 이력 저장");expect(result.detail).toContain("SQLSTATE 등급 22");expect(result.counts.traffic_history_seconds).toBe(59.9);
+ });
+});
