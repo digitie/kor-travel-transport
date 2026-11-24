@@ -6,8 +6,7 @@ import json
 from time import monotonic
 from uuid import uuid4
 
-from asyncpg import PostgresError
-from fastapi import HTTPException
+from asyncpg import InterfaceError, PostgresError
 from sqlalchemy import (
     Text,
     bindparam,
@@ -25,6 +24,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import DBAPIError
 
+from app.core.problems import ProblemCode, unavailable
 from app.core.read_timing import observe_fingerprint, observe_native_statement
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import (
@@ -38,12 +38,14 @@ from app.services.export_current import (
     MAX_SNAPSHOT_BYTES,
     MAX_SNAPSHOT_ITEMS,
     SnapshotRace,
+    budget_exceeded,
 )
 
 
 def _budget(started):
-    if monotonic() - started > 15:
-        raise HTTPException(503, "reference 본문 구성 시간 상한을 초과했습니다.")
+    # 요청 경로의 `started`는 첫 시도의 시작이다(`export_current.build_started`, 재시도와 예산 공유).
+    if budget_exceeded(started):
+        raise unavailable(ProblemCode.EXPORT_PREPARE_TIMEOUT, "reference 본문 구성 시간 상한을 초과했습니다.")
 
 
 async def _pin_current(session, artifact):
@@ -84,10 +86,16 @@ async def _store_items(session, artifact_id, encoded, started):
                         schema_name=table.schema,
                     )
             except PostgresError as exc:
-                # 같은 reader의 40001/55P03 재시도와 rollback 경계를 유지한다.
+                # 같은 reader의 40001/55P03 재시도와 rollback 경계를 유지한다. 끊긴 연결(08003 등)도 SQLSTATE로 분류된다.
                 raise DBAPIError(None, None, exc) from exc
+            except (InterfaceError, OSError) as exc:
+                # SQLSTATE 없는 driver 연결 오류(닫힌 연결·소켓 끊김)는 SQLAlchemy의 asyncpg disconnect 판정과 같게
+                # 연결 무효로 표시해 export 경로의 503 TRANSIENT_DB로 가른다. 그 밖의 InterfaceError는 그대로 500이다.
+                if isinstance(exc, InterfaceError) and "connection is closed" not in str(exc):
+                    raise
+                raise DBAPIError(None, None, exc, connection_invalidated=True) from exc
             if status != f"COPY {len(bodies)}":
-                raise HTTPException(503, "reference 본문 저장 수량이 일치하지 않습니다.")
+                raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "reference 본문 저장 수량이 일치하지 않습니다.")
         elif session.bind.dialect.name == "postgresql":
             # 다른 PostgreSQL driver는 기존 한 bind JSON 배열 경로를 유지한다.
             rows = func.jsonb_array_elements(cast(bindparam("bodies", type_=Text), JSONB)).table_valued(
@@ -96,7 +104,7 @@ async def _store_items(session, artifact_id, encoded, started):
                 select(literal(artifact_id), rows.c.ordinal + offset, rows.c.value))
             result = await session.execute(stmt, {"bodies": (b"[" + b",".join(bodies) + b"]").decode("utf-8")})
             if result.rowcount != len(bodies):
-                raise HTTPException(503, "reference 본문 저장 수량이 일치하지 않습니다.")
+                raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "reference 본문 저장 수량이 일치하지 않습니다.")
         else:
             await session.execute(insert(table), [{"artifact_id": artifact_id, "ordinal": offset + i + 1,
                 "payload": json.loads(body)} for i, body in enumerate(bodies)])
@@ -123,10 +131,10 @@ async def prepare_artifact(session, heads, spec, input_revision, *, started=None
             body = json.dumps(item, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
             size += len(body);count += 1
             if size > MAX_SNAPSHOT_BYTES or count > MAX_SNAPSHOT_ITEMS:
-                raise HTTPException(503, "reference 본문 크기 상한을 초과했습니다.")
+                raise unavailable(ProblemCode.EXPORT_TOO_LARGE, "reference 본문 크기 상한을 초과했습니다.")
             digest.update(body + b"\n");encoded.append(body)
     if not count:
-        raise HTTPException(503, "빈 reference 본문을 승인하지 않습니다.")
+        raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "빈 reference 본문을 승인하지 않습니다.")
     table = ReferenceExportArtifact.__table__
     factory = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
     artifact_id = str(uuid4())

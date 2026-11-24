@@ -46,6 +46,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.problems import FAST_SOURCE_RETRY_AFTER_SECONDS, ProblemCode, source_retry_after_seconds, unavailable
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import (
     Airport,
@@ -79,6 +80,7 @@ from app.services.export_price_history import build_price_history_router
 from app.services.parking_history_cache import accepts_gzip
 from app.services.rest_area_collection import REST_AREA_FUEL_SOURCE, REST_AREA_SOURCE
 from app.services.transport_collection import (
+    FUEL_FETCH_TIMEOUT_SECONDS,
     FUEL_STALE_AFTER,
     INCIDENT_SOURCE,
     OPINET_SOURCE,
@@ -93,11 +95,22 @@ CURRENT_SET_WINDOW = timedelta(days=3)
 INCIDENT_ACTIVE_SET_MAX_AGE = timedelta(minutes=30)
 #: 참조 데이터 stale 기준 — 마지막 **성공** 수집에서 이만큼 지나면 503(그 사이의 실패한 시도는 503 사유가
 #: 아니다). 정기 주기(유가 8시간·휴게소 1일·휴게소 유가 4시간)의 약 3배. 오피넷은 공개 API의 유가
-#: 신선도(`FUEL_STALE_AFTER`)와 같은 값을 쓴다.
+#: 신선도(`FUEL_STALE_AFTER`, 24시간)에 유가 수집 한 번의 상한(`FUEL_FETCH_TIMEOUT_SECONDS`, 3.5시간)을 더한다.
+#: 유예는 첫 성공의 **완료** 시각부터 재는데 다음 정기 시도는 시작 기준 8시간 tick이라, 세 번째 시도가 첫 성공보다
+#: 오래 걸리면 그 차이만큼 503이 났다(ADR-013 남은 틈 (1), 감사 G1-F4(a), 2026-11-24). 공개 화면의 유가
+#: 신선도 표시는 그대로 24시간이고, Map Valkey max_age(48시간)보다 작게 둔다.
 REFERENCE_STALE_AFTER = {
-    OPINET_SOURCE: FUEL_STALE_AFTER,
+    OPINET_SOURCE: FUEL_STALE_AFTER + timedelta(seconds=FUEL_FETCH_TIMEOUT_SECONDS),
     REST_AREA_SOURCE: timedelta(days=3),
     REST_AREA_FUEL_SOURCE: timedelta(hours=12),
+}
+#: stale 503의 `Retry-After` 힌트 계산에 쓰는 수집 한 번의 예상 수행 시간. 진행 중인 수집은 시작 + 이 시간,
+#: 아니면 다음 예정 + 이 시간 뒤에 새 성공을 기대한다(ADR-013 개정 2026-11-24). 유가는 odroid 성공 run
+#: 5,946~6,371초를 덮는 2시간이다.
+EXPECTED_RUN_DURATION = {
+    OPINET_SOURCE: timedelta(hours=2),
+    REST_AREA_SOURCE: timedelta(minutes=10),
+    REST_AREA_FUEL_SOURCE: timedelta(minutes=10),
 }
 MAX_PAGE_SIZE = 1000
 #: keyset cursor는 int4 PK다. 범위 밖 값은 bind 단계에서 DataError(일반 500)가 되므로 422로 막는다(감사 T1-09).
@@ -203,7 +216,7 @@ def build_service_export_router(
         """오피넷 주유소와 유종별 최신 가격. 안정 ID(uni_id)가 없는 행은 내보내지 않는다."""
         await _begin_snapshot(session)
         state = await _state(session, OPINET_SOURCE)
-        collection = _require_current(_reference_collection(OPINET_SOURCE, state))
+        collection = _require_current(_reference_collection(OPINET_SOURCE, state), state)
         after = _decode_cursor(cursor)
         query = (
             select(*_FUEL_STATION_COLUMNS)
@@ -236,7 +249,7 @@ def build_service_export_router(
         """고속도로 휴게소 기준정보(data.go.kr 표준데이터)."""
         await _begin_snapshot(session)
         state = await _state(session, REST_AREA_SOURCE)
-        collection = _require_current(_reference_collection(REST_AREA_SOURCE, state))
+        collection = _require_current(_reference_collection(REST_AREA_SOURCE, state), state)
         query = (
             select(*_REST_AREA_COLUMNS)
             .where(RestAreaReference.source == REST_AREA_SOURCE, RestAreaReference.id > _decode_cursor(cursor))
@@ -261,7 +274,7 @@ def build_service_export_router(
         """휴게소 주유소 현재 유가(한국도로공사 EX). `observed_at`은 transport 수집 시각이다."""
         await _begin_snapshot(session)
         state = await _state(session, REST_AREA_FUEL_SOURCE)
-        collection = _require_current(_reference_collection(REST_AREA_FUEL_SOURCE, state))
+        collection = _require_current(_reference_collection(REST_AREA_FUEL_SOURCE, state), state)
         query = (
             select(*_REST_AREA_FUEL_COLUMNS)
             .where(RestAreaFuelPrice.source == REST_AREA_FUEL_SOURCE, RestAreaFuelPrice.id > _decode_cursor(cursor))
@@ -287,9 +300,12 @@ def build_service_export_router(
         """
         await _begin_snapshot(session)
         state = await _state(session, INCIDENT_SOURCE)
-        if (state is None or state.last_success_at is None or state.last_error is not None
+        if state is None or state.last_success_at is None:
+            raise unavailable(ProblemCode.EXPORT_NO_HISTORY, "고속도로 돌발 수집이 최근에 성공하지 않았습니다.",
+                              retry_after=FAST_SOURCE_RETRY_AFTER_SECONDS)
+        if (state.last_error is not None
                 or now_utc() - serialize_utc(state.last_success_at) > INCIDENT_ACTIVE_SET_MAX_AGE):
-            raise HTTPException(status_code=503, detail="고속도로 돌발 수집이 최근에 성공하지 않았습니다.")
+            raise unavailable(ProblemCode.EXPORT_INCIDENTS_NOT_CURRENT, "고속도로 돌발 수집이 최근에 성공하지 않았습니다.")
         collected_at = serialize_utc(state.last_success_at)
         ranked = select(
             HighwayIncidentSnapshot.id.label("id"),
@@ -311,7 +327,7 @@ def build_service_export_router(
         if not rows:
             # 수집이 0건을 성공으로 받지 않지만(INCIDENT-EMPTY-SET-20261124), 배포 직전의 옛 "0건 성공" 상태나 다른 경로가
             # 행 없이 성공 시각만 올린 경우에도 빈 집합을 전량 해소로 내보내지 않는다.
-            raise HTTPException(status_code=503, detail="고속도로 돌발 활성 집합이 비었습니다(상류 이상으로 보고 내지 않습니다).")
+            raise unavailable(ProblemCode.EXPORT_EMPTY_SET, "고속도로 돌발 활성 집합이 비었습니다(상류 이상으로 보고 내지 않습니다).")
         return await _render(request, session, render_limiter, partial(_incident_set, collection, collected_at, rows))
 
     @router.get("/airports", response_model=AirportExportResponse)
@@ -355,19 +371,16 @@ def _client_allowed(request: Request, settings: Settings) -> bool:
 
 
 def _busy() -> HTTPException:
-    """snapshot 잠금 대기(55P03)·본문 구성 slot 대기 초과. 수 초 안에 풀린다."""
-    return HTTPException(
-        status_code=503, detail="내보내기가 잠시 혼잡합니다. 잠시 후 다시 요청하세요.",
-        headers={"Retry-After": str(BUSY_RETRY_AFTER_SECONDS)},
-    )
+    """snapshot 잠금 대기(55P03)·본문 구성 slot 대기 초과. 수 초 안에 풀린다(`EXPORT_BUSY`)."""
+    return unavailable(ProblemCode.EXPORT_BUSY, "내보내기가 잠시 혼잡합니다. 잠시 후 다시 요청하세요.",
+                       retry_after=BUSY_RETRY_AFTER_SECONDS)
 
 
 def _timed_out() -> HTTPException:
-    """snapshot 문장 상한(57014)·요청 전체 상한 초과."""
-    return HTTPException(
-        status_code=503, detail="내보내기 응답 준비 시간이 초과되었습니다. 잠시 후 다시 요청하세요.",
-        headers={"Retry-After": str(TIMEOUT_RETRY_AFTER_SECONDS)},
-    )
+    """snapshot 문장 상한(57014)·요청 전체 상한 초과(`EXPORT_PREPARE_TIMEOUT`)."""
+    return unavailable(ProblemCode.EXPORT_PREPARE_TIMEOUT,
+                       "내보내기 응답 준비 시간이 초과되었습니다. 잠시 후 다시 요청하세요.",
+                       retry_after=TIMEOUT_RETRY_AFTER_SECONDS)
 
 
 def _bounded(handler: Callable[..., Awaitable[Response]]) -> Callable[..., Awaitable[Response]]:
@@ -432,12 +445,22 @@ async def _begin_snapshot(session: AsyncSession) -> None:
         ))
 
 
-def _require_current(collection: ExportCollectionState) -> ExportCollectionState:
-    """집합을 낼 수 없으면(이력 없음·`failed`·`stale`) 503 — 소비자가 빈·낡은 집합을 삭제로 읽지 않게."""
-    if collection.last_success_at is None or collection.failed or collection.stale:
-        raise HTTPException(
-            status_code=503, detail=f"{collection.source} 수집이 최근에 성공하지 않았습니다.",
-        )
+def _require_current(
+    collection: ExportCollectionState, state: TransportCollectionState | None,
+) -> ExportCollectionState:
+    """집합을 낼 수 없으면(이력 없음·`failed`·`stale`) 503 — 소비자가 빈·낡은 집합을 삭제로 읽지 않게.
+
+    이력 없음은 `EXPORT_NO_HISTORY`, 그 밖은 `EXPORT_SOURCE_NOT_CURRENT`다. 후자의 `Retry-After`는 수집 상태로 계산한
+    힌트다(진행 중인 수집의 예상 끝, 다음 예정 + 예상 수행 시간, 모르면 1800초 — `source_retry_after_seconds`).
+    문구는 예전과 같다.
+    """
+    detail = f"{collection.source} 수집이 최근에 성공하지 않았습니다."
+    if collection.last_success_at is None:
+        raise unavailable(ProblemCode.EXPORT_NO_HISTORY, detail)
+    if collection.failed or collection.stale:
+        raise unavailable(ProblemCode.EXPORT_SOURCE_NOT_CURRENT, detail, retry_after=source_retry_after_seconds(
+            state, EXPECTED_RUN_DURATION.get(collection.source, timedelta(minutes=10)), now=now_utc(),
+        ))
     return collection
 
 

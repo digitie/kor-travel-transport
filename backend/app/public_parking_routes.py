@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import defer
 
+from app.core.problems import ProblemCode, source_retry_after_seconds, unavailable
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import PublicParkingLot, TransportCollectionState
 from app.schemas import (
@@ -20,6 +21,8 @@ from app.schemas import (
 from app.services.public_parking_collection import SOURCE
 
 STALE_AFTER = timedelta(days=90)  # 월간 기준정보. 기준일은 별도 reference_date로 보존한다.
+#: stale export 503의 `Retry-After` 계산용 수집 한 번의 예상 수행 시간(ADR-013 개정 2026-11-24).
+EXPECTED_RUN_DURATION = timedelta(minutes=30)
 
 
 def current_parking_conditions() -> list[Any]:
@@ -69,9 +72,13 @@ def _cursor(cursor: str | None, generation, query: str) -> int:
 
 
 async def parking_page(session, limit: int, cursor: str | None, q: str | None, *, export: bool = False):
-    _, generation, collection = await parking_state(session)
+    state, generation, collection = await parking_state(session)
     if export and collection.stale:
-        raise HTTPException(503, "완료된 최신 주차장 기준정보가 없습니다.")
+        detail = "완료된 최신 주차장 기준정보가 없습니다."
+        if generation is None:
+            raise unavailable(ProblemCode.EXPORT_NO_HISTORY, detail)
+        raise unavailable(ProblemCode.EXPORT_SOURCE_NOT_CURRENT, detail, retry_after=source_retry_after_seconds(
+            state, EXPECTED_RUN_DURATION, now=now_utc()))
     query = (q or "").strip()
     after = _cursor(cursor, generation, query)
     statement = select(PublicParkingLot).where(*current_parking_conditions(), PublicParkingLot.id > after)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+
 import base64
 import gzip
 import hashlib
@@ -21,13 +22,13 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.export_guard import ExportDeadlineRoute
+from app.core.problems import RETRY_AFTER_SECONDS, SERVICE_EXPORT_PATH_PREFIX, CodedHTTPException, ProblemCode
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import FuelPriceSnapshot, FuelStation, TransportCollectionState
 from app.schemas import ExportPriceHistoryItem, FuelPriceHistoryExportPage, FuelStationPriceHistoryResponse, ServiceExportMeta
 from app.services.parking_history_cache import accepts_gzip
 from app.services.transport_collection import FUEL_STALE_AFTER, OPINET_SOURCE
-
-logger = logging.getLogger(__name__)
 
 MAX_HISTORY_LIMIT = 5000
 MAX_HISTORY_WINDOW = timedelta(days=366)
@@ -90,6 +91,8 @@ def station_lookup_statement(station_key: str, native_station_id: int | None = N
         (FuelStation.identity_key == opinet_station_identity(station_key) if native_station_id is None
          else FuelStation.id == native_station_id),
     )
+
+logger = logging.getLogger(__name__)
 
 
 def _aware(value: datetime) -> datetime:
@@ -192,6 +195,12 @@ async def history_statement_deadline(
         logger.warning("price history query canceled mapped to status=%s sqlstate=%s path=%s",
                        status_code, sqlstate, request.url.path)
         await session.rollback()
+        if status_code == 503:
+            # export(T4) 503은 다른 export 503처럼 code를 싣는다(ADR-013 개정 2026-11-24). native 504는 그대로다.
+            raise CodedHTTPException(
+                503, HISTORY_TIMEOUT_DETAIL, code=ProblemCode.EXPORT_QUERY_TIMEOUT,
+                retry_after=HISTORY_TIMEOUT_RETRY_AFTER_SECONDS, headers={"Cache-Control": "private, no-cache"},
+            ) from exc
         raise HTTPException(
             status_code, HISTORY_TIMEOUT_DETAIL,
             headers={"Retry-After": str(HISTORY_TIMEOUT_RETRY_AFTER_SECONDS), "Cache-Control": "private, no-cache"},
@@ -221,12 +230,22 @@ async def read_price_history_page(
         TransportCollectionState.source == OPINET_SOURCE,
     ))
     if state is None or state.last_success_at is None:
+        # export 경로(T4)만 가산 code·Retry-After를 싣는다. `meta`(source_status=failed)는 그대로다. 같은 함수를 쓰는
+        # 관리 화면용 native 이력 경로는 본문·헤더가 예전과 같다(ADR-013 개정 2026-11-24).
+        coded = {"code": ProblemCode.EXPORT_NO_HISTORY.value} if request.url.path.startswith(
+            SERVICE_EXPORT_PATH_PREFIX) else {}
+        headers = {"Cache-Control": "private, no-cache"}
+        if coded:
+            headers["Retry-After"] = str(RETRY_AFTER_SECONDS[ProblemCode.EXPORT_NO_HISTORY])
+            # 이 503은 HTTPException handler를 거치지 않으므로 code 응답 로그를 여기서 남긴다(감사 T23-10).
+            logger.warning("problem response status=503 code=%s path=%s detail=%s",
+                           ProblemCode.EXPORT_NO_HISTORY.value, request.url.path, "성공한 유가 수집 이력이 없습니다.")
         raise PriceHistoryUnavailable(JSONResponse(status_code=503, media_type="application/problem+json", content={
             "type": "about:blank", "title": "Service Unavailable", "status": 503,
-            "detail": "성공한 유가 수집 이력이 없습니다.", "instance": request.url.path,
+            "detail": "성공한 유가 수집 이력이 없습니다.", "instance": request.url.path, **coded,
             "meta": ServiceExportMeta(generated_at=now_utc(), source_collected_at=None,
                                       source_status="failed", item_count=0).model_dump(mode="json"),
-        }, headers={"Cache-Control": "private, no-cache"}))
+        }, headers=headers))
     now = now_utc()
     revision = _revision(state)
     after_at = None
@@ -300,8 +319,8 @@ async def read_price_history_page(
 def build_price_history_router(
     settings: Settings, get_db: Callable[..., AsyncIterator[AsyncSession]],
 ) -> APIRouter:
-    # 상위 service router의 기존 token/peer Depends를 그대로 상속한다.
-    router = APIRouter()
+    # 상위 service router의 기존 token/peer Depends를 그대로 상속한다. handler 전체 상한(25초)은 T4 export에만 둔다.
+    router = APIRouter(route_class=ExportDeadlineRoute)
     cursor_key = hashlib.sha256((settings.transport_service_export_token or "").encode()).digest()
     statement_timeout_ms = settings.fuel_price_history_statement_timeout_ms
 

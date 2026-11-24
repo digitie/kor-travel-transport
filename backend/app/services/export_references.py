@@ -8,7 +8,6 @@ import math
 from dataclasses import dataclass
 from collections.abc import AsyncIterator, Callable
 from datetime import timedelta
-from time import monotonic
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -17,11 +16,12 @@ from krairport import get_airport_or_none
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.core.config import Settings
+from app.core.export_guard import ExportDeadlineRoute
+from app.core.problems import FAST_SOURCE_RETRY_AFTER_SECONDS, RETRY_AFTER_SECONDS, ProblemCode, unavailable
 from app.core.read_timing import observe_fingerprint, observe_page_build
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import BusTerminalReference, FerryPort, RailStationReference, ParkingCurrent, ReferenceExportState, ReferenceExportArtifact, ReferenceExportArtifactItem, ServiceExportSnapshot, ServiceExportSnapshotItem
@@ -32,7 +32,7 @@ from app.services.general_rail_reference import KRIC_GENERAL_SOURCE, KRIC_GENERA
 from app.services.rail_station_mapping import persisted_mapping_context, persisted_station_links
 from app.services.parking_exports import parking_scope, parking_sources
 from app.services.export_addresses import export_admin_addresses
-from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SnapshotRace, cache_generation, _snapshot_transaction, expire_snapshots, snapshot_expires_at
+from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SnapshotRace, budget_exceeded, build_started, cache_generation, _snapshot_transaction, expire_snapshots, read_snapshot_with_retry, snapshot_expires_at
 from app.services.export_price_history import _decode_cursor, _encode_cursor, _response
 from app.services.reference_export_revision import reference_payload_revision
 from app.services.reference_artifacts import prepare_artifact, collect_unused_artifact
@@ -48,6 +48,8 @@ class ReferenceSpec:
     page_model: type
     payload_batches: Callable
     optional_scope_keys: tuple[str, ...] = ()
+    #: 첫 성공 전(EXPORT_NO_HISTORY)·0건 head(EXPORT_EMPTY_SET)의 Retry-After 힌트(초). 5분 주기 집합은 300이다.
+    retry_after_seconds: int = RETRY_AFTER_SECONDS[ProblemCode.EXPORT_NO_HISTORY]
 
 
 _FIELDS = ("id", "source", "service_type", "terminal_id", "terminal_name", "city_name", "latitude", "longitude", "location_source")
@@ -61,12 +63,41 @@ async def _reference_heads(session, spec):
     return heads
 
 
-def _valid_heads(heads, spec):
+#: 승인 head 하나의 membership 상한. 넘으면 export 상한 문제(EXPORT_TOO_LARGE)다.
+MAX_HEAD_MEMBERS = 10000
+
+
+def _head_problem(heads, spec):
+    """첫 고정 전 승인 head를 판정한다. 낼 수 있으면 None, 아니면 (code, detail, retry_after).
+
+    - 설정에 이 기준정보의 source가 하나도 없음(예: 주차장 source 없음) → EXPORT_DISABLED
+    - 설정에 활성인 scope의 승인 head가 아직 없음(첫 성공 전) → EXPORT_NO_HISTORY
+    - 완결 증거가 있는 head의 membership이 상한 초과 → EXPORT_TOO_LARGE, 0건 → EXPORT_EMPTY_SET
+    - 그 밖(모르는 scope·중복 head·완결 증거 없음·중복 member) → EXPORT_SOURCE_INCONSISTENT
+    """
+    if not spec.scope_keys:
+        return ProblemCode.EXPORT_DISABLED, "이 기준정보의 source가 설정되지 않았습니다.", None
     scopes = {h.scope_key for h in heads}
-    return (bool(spec.scope_keys) and set(spec.scope_keys) <= scopes
-            and scopes <= set(spec.scope_keys + spec.optional_scope_keys) and len(scopes) == len(heads)
-            and all(h.proof.get("complete") and 0 < len(h.member_ids) <= 10000
-                    and len(set(h.member_ids)) == len(h.member_ids) for h in heads))
+    if not set(spec.scope_keys) <= scopes:
+        return ProblemCode.EXPORT_NO_HISTORY, "기준정보 source의 완결 성공 집합이 없습니다.", spec.retry_after_seconds
+    # 정합 문제의 문구는 예전과 같다.
+    inconsistent = (ProblemCode.EXPORT_SOURCE_INCONSISTENT, "기준정보 source의 완결 성공 집합이 없습니다.", None)
+    if not scopes <= set(spec.scope_keys + spec.optional_scope_keys) or len(scopes) != len(heads):
+        return inconsistent
+    if not all(h.proof.get("complete") for h in heads):
+        return inconsistent
+    if any(len(h.member_ids) > MAX_HEAD_MEMBERS for h in heads):
+        return ProblemCode.EXPORT_TOO_LARGE, "기준정보 source 집합이 export 상한을 넘었습니다.", None
+    if any(not h.member_ids for h in heads):
+        return ProblemCode.EXPORT_EMPTY_SET, "기준정보 source의 완결 집합이 비었습니다(삭제로 읽히지 않게 내지 않습니다).", \
+            spec.retry_after_seconds
+    if any(len(set(h.member_ids)) != len(h.member_ids) for h in heads):
+        return inconsistent
+    return None
+
+
+def _valid_heads(heads, spec):
+    return _head_problem(heads, spec) is None
 
 
 async def _bus_payload_batches(session, heads):
@@ -82,12 +113,12 @@ async def _bus_payload_batches(session, heads):
                     BusTerminalReference.service_type == head.scope_key,
                     BusTerminalReference.last_seen_at == head.confirmed_at).order_by(BusTerminalReference.id))).mappings())
             if len(rows) != len(selected):
-                raise HTTPException(503, "터미널 성공 membership이 일치하지 않습니다.")
+                raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "터미널 성공 membership이 일치하지 않습니다.")
             addresses = await export_admin_addresses(session, "bus_terminal", [SimpleNamespace(**row) for row in rows])
             payloads = []
             for row in rows:
                 if not row["terminal_id"] or not row["terminal_name"]:
-                    raise HTTPException(503, "확인된 터미널 이름·코드가 없습니다.")
+                    raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "확인된 터미널 이름·코드가 없습니다.")
                 address = addresses.get(row["id"])
                 payloads.append({
                     "natural_key": f"{row['source']}:{row['service_type']}:{row['terminal_id']}",
@@ -112,7 +143,7 @@ async def _ferry_payload_batches(session, heads):
         ).where(FerryPort.id.in_(selected), FerryPort.source == MARITIME_SOURCE,
                 FerryPort.last_seen_at == head.confirmed_at).order_by(FerryPort.id))).mappings())
         if len(rows) != len(selected):
-            raise HTTPException(503, "항구 source 성공 membership이 일치하지 않습니다.")
+            raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "항구 source 성공 membership이 일치하지 않습니다.")
         projected = []
         for row in rows:
             item = dict(row)
@@ -126,7 +157,7 @@ async def _ferry_payload_batches(session, heads):
         payloads = []
         for row in projected:
             if not row.port_id or not row.port_name:
-                raise HTTPException(503, "확인된 항구 이름·코드가 없습니다.")
+                raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "확인된 항구 이름·코드가 없습니다.")
             address = addresses.get(row.id)
             payloads.append({
                 "natural_key": f"{row.source}:{row.port_id}", "source": row.source,
@@ -143,11 +174,11 @@ async def _rail_payload_batches(session, heads):
     sources = {"nationwide": KRIC_FILE_SOURCE, KRIC_GENERAL_SCOPE: KRIC_GENERAL_SOURCE}
     owners = {member: head for head in heads for member in head.member_ids}
     if len(owners) != len(ids):
-        raise HTTPException(503, "철도 source membership이 중복됩니다.")
+        raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "철도 source membership이 중복됩니다.")
     try:
         context = await persisted_mapping_context(session)
     except ValueError as exc:
-        raise HTTPException(503, str(exc)) from exc
+        raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, str(exc)) from exc
     fields = ("id", "source", "identity_key", "station_name", "rail_operator_name", "operating_line_name",
               "station_number", "latitude", "longitude", "last_seen_at")
     for offset in range(0, len(ids), BATCH_SIZE):
@@ -156,14 +187,14 @@ async def _rail_payload_batches(session, heads):
                     .where(RailStationReference.id.in_(selected))
                     .order_by(RailStationReference.id))).mappings())
         if len(rows) != len(selected):
-            raise HTTPException(503, "역사 source 성공 membership이 일치하지 않습니다.")
+            raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "역사 source 성공 membership이 일치하지 않습니다.")
         if any(row["source"] != sources[owners[row["id"]].scope_key]
                or serialize_utc(row["last_seen_at"]) != serialize_utc(owners[row["id"]].confirmed_at) for row in rows):
-            raise HTTPException(503, "역사 source·승인시각이 일치하지 않습니다.")
+            raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "역사 source·승인시각이 일치하지 않습니다.")
         try:
             links = await persisted_station_links(session, selected, context)
         except ValueError as exc:
-            raise HTTPException(503, str(exc)) from exc
+            raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, str(exc)) from exc
         projected = []
         for row in rows:
             item = dict(row)
@@ -176,7 +207,7 @@ async def _rail_payload_batches(session, heads):
         payloads = []
         for row in projected:
             if not row.station_name:
-                raise HTTPException(503, "확인된 역명이 없습니다.")
+                raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "확인된 역명이 없습니다.")
             link = links.get(row.id, {})
             address = addresses.get(row.id)
             payloads.append({
@@ -196,7 +227,7 @@ async def _parking_payload_batches(session, heads):
     for head in heads:
         source = head.proof.get("source")
         if source not in {"kac_parking", "incheon_parking"}:
-            raise HTTPException(503, "주차장 source 확인이 필요합니다.")
+            raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "주차장 source 확인이 필요합니다.")
         ids = sorted(head.member_ids)
         for offset in range(0, len(ids), BATCH_SIZE):
             selected = ids[offset:offset + BATCH_SIZE]
@@ -205,7 +236,7 @@ async def _parking_payload_batches(session, heads):
                 ParkingCurrent.generation == head.generation, ParkingCurrent.parking_lot_id.in_(selected),
             ).order_by(ParkingCurrent.parking_lot_id))).all())
             if len(rows) != len(selected):
-                raise HTTPException(503, "주차장 current 성공 membership이 일치하지 않습니다.")
+                raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "주차장 current 성공 membership이 일치하지 않습니다.")
             payloads = []
             for row in rows:
                 airport = get_airport_or_none(row.airport_code)
@@ -236,7 +267,7 @@ async def _artifact_snapshot(session, heads, spec, input_revision, started):
         cached, artifact = cached_pair
         if (artifact is None or artifact.input_revision != input_revision
                 or cached.item_count != artifact.item_count or cached.content_digest != artifact.content_digest):
-            raise HTTPException(503, "handle과 reference 본문이 일치하지 않습니다.")
+            raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "handle과 reference 본문이 일치하지 않습니다.")
         return cached, artifact
     artifact, _ = await prepare_artifact(session, heads, spec, input_revision, started=started)
     await expire_snapshots(session)
@@ -254,7 +285,8 @@ async def _artifact_snapshot(session, heads, spec, input_revision, started):
 
 
 async def _freeze_reference(session, heads, spec, *, payload_revision=None):
-    started = monotonic()
+    # 요청 경로의 재시도는 첫 시도의 예산을 이어 쓴다(`read_snapshot_with_retry`).
+    started = build_started()
     input_revision = await reference_payload_revision(session, heads, spec.kind, payload_revision)
     if input_revision is not None:
         return await _artifact_snapshot(session, heads, spec, input_revision, started)
@@ -265,14 +297,14 @@ async def _freeze_reference(session, heads, spec, *, payload_revision=None):
     # 같은 source/주소/매핑을 다시 조회하지 않고 검산한 내용 그대로 저장한다.
     encoded_payloads: list[bytes] = []
     async for batch in spec.payload_batches(session, heads):
-        if monotonic() - started > 15:
-            raise HTTPException(503, "터미널 snapshot 준비 시간 상한을 초과했습니다.")
+        if budget_exceeded(started):
+            raise unavailable(ProblemCode.EXPORT_PREPARE_TIMEOUT, "터미널 snapshot 준비 시간 상한을 초과했습니다.")
         for item in batch:
             body = json.dumps(item, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
             size += len(body)
             count += 1
             if size > MAX_SNAPSHOT_BYTES or count > MAX_SNAPSHOT_ITEMS:
-                raise HTTPException(503, "터미널 snapshot 크기 상한을 초과했습니다.")
+                raise unavailable(ProblemCode.EXPORT_TOO_LARGE, "터미널 snapshot 크기 상한을 초과했습니다.")
             digest.update(body + b"\n")
             encoded_payloads.append(body)
     content = digest.hexdigest()
@@ -301,15 +333,15 @@ async def _freeze_reference(session, heads, spec, *, payload_revision=None):
     snapshot = await session.get(ServiceExportSnapshot, snapshot_id)
     ordinal = 0
     for offset in range(0, len(encoded_payloads), BATCH_SIZE):
-        if monotonic() - started > 15:
-            raise HTTPException(503, "터미널 snapshot 저장 시간 상한을 초과했습니다.")
+        if budget_exceeded(started):
+            raise unavailable(ProblemCode.EXPORT_PREPARE_TIMEOUT, "터미널 snapshot 저장 시간 상한을 초과했습니다.")
         values = []
         for body in encoded_payloads[offset:offset + BATCH_SIZE]:
             ordinal += 1
             values.append({"snapshot_id": snapshot.id, "ordinal": ordinal, "payload": json.loads(body)})
         await session.execute(insert(ServiceExportSnapshotItem), values)
     if ordinal != count:
-        raise HTTPException(503, "터미널 snapshot의 완결 수량이 달라졌습니다.")
+        raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "터미널 snapshot의 완결 수량이 달라졌습니다.")
     return snapshot, None
 
 
@@ -330,12 +362,13 @@ def reference_specs(settings):
     scopes = tuple(parking_scope(settings, source) for source in sources)
     specs += (ReferenceSpec("/parking/current", "parking-current-v1", "parking-current",
                             hashlib.sha256(("parking:" + ",".join(scopes)).encode()).hexdigest(),
-                            scopes, timedelta(minutes=15), ParkingCurrentExportPage, _parking_payload_batches),)
+                            scopes, timedelta(minutes=15), ParkingCurrentExportPage, _parking_payload_batches,
+                            retry_after_seconds=FAST_SOURCE_RETRY_AFTER_SECONDS),)
     return specs
 
 
 def build_reference_export_router(settings: Settings, get_db: Callable[..., AsyncIterator[AsyncSession]]) -> APIRouter:
-    router = APIRouter()
+    router = APIRouter(route_class=ExportDeadlineRoute)
     key = hashlib.sha256((settings.transport_service_export_token or "").encode()).digest()
 
     def endpoint_for(spec):
@@ -343,18 +376,9 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                                 cursor: str | None = Query(default=None, min_length=1, max_length=4096),
                                 session: AsyncSession = Depends(get_db)) -> Response:
             if not settings.transport_map_current_enabled:
-                raise HTTPException(503, "터미널 export가 활성화되지 않았습니다.")
-            for attempt in range(2):
-                try:
-                    page, revision, etag = await read_page(session, limit, cursor, request)
-                    break
-                except (SnapshotRace, DBAPIError) as exc:
-                    await session.rollback()
-                    code = getattr(getattr(exc, "orig", None), "sqlstate", None)
-                    if isinstance(exc, DBAPIError) and code not in {"40001", "55P03"}:
-                        raise
-                    if attempt or code == "55P03":
-                        raise HTTPException(503, "snapshot 준비가 겹쳤습니다. 잠시 후 다시 요청하세요.") from exc
+                raise unavailable(ProblemCode.EXPORT_DISABLED, "터미널 export가 활성화되지 않았습니다.")
+            page, revision, etag = await read_snapshot_with_retry(
+                session, lambda: read_page(session, limit, cursor, request))
             if isinstance(page, Response):
                 return page
             return _response(page, request, cursor_epoch=None, cursor_revision=revision, etag_override=etag)
@@ -380,8 +404,10 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                 if snapshot.kind != spec.kind or snapshot.scope_key != spec.scope or after >= snapshot.item_count:
                     raise HTTPException(422, "cursor snapshot 범위가 일치하지 않습니다.")
             else:
-                if not _valid_heads(heads, spec):
-                    raise HTTPException(503, "기준정보 source의 완결 성공 집합이 없습니다.")
+                problem = _head_problem(heads, spec)
+                if problem is not None:
+                    code, detail, retry_after = problem
+                    raise unavailable(code, detail, retry_after=retry_after)
                 snapshot, artifact = await _freeze_reference(session, heads, spec, payload_revision=settings.release_sha)
             stale = (not _valid_heads(heads, spec) or any(h.last_error is not None for h in heads)
                      or now_utc() - serialize_utc(snapshot.source_collected_at) > spec.max_age)
@@ -391,7 +417,7 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                 if (artifact is None or artifact.kind != spec.kind or artifact.scope_key != spec.scope
                         or artifact.item_count != snapshot.item_count or artifact.content_digest != snapshot.content_digest
                         or serialize_utc(artifact.source_collected_at) != serialize_utc(snapshot.source_collected_at)):
-                    raise HTTPException(503, "handle의 reference 본문이 일치하지 않습니다.")
+                    raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "handle의 reference 본문이 일치하지 않습니다.")
                 model, identity = ReferenceExportArtifactItem, ReferenceExportArtifactItem.artifact_id == artifact.id
             else:
                 model, identity = ServiceExportSnapshotItem, ServiceExportSnapshotItem.snapshot_id == snapshot.id
@@ -412,7 +438,7 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
             ).order_by(model.ordinal).limit(limit + 1))).all())
             if (len(rows) != min(limit + 1, snapshot.item_count - after)
                     or any(row.ordinal != after + i + 1 for i, row in enumerate(rows))):
-                raise HTTPException(503, "snapshot membership이 일치하지 않습니다.")
+                raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "snapshot membership이 일치하지 않습니다.")
             items, has_more = [row.payload for row in rows[:limit]], len(rows) > limit
             next_cursor = _encode_cursor({"v": 1, "kind": spec.kind, "scope": spec.scope, "snapshot": snapshot.id,
                                           "after": after + len(items), "limit": limit}, key) if has_more else None

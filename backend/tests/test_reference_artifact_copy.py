@@ -13,6 +13,7 @@ from app.core import read_timing
 from app.core.time_utils import now_utc
 from app.models import ReferenceExportArtifact as Artifact
 from app.models import ReferenceExportArtifactItem as Item
+from app.services import export_current
 from app.services import reference_artifacts as artifacts
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -171,7 +172,8 @@ def test_copy_budget_is_checked_after_each_batch(export_client, monkeypatch):
         nonlocal calls
         result = await original(connection, table, **kwargs)
         calls += 1
-        monkeypatch.setattr(artifacts, "monotonic", lambda: started + 16)
+        # 예산 판정은 export_current의 공유 helper(`budget_exceeded`)가 한다.
+        monkeypatch.setattr(export_current, "monotonic", lambda: started + 16)
         return result
 
     monkeypatch.setattr(asyncpg.Connection, "copy_records_to_table", advance)
@@ -206,40 +208,77 @@ def test_native_statement_counts_failure_and_restores_context():
 
 
 @pytest.mark.parametrize(
-    "exception,status,attempts",
+    "exception,failures,status,attempts",
     [
-        (asyncpg.SerializationError, 200, 2),
-        (asyncpg.LockNotAvailableError, 503, 1),
+        (asyncpg.SerializationError, 1, 200, 2),
+        # 2026-11-24(감사 T23-01): 55P03은 예전의 즉시 503 대신 공유 예산 안에서 새 RR로 한 번 더 시도한다.
+        (asyncpg.LockNotAvailableError, 1, 200, 2),
+        (asyncpg.LockNotAvailableError, 2, 503, 2),
     ],
 )
 def test_native_copy_keeps_existing_reader_retry_policy(
-    export_client, monkeypatch, exception, status, attempts
+    export_client, monkeypatch, exception, failures, status, attempts
 ):
+    from app.services import export_current
     from test_reference_export_reuse import _get, _prepare
 
     c = export_client
     _require_copy(c)
     _prepare(c)
+    monkeypatch.setattr(export_current, "LOCK_RETRY_DELAY_SECONDS", (0.0, 0.0))
     original = asyncpg.Connection.copy_records_to_table
     calls = 0
 
-    async def fail_once(connection, table, **kwargs):
+    async def fail_first(connection, table, **kwargs):
         nonlocal calls
         calls += 1
-        if calls == 1:
+        if calls <= failures:
             raise exception("synthetic SQLSTATE")
         return await original(connection, table, **kwargs)
 
-    monkeypatch.setattr(asyncpg.Connection, "copy_records_to_table", fail_once)
+    monkeypatch.setattr(asyncpg.Connection, "copy_records_to_table", fail_first)
     response = _get(c)
     assert response.status_code == status, response.text
     assert calls == attempts
     if status == 200:
         assert response.json()["items"] and response.headers["ETag"]
     else:
+        assert response.json()["code"] == "EXPORT_BUSY" and response.headers["retry-after"] == "10"
 
         async def verify(session):
             assert await session.scalar(select(func.count()).select_from(Artifact)) == 0
             assert await session.scalar(select(func.count()).select_from(Item)) == 0
 
         _run(c, verify)
+
+
+@pytest.mark.parametrize(
+    "error,status",
+    [
+        # SQLSTATE 없는 driver 연결 오류는 연결 무효로 표시돼 export 경로에서 503 TRANSIENT_DB다.
+        (lambda: asyncpg.InterfaceError("cannot perform operation: connection is closed"), 503),
+        (lambda: ConnectionResetError(104, "Connection reset by peer"), 503),
+        # 끊긴 연결의 SQLSTATE 08003도 같다.
+        (lambda: asyncpg.ConnectionDoesNotExistError("connection was closed in the middle of operation"), 503),
+        # 그 밖의 InterfaceError는 프로그램 오류라 예전처럼 500이다.
+        (lambda: asyncpg.InterfaceError("cannot perform operation: another operation is in progress"), 500),
+    ],
+)
+def test_native_copy_connection_errors_are_classified(export_client, monkeypatch, error, status):
+    from fastapi.testclient import TestClient
+    from test_reference_export_reuse import HEADERS, PATH, _prepare
+    from test_service_exports import LOOPBACK_CLIENT
+
+    c = export_client
+    _require_copy(c)
+    _prepare(c)
+
+    async def broken(connection, table, **kwargs):
+        raise error()
+
+    monkeypatch.setattr(asyncpg.Connection, "copy_records_to_table", broken)
+    lenient = TestClient(c.app, client=LOOPBACK_CLIENT, raise_server_exceptions=False)
+    response = lenient.get(PATH, headers=HEADERS, params={"limit": 1})
+    assert response.status_code == status, response.text
+    if status == 503:
+        assert response.json()["code"] == "TRANSIENT_DB" and response.headers["retry-after"] == "15"

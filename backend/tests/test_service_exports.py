@@ -184,15 +184,17 @@ def test_fuel_station_export_pages_stable_ids_with_latest_prices(export_client: 
     assert bad.status_code == 422
 
 
-@pytest.mark.parametrize("state", [
-    None,
-    {"last_success_at": None},
-    {"last_success_at": None, "last_error": "collection_failed"},
-    {"last_success_at_age": timedelta(hours=25)},
-    {"last_success_at_age": timedelta(hours=24, minutes=1), "last_error": "collection_failed"},
+@pytest.mark.parametrize(("state", "code"), [
+    (None, "EXPORT_NO_HISTORY"),
+    ({"last_success_at": None}, "EXPORT_NO_HISTORY"),
+    ({"last_success_at": None, "last_error": "collection_failed"}, "EXPORT_NO_HISTORY"),
+    ({"last_success_at_age": timedelta(hours=27, minutes=31)}, "EXPORT_SOURCE_NOT_CURRENT"),
+    ({"last_success_at_age": timedelta(hours=27, minutes=31), "last_error": "collection_failed"},
+     "EXPORT_SOURCE_NOT_CURRENT"),
 ])
-def test_fuel_station_export_refuses_without_a_current_collection(export_client: TestClient, state) -> None:
-    """이력 없음·마지막 성공이 24시간 초과면 503 — 빈·낡은 집합을 현재로 주지 않는다(ADR-013)."""
+def test_fuel_station_export_refuses_without_a_current_collection(export_client: TestClient, state, code) -> None:
+    """이력 없음·마지막 성공이 유예(24시간 + 유가 수집 상한 3.5시간) 초과면 503 — 빈·낡은 집합을 현재로 주지
+    않는다(ADR-013). 사유는 가산 `code`와 `Retry-After`로 가른다(ADR-013 개정 2026-11-24)."""
     async def seed(session) -> None:
         if state is None:
             return
@@ -204,6 +206,11 @@ def test_fuel_station_export_refuses_without_a_current_collection(export_client:
     _run(export_client, seed)
     response = export_client.get("/v1/service/exports/fuel-stations", headers=HEADERS)
     assert response.status_code == 503
+    body = response.json()
+    assert body["code"] == code
+    assert body["detail"] == f"{OPINET_SOURCE} 수집이 최근에 성공하지 않았습니다."
+    # 다음 예정을 모르는 상태라 기본값이다(이력 없음 3600초, stale 1800초).
+    assert response.headers["retry-after"] == ("3600" if code == "EXPORT_NO_HISTORY" else "1800")
 
 
 async def _seed_fuel_station(session, *, seen_at) -> None:
@@ -296,9 +303,13 @@ def test_fuel_station_export_grace_follows_a_real_failed_collection(export_clien
     assert body["collection"]["last_attempt_failed"] is True
     assert body["collection"]["failed"] is False and body["collection"]["stale"] is False
 
-    # 마지막 성공에서 24시간이 지나면 예전처럼 503이다.
+    # 24시간을 넘어도 유가 수집 한 번의 상한(3.5시간)까지는 마지막 성공 집합을 낸다(감사 G1-F4(a)).
     _run(export_client, lambda session: _set_state(
         session, OPINET_SOURCE, last_success_at=now_utc() - timedelta(hours=24, minutes=1)))
+    assert export_client.get("/v1/service/exports/fuel-stations", headers=HEADERS).status_code == 200
+    # 유예(27.5시간)를 넘으면 예전처럼 503이다.
+    _run(export_client, lambda session: _set_state(
+        session, OPINET_SOURCE, last_success_at=now_utc() - timedelta(hours=27, minutes=31)))
     assert export_client.get("/v1/service/exports/fuel-stations", headers=HEADERS).status_code == 503
 
 
@@ -510,7 +521,10 @@ def _incident(series: int, point: str) -> Incident:
 
 def test_active_incident_set_reflects_only_the_last_successful_collection(export_client: TestClient) -> None:
     path = "/v1/service/exports/highway-incidents/active"
-    assert export_client.get(path, headers=HEADERS).status_code == 503
+    never = export_client.get(path, headers=HEADERS)
+    assert never.status_code == 503
+    # 5분 주기 돌발의 첫 성공 전은 5분 뒤 다시 본다.
+    assert never.json()["code"] == "EXPORT_NO_HISTORY" and never.headers["retry-after"] == "300"
     service = export_client.app.state.transport_collection_service
     provider = IncidentProvider()
     service.provider = provider
@@ -533,19 +547,26 @@ def test_active_incident_set_reflects_only_the_last_successful_collection(export
     assert second["collected_at"] > first["collected_at"]
 
     # 전국 활성 돌발 0건은 상류 이상이다(운영 0건 집합 37회) — 성공으로 받지 않고 export는 503(not-ready)이다.
+    # #265 뒤 0건 수집은 실패(last_error)로 남으므로 0건 안전망(EXPORT_EMPTY_SET)이 아니라 not-current로 나온다.
     provider.incidents = []
     assert _run(export_client, collect)["status"] == "failed"
-    assert export_client.get(path, headers=HEADERS).status_code == 503
+    empty = export_client.get(path, headers=HEADERS)
+    assert empty.status_code == 503
+    assert empty.json()["code"] == "EXPORT_INCIDENTS_NOT_CURRENT" and empty.headers["retry-after"] == "300"
     provider.incidents = [_incident(1, "서울IC")]
     assert _run(export_client, collect)["status"] == "success"
 
     assert export_client.get(path, headers=HEADERS).json()["collection"]["last_attempt_failed"] is False
     # 돌발 활성 집합은 "지금"의 집합이라 참조 데이터와 달리 실패 즉시 503이다.
     _run(export_client, lambda session: _set_state(session, INCIDENT_SOURCE, last_error="provider failed"))
-    assert export_client.get(path, headers=HEADERS).status_code == 503
+    failed = export_client.get(path, headers=HEADERS)
+    assert failed.status_code == 503 and failed.json()["code"] == "EXPORT_INCIDENTS_NOT_CURRENT"
+    assert failed.json()["detail"] == "고속도로 돌발 수집이 최근에 성공하지 않았습니다."
+    assert "provider failed" not in failed.text
     _run(export_client, lambda session: _set_state(
         session, INCIDENT_SOURCE, last_error=None, last_success_at=now_utc() - timedelta(hours=1)))
-    assert export_client.get(path, headers=HEADERS).status_code == 503
+    old = export_client.get(path, headers=HEADERS)
+    assert old.status_code == 503 and old.json()["code"] == "EXPORT_INCIDENTS_NOT_CURRENT"
 
 
 def test_active_incident_export_never_serves_an_empty_set_even_after_a_recorded_success(export_client) -> None:
@@ -555,6 +576,9 @@ def test_active_incident_export_never_serves_an_empty_set_even_after_a_recorded_
         session, INCIDENT_SOURCE, last_error=None, last_success_at=now_utc(), next_due_at=None))
     response = export_client.get(path, headers=HEADERS)
     assert response.status_code == 503
+    # 상태는 현재인데 행이 없는 안전망 분기만 EXPORT_EMPTY_SET이다.
+    assert response.json()["code"] == "EXPORT_EMPTY_SET" and response.headers["retry-after"] == "300"
+    assert response.json()["detail"] == "고속도로 돌발 활성 집합이 비었습니다(상류 이상으로 보고 내지 않습니다)."
 
 
 def test_airport_export_covers_every_active_bundled_airport(export_client: TestClient) -> None:

@@ -8376,6 +8376,11 @@
       },
       "ProblemDetails": {
         "properties": {
+          "code": {
+            "description": "가산 확장: 기계 판독 사유(UPPER_SNAKE, ADR-005·ADR-013 개정 2026-11-24). 없거나 모르는 값이면 예전과 같은 뜻으로 다룬다. /v1/service/exports/* 503은 EXPORT_SOURCE_NOT_CURRENT·EXPORT_NO_HISTORY·EXPORT_INCIDENTS_NOT_CURRENT·EXPORT_EMPTY_SET·EXPORT_BUSY·EXPORT_PREPARE_TIMEOUT·EXPORT_QUERY_TIMEOUT·EXPORT_DISABLED·EXPORT_SOURCE_INCONSISTENT·EXPORT_TOO_LARGE·TRANSIENT_DB이며 Retry-After(초) 헤더를 함께 준다.",
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "type": "string"
+          },
           "detail": {
             "description": "문제의 세부 내용 또는 검증 오류 목록",
             "oneOf": [
@@ -10089,7 +10094,7 @@
                     "$ref": "#/components/schemas/ServiceExportMeta"
                   }
                 ],
-                "description": "성공한 유가 수집 이력이 없어 낸 503에만 있다(source_status=failed, item_count=0). DB 문장 시간 상한 초과로 끝난 503에는 없고 Retry-After 헤더가 있다."
+                "description": "성공한 유가 수집 이력이 없어 낸 503(code=EXPORT_NO_HISTORY)에만 있다(source_status=failed, item_count=0). DB 문장 시간 상한 초과(code=EXPORT_QUERY_TIMEOUT)·일시 DB 불가(code=TRANSIENT_DB)·handler 상한 초과로 끝난 503에는 없고 Retry-After 헤더가 있다."
               }
             },
             "type": "object"
@@ -12978,6 +12983,25 @@
               }
             },
             "description": "애플리케이션 오류"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Export Airports",
@@ -13083,7 +13107,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Bus Terminals",
@@ -13189,7 +13222,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Ferry Ports",
@@ -13282,7 +13324,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Export Fuel Stations",
@@ -13466,10 +13517,10 @@
                 }
               }
             },
-            "description": "애플리케이션 오류",
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
             "headers": {
               "Retry-After": {
-                "description": "DB 문장 시간 상한 초과로 끝난 응답에서 다시 요청하기 전 기다릴 초.",
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
                 "schema": {
                   "minimum": 1,
                   "type": "integer"
@@ -13527,7 +13578,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Export Active Highway Incidents",
@@ -13634,7 +13694,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Traffic Current",
@@ -13688,6 +13757,16 @@
             },
             "description": "Successful Response"
           },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
           "422": {
             "content": {
               "application/problem+json": {
@@ -13707,6 +13786,25 @@
               }
             },
             "description": "애플리케이션 오류"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Export Parking",
@@ -13812,7 +13910,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Parking/Current",
@@ -13918,7 +14025,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Rail Stations",
@@ -14011,7 +14127,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Export Rest Area Fuel Prices",
@@ -14169,7 +14294,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Export Rest Areas",

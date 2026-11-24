@@ -206,6 +206,11 @@ def _assert_timeout_problem(response, status: int) -> None:
     assert "수집 이력" not in body["detail"]
     # meta(source_status=failed)는 '성공한 수집 이력 없음' 503에만 있다. Map은 meta 없는 503을 upstream_unavailable로 본다.
     assert "meta" not in body
+    # export 503은 다른 export 503처럼 code를 싣는다(ADR-013 개정 2026-11-24). native 504는 code가 없다.
+    if status == 503:
+        assert body["code"] == "EXPORT_QUERY_TIMEOUT"
+    else:
+        assert "code" not in body
     # 예외 원문(SQL·접속 정보)은 응답에 싣지 않는다.
     assert "SELECT" not in response.text and "statement timeout" not in response.text
 

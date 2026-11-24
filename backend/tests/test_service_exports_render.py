@@ -555,6 +555,8 @@ def test_snapshot_lock_and_statement_timeouts_are_503_with_retry_after(
     assert response.status_code == 503, response.text
     assert response.headers["retry-after"] == retry_after
     assert "SELECT" not in response.text
+    # export 실패 계약(ADR-013 개정 2026-11-24): 55P03은 EXPORT_BUSY, 57014는 EXPORT_PREPARE_TIMEOUT.
+    assert response.json()["code"] == ("EXPORT_BUSY" if sqlstate == "55P03" else "EXPORT_PREPARE_TIMEOUT")
 
 
 def test_other_database_errors_are_not_rewritten(render_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -577,6 +579,7 @@ def test_request_deadline_is_503_but_other_timeouts_are_not(
     monkeypatch.setattr(se, "_state", slow_state)
     response = render_client.get("/v1/service/exports/fuel-stations", headers=HEADERS)
     assert response.status_code == 503 and response.headers["retry-after"] == "60"
+    assert response.json()["code"] == "EXPORT_PREPARE_TIMEOUT"
 
     async def own_timeout(session, source):
         raise TimeoutError("not the request deadline")
@@ -593,6 +596,7 @@ def test_empty_incident_set_stays_503_after_the_snapshot_is_released(render_clie
         session, INCIDENT_SOURCE, last_error=None, last_success_at=render_client.fixed_now, next_due_at=None))
     response = render_client.get("/v1/service/exports/highway-incidents/active", headers=HEADERS)
     assert response.status_code == 503 and "비었습니다" in response.text
+    assert response.json()["code"] == "EXPORT_EMPTY_SET" and response.headers["retry-after"] == "300"
 
 
 class _Session:
@@ -639,6 +643,7 @@ def test_render_queue_wait_is_bounded_and_disconnects_skip_the_build(monkeypatch
         with pytest.raises(HTTPException) as busy:
             await se._render(_request(), _Session(), limiter, build)
         assert busy.value.status_code == 503 and busy.value.headers == {"Retry-After": "10"}
+        assert busy.value.code == "EXPORT_BUSY"
         limiter.release_on_behalf_of(holder)
         gone = await se._render(_request([{"type": "http.disconnect"}]), _Session(), limiter, build)
         assert gone.status_code == 499 and not built and limiter.borrowed_tokens == 0
