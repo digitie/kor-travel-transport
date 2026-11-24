@@ -501,6 +501,65 @@ T1의 55P03·57014·요청 상한 503은 이 경로가 직접 낸다(`Retry-Afte
 `places_admission_rejected`·`places_deadline_exceeded`·`places_client_disconnected` 로그로 남는다. 운영 적용 뒤
 이 로그와 Server-Timing으로 값을 다시 판단한다.
 
+### 관리·공개 몫 나누기 (2026-11-24 PR #273 후속)
+
+공개 listener(:12301 transport-api, :12307 fuel)와 관리 화면이 한 gate를 나눠 쓰면 익명 공개 요청이 관리 `/map`을
+굶길 수 있었다. 이제 `PlaceMapGate`는 요청을 `admin`·`public` 두 줄로 나눈다.
+
+- **판정(위조 불가 신호만)**: 관리 BFF(`app/api/transport/[...path]/route.ts`)는 places GET에만
+  `x-transport-admin-token`(= `TRANSPORT_ADMIN_WRITE_TOKEN`, 32자 이상)을 붙여 loopback backend(:12302)로 보낸다.
+  backend는 이 토큰이 상수 시간 비교로 맞고 **`x-transport-listener` header가 없을 때만** 관리로 본다. 두 공개
+  gateway는 `proxy_set_header X-Transport-Listener public`으로 클라이언트가 보낸 같은 header를 덮어쓰므로, 공개
+  listener를 거친 요청은 토큰을 알아도 관리 몫을 쓸 수 없다. 표지는 공개로 **내리기만** 하므로 클라이언트가 이
+  header를 꾸며도 얻는 것이 없다. header 없는 직접 :12302 호출도 토큰이 없으면 공개다.
+- **몫**: 동시 계산은 전체 `PLACES_MAX_RUNNING`(4) 중 공개가 `PLACES_MAX_RUNNING - PLACES_ADMIN_RESERVED_RUNNING`
+  (기본 3)건까지 쓴다. 관리 요청은 남은 슬롯 어느 것이든 쓴다. 대기열은 줄마다 따로 센다 — 공개
+  `PLACES_MAX_WAITING`(8), 관리 `PLACES_ADMIN_MAX_WAITING`(4). 슬롯이 비면 관리 대기 요청을 먼저 깨운다(줄 안에서는
+  도착 순). 공개 요청이 몰려 공개 대기열이 차도 관리 요청은 남겨 둔 슬롯에서 바로 시작하거나 관리 대기열에 선다.
+  대기 중 합치기는 줄 안에서만 한다(관리 요청이 공개 리더에 합류해 공개 순서를 기다리지 않는다).
+- **설정 경계**: 관리 몫은 `PLACES_MAX_RUNNING - 1`을 넘지 않게 줄인다(공개가 한 건은 돈다). 토큰을 설정하지 않은
+  배포는 관리 요청을 알아볼 수 없으므로 관리 몫을 남기지 않는다(공개가 4건 모두 쓴다).
+- **로그**: `places_admission_rejected`·`places_deadline_exceeded`·`places_client_disconnected`에 `lane=`이 붙는다.
+  거절 경고 간격(10초)은 줄마다 잰다 — 공개 거절이 쏟아져도 관리 거절 한 줄은 바로 남는다.
+- **공개 쪽 클라이언트별 공정성은 하지 않았다.** nginx `limit_conn`을 IP별로 두려면 진짜 클라이언트 IP가 필요한데,
+  공개 gateway 앞에는 HAProxy(OPNsense)가 있어 `$remote_addr`가 모든 클라이언트에 같고, fuel gateway는
+  `X-Forwarded-For`를 비운다. `real_ip`로 HAProxy의 XFF를 믿으려면 HAProxy 주소·XFF 설정을 운영에서 확인해야 해서
+  이 변경에 넣지 않았다. 그 확인 없이 `$remote_addr` 기준으로 걸면 모든 공개 사용자를 연결 몇 개로 묶는다.
+  공개 줄 안의 공정성은 지금 대기열 상한(8)과 대기 중 동일 요청 합치기가 맡는다.
+
+### 25초 시한과 앞단 30초 여유
+
+관리 BFF(`lib/upstream.ts` 30초)와 공개 gateway(`proxy_read_timeout 30s`)보다 backend 504가 먼저 나가야 화면이
+backend 안내(`Retry-After: 10`)를 받는다. 여유를 깨뜨릴 수 있는 것과 처리:
+
+- **thread 검증**: 멈출 수 없지만 `run_in_thread_holding`이 thread 완료를 `asyncio.shield`로 기다리므로 시한 취소는
+  thread를 기다리지 않는다. 504는 시한에 바로 나가고 thread는 limiter 토큰을 쥔 채 끝까지 돈 뒤 반납한다
+  (`tests/test_places_lanes_and_deadline.py`: 시한 0.05초 전에 시작한 thread가 시한을 넘겨 돌아도 504가 시한 +
+  0.35초 안에 나온다).
+- **시한 뒤 rollback**: 서버가 응답하지 않으면 끝없이 기다릴 수 있었다. 이제 `TIMEOUT_CLEANUP_GRACE_SECONDS`(2초)
+  상한을 두고, 넘기면 `places_timeout_cleanup_slow`를 남기고 504를 낸다. 최악은 25 + 2 = 27초다.
+- **event loop 위 동기 작업**: 시한 취소는 loop가 돌아야 실행된다. places 본문의 `to_json`·pydantic 직렬화와 다른
+  요청의 동기 작업은 그만큼 504를 늦춘다. 이 몫은 측정으로만 확인할 수 있어 아래 로그를 둔다.
+- `places_deadline_exceeded`에 `elapsed_ms`(도착부터 504를 정한 순간, rollback 포함)와 `proxy_margin_ms`(30초까지
+  남은 여유)를 남긴다. 응답의 `Server-Timing: app;dur=`와 `slow_request ... status=504 duration_ms=`는 미들웨어
+  기준 전체 시간이다.
+
+**운영 확인(읽기 전용, Odroid)** — 배포·재기동 없이 로그만 읽는다(`docs/runbooks/remote-command-safety.md`):
+
+```bash
+# 최근 하루 시한 초과의 실제 경과와 여유. proxy_margin_ms가 2000 아래로 내려가면 시한·상한을 다시 본다.
+docker logs --since 24h kor-travel-transport-backend-1 2>&1 | grep places_deadline_exceeded   | sed -E 's/.*lane=([a-z]+).*elapsed_ms=([0-9]+) proxy_margin_ms=(-?[0-9]+).*/  /' | sort -k2 -n | tail -5
+# 미들웨어 기준 504 응답 시간(앞단 30초에 가까우면 gateway가 먼저 502/504를 냈을 수 있다)
+docker logs --since 24h kor-travel-transport-backend-1 2>&1   | grep -E 'slow_request route=/v1/transport/features/places status=504' | grep -oE 'duration_ms=[0-9.]+' | sort -t= -k2 -n | tail -5
+# rollback 상한을 넘긴 적이 있는지, 줄별 거절이 있는지
+docker logs --since 24h kor-travel-transport-backend-1 2>&1 | grep -cE 'places_timeout_cleanup_slow'
+docker logs --since 24h kor-travel-transport-backend-1 2>&1 | grep places_admission_rejected | grep -oE 'lane=[a-z]+' | sort | uniq -c
+```
+
+판단: `elapsed_ms`가 25,000 근처(± 수백 ms)이고 `places_timeout_cleanup_slow`가 0이면 여유(약 5초)가 지켜진다.
+`elapsed_ms`가 27,000을 넘거나 gateway access log에 places 504/502가 backend 기록 없이 보이면 loop 정체를
+의심하고 `PLACES_DEADLINE_SECONDS`를 낮춘다.
+
 ## API 기동 warmup(2026-11-24)
 
 감사 RT-06·RT-13·G2-09·G3-10. 기동 warmup은 `app/services/startup_warmup.py` 한 task로 순서를 둔다. lifespan은
