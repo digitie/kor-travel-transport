@@ -163,7 +163,8 @@ stale 기준(24시간 → 27.5시간), export 경로의 두 가지 500 → 503, 
 - **API DB 엔진**: asyncpg 새 접속 상한 10초(기본 60초 > Map read 30초), pool checkout 상한 10초(기본 30초),
   `application_name`(`kor-travel-transport-api`/`kor-travel-transport-collector`)을 둔다. **pool checkout 상한은
   엔진 전체라 공개·관리 경로에도 적용된다** — 예전에 10~30초 기다려 성공하던 요청이 이제 10초에 500으로 끝난다.
-  장소 지도 입장 제한(MUI-02, #273)이 들어오기 전에는 장소 지도 몰림이 pool을 채워 이 500이 늘 수 있다. 서버
+  장소 지도 입장 제한(MUI-02, #273, 머지됨)이 장소 지도 몰림을 줄이지만, #273 없이 이 변경만 배포된 이미지에서는 장소
+  지도 몰림이 pool을 채워 이 500이 늘 수 있다. 서버
   `lock_timeout`은 API 엔진에 두지 않는다 — 관리자 KRIC 매핑 저장은 기준 역 수집과 같은 advisory lock을, 관리자
   좌표 보정은 수집의 행 잠금을 의도적으로 기다린다. 짧은 대기가 맞는 경로는 이미 `SET LOCAL lock_timeout`을 둔다.
   `idle_in_transaction_session_timeout`·`transaction_timeout`은 어느 엔진에도 두지 않는다 — 공항·버스 기준정보·

@@ -35,7 +35,8 @@ API_CONNECT_TIMEOUT_SECONDS = 10
 #: API 엔진 pool checkout 대기 상한(초). SQLAlchemy 기본 30초는 Map read timeout과 같아 소비자가 먼저 끊었다
 #: (감사 RT-02). 넘으면 `sqlalchemy.exc.TimeoutError`로 export 경로는 503 TRANSIENT_DB다. **엔진 전체 설정이라
 #: 공개·관리 경로도 바뀐다**: 예전에 10~30초 기다려 성공하던 요청이 이제 10초에 500으로 끝난다. 장소 지도 입장
-#: 제한(MUI-02, #273)이 들어오기 전에는 장소 지도 몰림이 pool을 채워 이 500이 늘 수 있다(ADR-013 개정 2026-11-24).
+#: 제한(MUI-02, #273)이 장소 지도 몰림을 줄이지만, 함께 배포되지 않은 이미지에서는 장소 지도 몰림이 pool을 채워 이 500이
+#: 늘 수 있다(ADR-013 개정 2026-11-24).
 API_POOL_TIMEOUT_SECONDS = 10
 #: `pg_stat_activity`·`pg_locks`에서 어느 프로세스의 연결인지 가른다(감사 WLH-09). 수집 엔진은 Dagster op·
 #: 기준정보 준비가 쓴다. API 엔진의 in_process 수집(개발 기본)은 API 이름으로 보인다.
