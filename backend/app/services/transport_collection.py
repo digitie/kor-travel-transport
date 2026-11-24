@@ -965,7 +965,9 @@ class TransportCollectionService:
                         )
                         if window is not None and window.changed >= TRAFFIC_STATISTICS_DRIFT_WARNING_ROWS:
                             # 원천 transaction이 자기 bucket을 함께 맞추므로 정상이면 0이다. 고쳤으니 실패는 아니다.
-                            logger.warning(
+                            # 사용자에게 보이는 경고는 op(`_warn_traffic_statistics_drift`) 한 곳이 남긴다 — 이 logger는
+                            # Dagster event log로 넘어가므로 여기서도 WARNING이면 같은 일이 두 번 경고된다.
+                            logger.info(
                                 "highway traffic statistics drift repaired run_id=%s window_from=%s inserted=%s "
                                 "updated=%s deleted=%s; statistics differed from the stored observations",
                                 run_id, traffic_report.rebuild_from.isoformat(), window.inserted, window.updated,
@@ -975,8 +977,9 @@ class TransportCollectionService:
                     repair = await self._repair_old_traffic_statistics(session, traffic_report, started_at)
                     if repair is not None:
                         traffic_report.repair = repair
-                        log = logger.warning if repair.status == "failed" or repair.totals.changed else logger.info
-                        log(
+                        # 어긋남·실패 경고는 op 한 곳에서 남긴다(위와 같은 이유). 할 일이 없던 실행은 DEBUG다.
+                        logger.log(
+                            logging.DEBUG if repair.status == "idle" else logging.INFO,
                             "highway traffic statistics repair run_id=%s status=%s reason=%s chunks=%s range=%s..%s "
                             "inserted=%s updated=%s deleted=%s unchanged=%s cursor=%s sweep_complete=%s "
                             "budget_exhausted=%s busy_skips=%s seconds=%.3f",

@@ -324,6 +324,12 @@ describe("소통 5분 통계 어긋남·장기 복구(차이 기반 재대조)",
   expect(result.warning).toBe(false);expect(result.detail).toContain("장기 복구 확인 (11.20 09:00~11.20 13:00 KST) · 어긋남 없음");expect(result.detail).not.toContain("어긋남 0행");
   expect(result.counts.traffic_statistics_repair_seconds).toBe(1.5);
  });
+ it("정상 실행의 0 값 어긋남·복구 행 수는 결과 줄에 싣지 않는다",()=>{
+  const result=output([...success,{label:"traffic_statistics_inserted_rows",intValue:0},{label:"traffic_statistics_updated_rows",intValue:0},{label:"traffic_statistics_deleted_rows",intValue:0},{label:"traffic_statistics_drift_rows",intValue:0},{label:"traffic_statistics_unchanged_rows",intValue:2870},{label:"traffic_statistics_repair_chunks",intValue:0},{label:"traffic_statistics_repair_busy_skips",intValue:0},{label:"traffic_statistics_repair_drift_rows",intValue:0},{label:"traffic_statistics_seconds",floatValue:0}]);
+  expect(result.counts).toEqual({traffic_statistics_unchanged_rows:2870,traffic_statistics_seconds:0});
+  const backoff=output([...success,{label:"traffic_statistics_repair_status",text:"deferred"},{label:"traffic_statistics_repair_reason",text:"failure_backoff"}]);
+  expect(backoff.warning).toBe(false);expect(backoff.detail).toContain("구간이 연속 실패해 한 시간 쉬는 중");
+ });
  it("장기 복구가 바로잡은 행과 실패는 경고, 양보·건너뜀·예산 소진·한 바퀴 완료는 안내다",()=>{
   const fixed=output([...success,{label:"traffic_statistics_repair_status",text:"repaired"},{label:"traffic_statistics_repair_drift_rows",intValue:7},{label:"traffic_statistics_repair_range_start",text:"2026-11-19T22:00:00Z"},{label:"traffic_statistics_repair_range_end",text:"2026-11-20T00:00:00Z"},{label:"traffic_statistics_repair_sweep_complete",boolValue:true},{label:"traffic_statistics_repair_budget_exhausted",boolValue:true}]);
   expect(fixed.warning).toBe(true);expect(fixed.detail).toContain("원본과 다른 7행 바로잡음 (11.20 07:00~11.20 09:00 KST)");expect(fixed.detail).toContain("한 바퀴 완료");expect(fixed.detail).toContain("실행 예산 소진");

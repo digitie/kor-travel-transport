@@ -361,15 +361,44 @@ def test_repair_yields_when_busy_and_retries_failed_chunk(test_settings) -> None
             state = await _repair_state(session)
             await session.commit()
         assert (failed.status, failed.reason, failed.chunks) == ("failed", "statement_timeout", 0)
-        # 실패한 구간의 위치 전진·한 바퀴 시작은 함께 rollback됐다. 원인 코드만 남는다.
-        assert state.next_due_at is None and state.last_error == "statement_timeout"
+        # 새 한 바퀴의 첫 구간이 실패해도 막힌 위치(창 시작)와 원인·연속 실패 횟수가 원장에 보인다.
+        assert state.next_due_at == window_start and state.last_error == "statement_timeout;failures=1"
+        assert failed.cursor == window_start
 
+        # 연속 실패는 같은 위치에서 구간 폭을 반씩 줄이고, 세 번째 실패 뒤에는 한 시간 쉰다(매 실행 문장 상한을 쓰지 않게).
+        clock_now = [now_utc()]
+        widths: list[timedelta] = []
+
+        async def failing_again(session, start, end, **kwargs):
+            widths.append(end - start)
+            return await statement_timeout(session, start, end, **kwargs)
+
+        for expected in ("statement_timeout;failures=2", "statement_timeout;failures=3"):
+            async with factory() as session:
+                again = await repair_traffic_statistics(session, reconcile=failing_again, now=lambda: clock_now[0],
+                                                        **common)
+                state = await _repair_state(session)
+                await session.commit()
+            assert again.status == "failed" and state.last_error == expected and state.next_due_at == window_start
+        assert widths == [timedelta(hours=1), timedelta(minutes=30)]
         async with factory() as session:
-            healed = await repair_traffic_statistics(session, **common)
+            backoff = await repair_traffic_statistics(session, reconcile=failing_again, now=lambda: clock_now[0],
+                                                      **common)
+        assert (backoff.status, backoff.reason, backoff.chunks) == ("deferred", "failure_backoff", 0)
+        assert len(widths) == 2
+
+        # 쉬는 시간이 지나면 가장 좁은 구간(15분)으로 다시 하고, 성공하면 원인·횟수를 지운다.
+        clock_now[0] += timedelta(hours=1, minutes=1)
+        async with factory() as session:
+            healed = await repair_traffic_statistics(session, now=lambda: clock_now[0], **common)
             state = await _repair_state(session)
             await session.commit()
-        assert healed.status == "repaired" and healed.range_end == window_start and healed.totals.changed == 3
-        assert state.last_error is None and healed.cursor == window_start - timedelta(hours=2)
+        assert healed.status == "repaired" and healed.range_end == window_start
+        assert healed.range_start == window_start - timedelta(minutes=15)
+        assert state.last_error is None and healed.cursor == window_start - timedelta(minutes=15)
+        async with factory() as session:
+            rest = await repair_traffic_statistics(session, now=lambda: clock_now[0], **{**common, "max_chunks": 12})
+        assert rest.sweep_complete and healed.totals.changed + rest.totals.changed == 3
 
     _execute(test_settings, check)
 
@@ -547,6 +576,16 @@ def test_manual_script_parses_kst_range_to_utc_buckets() -> None:
     for bad in (("2026-11-20T10:00", "2026-11-20T09:00"), ("2026-01-01T00:00", "2026-11-01T00:00")):
         with pytest.raises(ValueError):
             module.parse_range(*bad)
+    # 잘못된 입력은 DB에 닿기 전에 traceback 없이 argparse 오류(종료 코드 2)로 끝난다.
+    for argv in (["--start", "2026-11-20T10:00", "--end", "2026-11-20T09:00"],
+                 ["--start", "not-a-time", "--end", "2026-11-20T09:00"],
+                 ["--start", "2026-11-20T00:00", "--end", "2026-11-20T09:00", "--chunk-hours", "0.1"],
+                 ["--start", "2026-11-20T00:00", "--end", "2026-11-20T09:00", "--chunk-hours", "24"],
+                 ["--start", "2026-11-20T00:00", "--end", "2026-11-20T09:00", "--chunk-hours", "0"]):
+        with pytest.raises(SystemExit) as exited:
+            module.main(argv)
+        assert exited.value.code == 2
+    assert module.chunk_hours("0.25") == 0.25 and module.chunk_hours("6") == 6.0
 
 
 def test_manual_range_dry_run_apply_busy_and_budget_resume(test_settings, capsys) -> None:
@@ -657,6 +696,65 @@ def test_repair_metadata_is_bounded_and_drift_is_not_a_failure() -> None:
     assert (failed["traffic_statistics_repair_status"], failed["traffic_statistics_repair_reason"]) == (
         "failed", "sqlstate_53")
     assert failed["collection_outcome"] == "success"
+
+
+def test_repair_keeps_statistics_of_buckets_without_any_raw(test_settings) -> None:
+    """원본 한가운데가 비어도(원본 정리·부분 복원) 장기 복구는 원본이 하나도 없는 bucket의 통계를 지우지 않는다. 원본이 있는
+    bucket의 원본 없는 행(유령 노선)은 예전대로 지운다. 최근 창 재대조는 예전대로 둘 다 지운다."""
+
+    async def check(factory, engine):
+        _require_postgres(engine)
+        window_start = BASE + timedelta(hours=6)
+        async with factory() as session:
+            await _seed_raw(session, BASE, 6)
+            await _rebuild_all(session)
+            hole = (BASE + timedelta(hours=3), BASE + timedelta(hours=3, minutes=30))
+            await session.execute(text(
+                "DELETE FROM highway_traffic_snapshots WHERE observed_at >= :start AND observed_at < :end"),
+                {"start": hole[0], "end": hole[1]})
+            await _corrupt(session, stale_bucket=BASE + timedelta(hours=4), orphan_bucket=BASE + timedelta(hours=4),
+                           missing_bucket=BASE + timedelta(hours=5))
+            await session.commit()
+            kept_before = _in(await _stored_statistics(session), *hole)
+            await session.commit()
+        assert kept_before
+        async with factory() as session:
+            repaired = await repair_traffic_statistics(session, window_start=window_start, horizon=timedelta(days=7))
+        assert repaired.sweep_complete and (repaired.totals.inserted, repaired.totals.updated,
+                                            repaired.totals.deleted) == (1, 1, 1)
+        async with factory() as session:
+            assert _in(await _stored_statistics(session), *hole) == kept_before
+            window = await reconcile_traffic_statistics(session, hole[0], hole[1])
+            await session.commit()
+        assert window.deleted == len(kept_before)
+
+    _execute(test_settings, check)
+
+
+def test_highway_output_metadata_stays_under_console_entry_limit() -> None:
+    """고속도로 op 결과 metadata는 관리 콘솔이 읽는 상한(64개, `safeMetadata`)보다 여유 있게 적다 — 넘으면 뒤에 붙은
+    장기 복구 시각·실패 진단 키가 콘솔에서 말없이 잘린다. 모든 키를 채운 partial 결과로 잰다."""
+    from app.dagster.definitions import (
+        TRAFFIC_REPAIR_TIME_KEYS,
+        TRAFFIC_STORE_BOOL_KEYS,
+        TRAFFIC_STORE_COUNT_KEYS,
+        TRAFFIC_STORE_REASON_KEYS,
+        TRAFFIC_STORE_SECONDS_KEYS,
+    )
+
+    result: dict[str, Any] = {
+        "status": "partial_success", "collection_run_id": 3, "raw_response_count": 2, "traffic_snapshot_count": 10,
+        "incident_snapshot_count": 4, "errors": ["traffic: highway traffic store failed due to statement timeout"],
+        "traffic_failed_step": "history", "traffic_statistics_repair_status": "failed",
+        "traffic_statistics_repair_reason": "statement_timeout",
+        **{key: 1 for key in TRAFFIC_STORE_COUNT_KEYS}, **{key: 1.5 for key in TRAFFIC_STORE_SECONDS_KEYS},
+        **{key: "statement_timeout" for key in TRAFFIC_STORE_REASON_KEYS},
+        **{key: True for key in TRAFFIC_STORE_BOOL_KEYS}, **{key: "2026-11-20T00:00:00Z" for key in TRAFFIC_REPAIR_TIME_KEYS},
+    }
+    metadata = _collection_output_metadata(result, "highway")
+    assert metadata["collection_outcome"] == "partial" and "error_code" in metadata
+    assert "traffic_statistics_repair_cursor" in metadata
+    assert len(metadata) <= 60, len(metadata)
 
 
 def test_highway_op_warns_on_drift_and_repair_failure_without_partial(monkeypatch) -> None:

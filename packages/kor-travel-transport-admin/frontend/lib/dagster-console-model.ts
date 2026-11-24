@@ -43,7 +43,7 @@ export const CONSOLE_COUNT_LABELS: Record<string, string> = {
   traffic_statistics_repair_chunks: "장기 복구 구간", traffic_statistics_repair_inserted_rows: "장기 복구 추가 행",
   traffic_statistics_repair_updated_rows: "장기 복구 수정 행", traffic_statistics_repair_deleted_rows: "장기 복구 삭제 행",
   traffic_statistics_repair_unchanged_rows: "장기 복구 그대로 둔 행", traffic_statistics_repair_drift_rows: "장기 복구 어긋남",
-  traffic_statistics_repair_busy_skips: "장기 복구 잠금 양보", traffic_statistics_repair_seconds: "장기 통계 복구(초)",
+  traffic_statistics_repair_busy_skips: "장기 복구 잠금 양보", traffic_statistics_repair_seconds: "장기 복구(초)",
 };
 export const CONSOLE_ACTIVE = new Set(["NOT_STARTED", "QUEUED", "STARTING", "STARTED", "CANCELING"]);
 export const CONSOLE_STATUS_LABELS: Record<string, string> = {

@@ -270,14 +270,21 @@ Historical ODROID 권장 대응:
 | `traffic_statistics_drift_rows` > 0, 경고 "최근 두 시간이 원본과 달라 N행을 바로잡았습니다" | 최근 2시간 재대조가 원본과 다른 통계 행을 찾아 **이미 고쳤다**. 원천 transaction이 자기 bucket을 함께 맞추므로 정상이면 0이다. `collection_outcome`은 success다. | 한 번이면 조치 없음. 몇 실행 연속이면 직전 실행들의 실패(`traffic_source_committed=false`·`traffic_statistics_refreshed=false`)·수동 DB 수정·배포 중 옛 코드와의 겹침을 확인한다. 실패 이력 없이 매 실행 반복되면 코드 버그로 보고 이슈를 남긴다. |
 | `traffic_statistics_refreshed=false`(partial, `DERIVED_CACHE_DEFERRED`) | 최근 2시간 재대조가 DB 오류·잠금으로 미뤄졌다. | 원인 코드별 대응은 수집 문서 4번. 2시간 넘게 이어진 구간은 장기 복구가 다음 한 바퀴에서 맞춘다. |
 | `traffic_statistics_repair_drift_rows` > 0, 경고 "장기 복구가 …에서 원본과 다른 N행을 바로잡았습니다" | 최근 창보다 오래된 구간(`traffic_statistics_repair_range_start`~`range_end`, UTC)의 어긋남을 고쳤다. | 창 재대조가 연속 실패했던 시간대와 겹치면 정상적인 회복이다. 겹치지 않으면 그 구간에 수동 수정·복원이 있었는지 확인한다. |
-| `traffic_statistics_repair_status=failed`(원인 `traffic_statistics_repair_reason`) | 장기 복구 구간이 DB 오류로 실패했다. 진행 위치는 그대로라 다음 실행이 같은 구간부터 다시 한다. | 하루 넘게 같은 원인으로 반복되면(진행 위치 `traffic_statistics_repair_cursor`가 움직이지 않음) `statement_timeout`이면 DB 부하·구간 크기를, `lock_timeout`이면 통계 행 잠금을 쥔 세션을 확인한다. 장기 복구를 잠시 끄려면 `TRANSPORT_TRAFFIC_STATISTICS_REPAIR_HORIZON_HOURS=0`(code-server 재생성 필요). |
+| `traffic_statistics_repair_status=failed`(원인 `traffic_statistics_repair_reason`) | 장기 복구 구간이 DB 오류로 실패했다. 진행 위치는 그대로이고 다음 실행이 같은 위치부터 더 좁은 구간(1시간 → 30분 → 15분)으로 다시 한다. 구간 문장은 30초 상한이라 실행 하나가 더하는 시간은 그 이하다. | 연속 세 번 실패하면 장기 복구는 한 시간씩 쉬며(`deferred`·`failure_backoff`) 한 시간에 한 번만 다시 해 본다. 멈춤의 신호는 연속 `failed`·`failure_backoff`와 진행 원장 행의 `last_error`(`<원인>;failures=<n>`)·`updated_at`(마지막 실패 시각), 움직이지 않는 `next_due_at`(= `traffic_statistics_repair_cursor`)이다. `failures`가 6을 넘으면(쉼 포함 약 세 시간) 확인한다 — `statement_timeout`이면 DB 부하·그 구간의 원본 양을, `lock_timeout`이면 통계 행 잠금을 쥔 세션을, `sqlstate_22` 같은 데이터 오류면 그 구간 원본을 본다. 그 구간을 건너뛰려면 원장 행을 지운다(아래, 다음 한 바퀴가 새로 시작). 장기 복구를 잠시 끄려면 `TRANSPORT_TRAFFIC_STATISTICS_REPAIR_HORIZON_HOURS=0`(code-server 재생성 필요). |
 | `traffic_statistics_repair_status=busy` | 다른 통계 쓰기(겹친 수동·관리자 실행, 운영자 수동 재대조)가 잠금을 쥐어 이번 실행은 양보했다. | 조치 없음. 정기 실행만 있는데 계속 `busy`면 오래 열린 transaction이 잠금 420042를 쥐고 있는지 `pg_locks`(`locktype='advisory'`, `objid=420042`)로 확인한다. |
-| `traffic_statistics_repair_status=deferred` | 이번 실행은 건너뛰었다 — `window_deferred`(최근 창 재대조 실패·지연, DB 부하 신호) 또는 `run_budget`(수집이 이미 10분 넘게 걸림). | 조치 없음. 계속 `run_budget`이면 고속도로 수집 자체가 느린 것이다(WLH-06 단계별 시간 확인). |
+| `traffic_statistics_repair_status=deferred` | 이번 실행은 건너뛰었다 — `window_deferred`(최근 창 재대조 실패·지연, DB 부하 신호), `run_budget`(수집이 이미 10분 넘게 걸림) 또는 `failure_backoff`(구간이 연속 세 번 실패해 한 시간 쉬는 중). | 조치 없음. 계속 `run_budget`이면 고속도로 수집 자체가 느린 것이다(WLH-06 단계별 시간 확인). `failure_backoff`는 위 `failed` 행의 대응을 따른다. |
 | `traffic_statistics_repair_budget_exhausted=true` | 이번 실행의 5초 예산이 끝나 다음 실행이 이어 한다. | 조치 없음. |
 
 진행 원장은 `transport_collection_states`의 `source='krex_traffic_statistics_repair'` 행이다(`next_due_at` = 다음 구간의
-끝, `last_started_at` = 이번 한 바퀴 시작, `last_success_at` = 마지막 한 바퀴 완료, `last_error` = 마지막 실패 원인). 이
-행을 지우면 다음 실행이 새 한 바퀴를 시작한다(데이터는 바뀌지 않는다).
+끝, `last_started_at` = 이번 한 바퀴 시작, `last_success_at` = 마지막 한 바퀴 완료, `last_error` = 연속 실패 원인과 횟수,
+`updated_at` = 마지막 기록 시각). 이 행을 지우면 다음 실행이 새 한 바퀴를 시작한다(데이터는 바뀌지 않는다).
+
+**이 기능 이전 이미지로 되돌릴 때**: 옛 코드의 수집 상태 API는 이 행을 걸러내지 않아 관리 화면 수집 원천 목록에 알 수 없는
+원천(`krex_traffic_statistics_repair`)으로 보인다. 되돌린 뒤 이 행을 지운다(데이터는 바뀌지 않는다):
+
+```sql
+DELETE FROM transport_collection_states WHERE source = 'krex_traffic_statistics_repair';
+```
 
 원인을 고친 뒤 특정 기간을 바로 맞추려면 backend 또는 code-server 컨테이너 안에서 수동 재대조를 쓴다. 먼저 확인 전용으로
 어긋남 크기를 본다(읽기 전용, 잠금 없음):
@@ -288,6 +295,9 @@ python scripts/reconcile-traffic-statistics.py --start 2026-11-20T00:00 --end 20
 ```
 
 시간대가 없으면 KST다. 구간(기본 2시간)마다 commit하므로 중간에 멈춰도 이미 맞춘 구간은 남는다. 정기 수집이 통계 잠금을
-쥐고 있으면 잠시 뒤 다시 해 본 뒤 멈추고(종료 코드 3) 이어 할 `--start`를 출력한다. 가장 오래된 원본보다 앞 구간은
-건너뛴다(원본이 지워진 기간의 통계를 지우지 않게). `--include-before-oldest-raw`는 그 구간의 통계 행을 지우므로 원본이
+쥐고 있으면 잠시 뒤 다시 해 본 뒤 멈추고(종료 코드 3) 이어 할 `--start`를 출력한다. 시간 예산(`--budget-seconds`, 기본
+1,800초 = 30분)이 지나도 같은 안내와 종료 코드 3으로 멈춘다 — 긴 기간(최대 90일)은 여러 번 이어 실행한다. 구간 문장은
+30초 상한이다(통계 잠금을 쥐고 정기 수집의 원천 저장을 55초 넘게 막지 않게). `statement_timeout`으로 실패하면
+`--chunk-hours`를 줄인다(5분의 배수, 최대 6). 입력 오류는 종료 코드 2다. 가장 오래된 원본보다 앞 구간과 원본이 하나도
+없는 bucket의 통계는 지우지 않는다(원본이 지워진 기간의 통계를 지우지 않게). `--include-before-oldest-raw`는 그 구간의 통계 행을 지우므로 원본이
 그 기간에 처음부터 없었던 것이 확실할 때만 쓴다.

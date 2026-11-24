@@ -852,7 +852,7 @@ def _warn_traffic_statistics_drift(context: Any, metadata: dict[str, Any]) -> No
         context.log.warning(
             "고속도로 소통 5분 통계 장기 복구 구간이 실패했습니다"
             f"(reason={metadata.get('traffic_statistics_repair_reason', 'unknown')}). 수집 결과는 그대로이고 다음 "
-            "정기 수집이 같은 구간부터 다시 합니다.")
+            "정기 수집이 같은 위치부터 더 좁은 구간으로 다시 합니다(세 번 연속 실패하면 한 시간씩 쉽니다).")
 
 
 #: 유가 op 동안 Dagster event log로 넘기는 logger. 오피넷 수집기의 단계별 진행(지역 탐색, 탭별 시도 진행,

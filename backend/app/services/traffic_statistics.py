@@ -43,11 +43,14 @@ SUM_RELATIVE_TOLERANCE = 1e-9
 #:   한 바퀴(sweep)가 없다.
 #: - `last_started_at`: 지금(또는 마지막) 한 바퀴를 시작한 시각. 다음 한 바퀴는 이 시각 + `sweep_interval` 뒤에 시작한다.
 #: - `last_success_at`: 마지막으로 한 바퀴를 끝낸 시각.
-#: - `last_error`: 마지막 구간 실패의 고정 원인 코드(성공하면 NULL).
+#: - `last_error`: 연속 구간 실패의 고정 원인 코드와 횟수 `<원인>;failures=<n>`(구간을 하나 끝내면 NULL). 마지막 실패
+#:   시각은 `updated_at`이다.
 TRAFFIC_STATISTICS_REPAIR_STATE = "krex_traffic_statistics_repair"
 #: 장기 복구 한 구간(한 transaction·한 commit)의 폭. 최근 창(2시간)과 같아 한 구간의 비용이 창 재대조 한 번과 비슷하다.
 TRAFFIC_STATISTICS_REPAIR_CHUNK = timedelta(hours=2)
-#: 한 바퀴의 시작 간격 상한. 지평(horizon)이 이보다 짧으면 지평을 쓴다(창에서 빠진 bucket이 빠짐없이 한 바퀴에 들게).
+#: 한 바퀴의 시작 간격 상한. 지평(horizon)의 절반이 이보다 짧으면 그 절반을 쓴다 — 다음 한 바퀴의 하한(새 창 시작 −
+#: 지평)이 앞 한 바퀴의 시작점(그때의 창 시작)보다 앞이어야 그 사이에 창에서 빠진 bucket이 빠짐없이 다음 한 바퀴에 든다.
+#: 그래서 한 바퀴가 `지평 − 간격` 안에 끝나는 한 빈틈이 없다(기본 168시간 지평이면 144시간).
 TRAFFIC_STATISTICS_REPAIR_SWEEP_INTERVAL = timedelta(hours=24)
 #: 고속도로 실행 한 번이 장기 복구에 쓰는 시간 예산(초). 다음 구간을 시작하기 전에 잰다 — 이미 시작한 구간은 끝낸다.
 TRAFFIC_STATISTICS_REPAIR_RUN_BUDGET_SECONDS = 5.0
@@ -55,15 +58,27 @@ TRAFFIC_STATISTICS_REPAIR_RUN_BUDGET_SECONDS = 5.0
 TRAFFIC_STATISTICS_REPAIR_MAX_CHUNKS_PER_RUN = 12
 #: 수집 실행이 이미 이만큼 걸렸으면 장기 복구를 이번 실행에서 건너뛴다(고속도로 job 실행 상한 1,200초의 절반).
 TRAFFIC_STATISTICS_REPAIR_SKIP_AFTER = timedelta(minutes=10)
+#: 장기 복구·수동 재대조 한 구간 문장의 시간 상한. 이 구간은 통계 잠금(420042)을 쥐고 돌므로, 원천 transaction이 그 잠금을
+#: 기다리는 상한(`TRAFFIC_STATISTICS_LOCK_WAIT`, 55초)보다 짧아야 낮은 우선순위 작업이 정기 수집의 원천 저장을 실패시키지
+#: 않는다.
+TRAFFIC_STATISTICS_REPAIR_STATEMENT_TIMEOUT = "30s"
+#: 같은 위치에서 구간이 연속으로 실패하면 구간 폭을 실패 횟수만큼 반으로 줄인다(2시간 → 1시간 → 30분 → 15분이 하한).
+#: 무거운 구간 하나가 한 바퀴 전체를 막지 않게 한다.
+TRAFFIC_STATISTICS_REPAIR_MAX_HALVINGS = 3
+#: 연속 실패가 이 횟수에 닿으면 마지막 실패 뒤 `TRAFFIC_STATISTICS_REPAIR_FAILURE_BACKOFF` 동안 장기 복구를 쉰다
+#: (`deferred`·`failure_backoff`). 매 5분 실행이 같은 실패에 문장 시간 상한을 쓰지 않게 한다.
+TRAFFIC_STATISTICS_REPAIR_FAILURE_BACKOFF_AFTER = 3
+TRAFFIC_STATISTICS_REPAIR_FAILURE_BACKOFF = timedelta(hours=1)
 
 #: 장기 복구 한 실행의 결과(`traffic_statistics_repair_status`).
 #: - `idle`: 진행 중인 한 바퀴가 없고 다음 한 바퀴의 시작 시각 전이다(또는 지평 안에 원본이 없다).
 #: - `repaired`: 구간을 하나 이상 재대조했다(어긋남이 없었으면 바꾼 행은 0이다).
 #: - `busy`: 다른 transaction이 통계 잠금을 쥐고 있어 이번 실행은 양보했다(진행 위치는 그대로).
-#: - `deferred`: 이번 실행은 건너뛰었다(`run_budget` 수집이 이미 오래 걸림, `window_deferred` 최근 창 재대조 실패·지연).
-#: - `failed`: 구간 재대조가 DB 오류로 실패했다(진행 위치는 그대로라 다음 실행이 같은 구간부터 다시 한다).
+#: - `deferred`: 이번 실행은 건너뛰었다(`run_budget` 수집이 이미 오래 걸림, `window_deferred` 최근 창 재대조 실패·지연,
+#:   `failure_backoff` 연속 실패 뒤 쉬는 중).
+#: - `failed`: 구간 재대조가 DB 오류로 실패했다(진행 위치는 그대로라 다음 실행이 같은 위치부터 더 좁은 구간으로 다시 한다).
 REPAIR_STATUSES = ("idle", "repaired", "busy", "deferred", "failed")
-REPAIR_DEFER_REASONS = ("run_budget", "window_deferred")
+REPAIR_DEFER_REASONS = ("run_budget", "window_deferred", "failure_backoff")
 #: 저장·재대조 실패 원인 코드(`database_failure_reason`). SQLSTATE 등급은 `sqlstate_<2자리>`로 남긴다.
 DATABASE_FAILURE_REASONS = (
     "statement_timeout", "lock_timeout", "deadlock", "serialization", "unique_violation", "connection",
@@ -184,8 +199,12 @@ def _same_statistics(stored: str, canonical: str) -> str:
     return f"({exact} AND {sums})"
 
 
-def _statements(has_end: bool) -> tuple[str, str]:
-    """(적용 문장, 확인 전용 문장). 정본 CTE는 한 번만 계산한다(두 번 이상 참조하는 CTE는 PostgreSQL이 물질화한다)."""
+def _statements(has_end: bool, keep_rawless_buckets: bool) -> tuple[str, str]:
+    """(적용 문장, 확인 전용 문장). 정본 CTE는 한 번만 계산한다(두 번 이상 참조하는 CTE는 PostgreSQL이 물질화한다).
+
+    `keep_rawless_buckets`면 원본이 하나도 없는 bucket의 통계 행은 지우지 않는다(정본에 없는 행 삭제를 원본이 있는 bucket으로
+    한정). 그 bucket의 통계만 남은 경우(원본 정리·부분 복원)를 어긋남으로 보고 지우지 않게 한다.
+    """
     source_filter = "observed_at >= :range_start" + (" AND observed_at < :range_end" if has_end else "")
     bucket_filter = "s.bucket_start >= :range_start" + (" AND s.bucket_start < :range_end" if has_end else "")
     canonical = f"""
@@ -214,7 +233,8 @@ def _statements(has_end: bool) -> tuple[str, str]:
                 SELECT 1 FROM canonical c
                 WHERE c.bucket_start = s.bucket_start AND c.route_no_key = s.route_no_key
                   AND c.direction_key = s.direction_key
-            )"""
+            )""" + ("""
+            AND EXISTS (SELECT 1 FROM canonical c WHERE c.bucket_start = s.bucket_start)""" if keep_rawless_buckets else "")
     columns = ", ".join(_ALL_COLUMNS)
     assignments = ", ".join(f"{column} = EXCLUDED.{column}" for column in _STAT_COLUMNS)
     apply = f"""
@@ -248,7 +268,7 @@ def _statements(has_end: bool) -> tuple[str, str]:
     return apply, check
 
 
-_STATEMENTS = {has_end: _statements(has_end) for has_end in (False, True)}
+_STATEMENTS = {(has_end, keep): _statements(has_end, keep) for has_end in (False, True) for keep in (False, True)}
 
 
 async def reconcile_traffic_statistics(
@@ -258,6 +278,7 @@ async def reconcile_traffic_statistics(
     *,
     dry_run: bool = False,
     serial: bool = False,
+    keep_rawless_buckets: bool = False,
 ) -> ReconcileResult:
     """`[range_start, range_end)`(끝이 없으면 그 뒤 전부)의 5분 통계를 원본 정본과 같게 맞춘다(한 문장).
 
@@ -265,6 +286,7 @@ async def reconcile_traffic_statistics(
     원본과 그 통계가 함께 commit·rollback된다. 경계는 5분 bucket 경계여야 한다(원본 범위와 통계 범위가 같은 bucket을
     가리키게). `dry_run`은 아무것도 쓰지 않고 바꿀 행 수만 센다. `serial`은 이 transaction의 병렬 집계를 끈다(독립
     transaction에서만 — 낮은 우선순위 작업이 A55 코어를 더 쓰지 않고, 같은 범위의 합 순서도 실행마다 같게).
+    `keep_rawless_buckets`는 원본이 하나도 없는 bucket의 통계 행을 지우지 않는다(장기 복구·수동 재대조).
     """
     start = _aligned(range_start, "range_start")
     end = _aligned(range_end, "range_end") if range_end is not None else None
@@ -272,7 +294,7 @@ async def reconcile_traffic_statistics(
         raise ValueError("range_end는 range_start보다 뒤여야 합니다")
     if serial:
         await session.execute(text("SELECT set_config('max_parallel_workers_per_gather', '0', true)"))
-    apply, check = _STATEMENTS[end is not None]
+    apply, check = _STATEMENTS[(end is not None, keep_rawless_buckets)]
     params: dict[str, Any] = {"range_start": start}
     if end is not None:
         params["range_end"] = end
@@ -288,6 +310,29 @@ async def try_lock_traffic_statistics(session: AsyncSession) -> bool:
     """통계 잠금을 기다리지 않고 잡는다(창 재대조·장기 복구·수동 재대조). 잡으면 이 transaction의 끝까지 쥔다."""
     return bool(await session.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"),
                                      {"key": TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY}))
+
+
+async def limit_repair_statement_time(session: AsyncSession) -> None:
+    """이 transaction의 문장 시간 상한을 `TRAFFIC_STATISTICS_REPAIR_STATEMENT_TIMEOUT`으로 낮춘다(통계 잠금을 쥔 낮은 우선순위 구간)."""
+    await session.execute(text("SELECT set_config('statement_timeout', :timeout, true)"),
+                          {"timeout": TRAFFIC_STATISTICS_REPAIR_STATEMENT_TIMEOUT})
+
+
+_FAILURES = re.compile(r";failures=([0-9]{1,6})$")
+
+
+def repair_failures(last_error: str | None) -> int:
+    """진행 원장 `last_error`(`<원인>;failures=<n>`)의 연속 실패 횟수. 형식이 다르면 실패가 있으면 1, 없으면 0이다."""
+    if not last_error:
+        return 0
+    match = _FAILURES.search(last_error)
+    return int(match.group(1)) if match else 1
+
+
+def _repair_chunk(chunk: timedelta, failures: int) -> timedelta:
+    """연속 실패 횟수만큼 반으로 줄인 구간 폭(5분 경계로 내리고 5분 이상)."""
+    narrowed = chunk / (2 ** min(failures, TRAFFIC_STATISTICS_REPAIR_MAX_HALVINGS))
+    return max(STATISTICS_BUCKET, narrowed - narrowed % STATISTICS_BUCKET)
 
 
 async def wait_for_traffic_statistics_lock(session: AsyncSession) -> None:
@@ -321,14 +366,16 @@ class RepairOutcome:
     seconds: float = 0.0
 
     def summary(self) -> dict[str, Any]:
-        result: dict[str, Any] = {
-            "traffic_statistics_repair_status": self.status,
-            "traffic_statistics_repair_chunks": self.chunks,
-            "traffic_statistics_repair_seconds": round(self.seconds, 3),
-            "traffic_statistics_repair_sweep_complete": self.sweep_complete,
-            "traffic_statistics_repair_budget_exhausted": self.budget_exhausted,
-            "traffic_statistics_repair_busy_skips": self.busy_skips,
-        }
+        result: dict[str, Any] = {"traffic_statistics_repair_status": self.status}
+        if self.status != "idle":
+            # 할 일이 없던 실행(`idle`)은 상태만 싣는다 — 0 값 행 수·시간이 매 실행 콘솔에 쌓이지 않게.
+            result.update({
+                "traffic_statistics_repair_chunks": self.chunks,
+                "traffic_statistics_repair_seconds": round(self.seconds, 3),
+                "traffic_statistics_repair_sweep_complete": self.sweep_complete,
+                "traffic_statistics_repair_budget_exhausted": self.budget_exhausted,
+                "traffic_statistics_repair_busy_skips": self.busy_skips,
+            })
         if self.reason is not None:
             result["traffic_statistics_repair_reason"] = self.reason
         if self.chunks:
@@ -394,16 +441,17 @@ async def repair_traffic_statistics(
         raise ValueError("chunk는 5분의 양의 배수여야 합니다")
     if horizon <= timedelta(0):
         raise ValueError("horizon은 양수여야 합니다")
-    interval = min(sweep_interval, horizon)
+    interval = min(sweep_interval, horizon / 2)
     outcome = RepairOutcome(status="idle")
     started = clock()
-    lower: datetime | None = None
     while True:
         if outcome.chunks >= max_chunks:
             break
         if outcome.chunks and clock() - started >= budget_seconds:
             outcome.budget_exhausted = True
             break
+        # 실패를 기록할 때 진행 위치가 없던(새 한 바퀴의 첫 구간) 경우 그 위치를 남겨 운영자가 볼 수 있게 한다.
+        attempted: datetime | None = None
         try:
             if not await try_lock_traffic_statistics(session):
                 await session.rollback()
@@ -412,9 +460,16 @@ async def repair_traffic_statistics(
                     outcome.status = "busy"
                 break
             state = await _repair_state(session)
-            if lower is None:
-                lower = await _horizon_start(session, window_start, horizon)
-                outcome.horizon_start = lower
+            failures = repair_failures(state.last_error)
+            if (failures >= TRAFFIC_STATISTICS_REPAIR_FAILURE_BACKOFF_AFTER and state.updated_at is not None
+                    and now() < serialize_utc(state.updated_at) + TRAFFIC_STATISTICS_REPAIR_FAILURE_BACKOFF):
+                await session.rollback()
+                if not outcome.chunks:
+                    outcome.status, outcome.reason = "deferred", "failure_backoff"
+                break
+            # 하한은 구간마다 이 transaction에서 다시 잰다(구간 사이에 원본이 정리될 수 있다).
+            lower = await _horizon_start(session, window_start, horizon)
+            outcome.horizon_start = lower
             cursor = serialize_utc(state.next_due_at) if state.next_due_at is not None else None
             if cursor is None:
                 started_at = serialize_utc(state.last_started_at) if state.last_started_at is not None else None
@@ -433,8 +488,10 @@ async def repair_traffic_statistics(
                 await session.commit()
                 outcome.sweep_complete = True
                 break
-            chunk_start = max(cursor - chunk, lower)
-            result = await reconcile(session, chunk_start, cursor, serial=True)
+            attempted = cursor
+            chunk_start = max(cursor - _repair_chunk(chunk, failures), lower)
+            await limit_repair_statement_time(session)
+            result = await reconcile(session, chunk_start, cursor, serial=True, keep_rawless_buckets=True)
             finished = chunk_start <= lower
             state.next_due_at = None if finished else chunk_start
             if finished:
@@ -445,7 +502,7 @@ async def repair_traffic_statistics(
         except Exception as exc:  # noqa: BLE001 — 실패는 원인 코드로 보고하고 수집 결과를 바꾸지 않는다.
             await session.rollback()
             outcome.status, outcome.reason = "failed", database_failure_reason(exc)
-            await _record_repair_failure(session, outcome.reason, now)
+            await _record_repair_failure(session, outcome.reason, now, attempted)
             break
         outcome.status = "repaired"
         outcome.chunks += 1
@@ -460,11 +517,20 @@ async def repair_traffic_statistics(
     return outcome
 
 
-async def _record_repair_failure(session: AsyncSession, reason: str, now: Callable[[], datetime]) -> None:
-    """구간 실패의 원인 코드를 진행 원장에 남긴다(진행 위치는 바꾸지 않는다). 기록 실패는 무시한다."""
+async def _record_repair_failure(
+    session: AsyncSession, reason: str, now: Callable[[], datetime], attempted: datetime | None,
+) -> None:
+    """구간 실패의 원인 코드와 연속 실패 횟수를 진행 원장에 남긴다. 기록 실패는 무시한다.
+
+    진행 위치는 앞으로 옮기지 않는다. 다만 새 한 바퀴의 첫 구간이 실패했으면(진행 위치가 없던 경우) 실패한 위치와 한 바퀴
+    시작 시각을 남긴다 — 그래야 운영자가 막힌 위치를 보고, 다음 실행이 새 창 시작이 아닌 그 위치에서 이어 한다.
+    """
     try:
         state = await _repair_state(session)
-        state.last_error = reason
+        if state.next_due_at is None and attempted is not None:
+            state.next_due_at = attempted
+            state.last_started_at = now()
+        state.last_error = f"{reason};failures={repair_failures(state.last_error) + 1}"
         state.updated_at = now()
         await session.commit()
     except Exception:  # noqa: BLE001
@@ -514,8 +580,9 @@ async def reconcile_traffic_statistics_range(
     `dry_run`은 잠금 없이 읽기 전용으로 바꿀 행 수만 센다. 쓰기는 구간마다 통계 잠금을 try-lock으로 잡고, 다른 쓰기가
     쥐고 있으면 `busy_wait_seconds`씩 `busy_retries`번 다시 해 본 뒤 멈춘다. `budget_seconds`가 지나면 다음 구간을 시작하지
     않는다. 멈춘 경우 `resume_from`부터 다시 실행하면 이어진다. 진행 원장(장기 복구 위치)은 건드리지 않는다. 장기 복구와
-    같이 가장 오래된 원본이 담긴 첫 온전한 bucket보다 앞은 건너뛴다(원본이 지워진 기간의 통계를 지우지 않게) —
-    `include_before_oldest_raw`로만 끈다. 호출자 session은 열린 transaction이 없어야 한다.
+    같이 가장 오래된 원본이 담긴 첫 온전한 bucket보다 앞은 건너뛰고, 원본이 하나도 없는 bucket의 통계 행도 지우지 않는다
+    (원본이 지워진 기간의 통계를 지우지 않게) — 둘 다 `include_before_oldest_raw`로만 끈다. 구간 문장은
+    `TRAFFIC_STATISTICS_REPAIR_STATEMENT_TIMEOUT` 안에 끝나야 한다(통계 잠금을 쥐고 돌기 때문). 호출자 session은 열린 transaction이 없어야 한다.
     """
     start = _aligned(range_start, "range_start")
     end = _aligned(range_end, "range_end")
@@ -551,7 +618,11 @@ async def reconcile_traffic_statistics_range(
                 else:
                     outcome.resume_from, outcome.stopped = chunk_start, "busy"
                     break
-            result = await reconcile_traffic_statistics(session, chunk_start, chunk_end, dry_run=dry_run, serial=True)
+            await limit_repair_statement_time(session)
+            result = await reconcile_traffic_statistics(
+                session, chunk_start, chunk_end, dry_run=dry_run, serial=True,
+                keep_rawless_buckets=not include_before_oldest_raw,
+            )
             if dry_run:
                 await session.rollback()
             else:

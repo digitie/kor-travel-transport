@@ -86,13 +86,15 @@ function requiredRun(data: Row, runId: string) {
 }
 function effectiveState(value: Row, state: Row) { return string(state.status) === "DECLARED_IN_CODE" ? string(value.defaultStatus) : string(state.status); }
 const outcomes: Record<string,string> = { success: "자료 수집 완료", partial: "일부 자료 미완료 · 정상 자료 유지", partial_success: "일부 자료 미완료 · 정상 자료 유지", deferred: "다음 수집으로 이월 · 정상 자료 유지", failed: "자료 수집 실패 · 마지막 정상 자료 유지", disabled: "수집 비활성 · 이번 수집 미실행", skipped: "이번 수집 건너뜀", not_ready: "원천 설정 또는 수집 주기로 대기", no_data: "원천 자료 미제공", collected: "자료 수집 완료", collected_with_warnings: "자료 저장 완료 · 후속 처리 경고", cache_refresh_failed: "자료 저장 완료 · 읽기 캐시 갱신 지연", source_unavailable: "원천 응답 지연 · 정상 자료 유지" };
+const ZERO_HIDDEN_COUNT = /^traffic_statistics_(?:inserted|updated|deleted|unchanged|drift|repair_[a-z_]+)_rows$|^traffic_statistics_repair_(?:chunks|busy_skips)$/;
 function safeMetadata(entries: unknown) {
   const counts: Record<string,number> = {}, notes: string[] = []; let warning = false, diagnostic = false;
   const metadata=list(entries).slice(0,64).map(row);
   const notExecuted=metadata.some(item=>item.label==="status"&&["skipped","disabled","not_ready"].includes(string(item.text))||item.label==="skipped"&&item.boolValue===true);
   for (const item of metadata) {
     const key = string(item.label), value = item.intValue ?? item.floatValue;
-    if (Object.hasOwn(CONSOLE_COUNT_LABELS, key) && number(value) !== null) counts[key] = value as number;
+    // 5분 통계 재대조·장기 복구의 행 수는 0이면 싣지 않는다 — 정상 실행마다 "어긋남 0"이 쌓여 실제 어긋남이 묻히지 않게.
+    if (Object.hasOwn(CONSOLE_COUNT_LABELS, key) && number(value) !== null && !(value === 0 && ZERO_HIDDEN_COUNT.test(key))) counts[key] = value as number;
     if ((key === "status" || key === "collection_outcome") && Object.hasOwn(outcomes, string(item.text))) {
       notes.push(outcomes[string(item.text)]); warning ||= !["success", "collected"].includes(string(item.text));
     }

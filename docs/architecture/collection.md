@@ -109,7 +109,8 @@ source 전체 rollback). 단계별 계측은 없었다. 아래 변경은 통계 
    빠진 구간은 장기 복구(7번)가 다음 한 바퀴에서 맞춘다. 원인을 고친 뒤 바로 맞추려면 수동 재대조(8번)를 쓴다.
    **어긋남**(창 재대조가 바꾼 행, `traffic_statistics_drift_rows` > 0)은 실패가 아니다 — 재대조가 이미 고쳤으므로
    `collection_outcome`은 success 그대로이고, 로그·op 경고 한 줄과 관리 콘솔 경고 표시만 남긴다(대응은
-   [트러블슈팅](../runbooks/troubleshooting.md#고속도로-소통-5분-통계-어긋남장기-복구-경고)). 실패(DB 오류)만 partial이다.
+   [트러블슈팅](../runbooks/troubleshooting.md#고속도로-소통-5분-통계-어긋남장기-복구-경고)). 창 재대조의 실패·지연(DB 오류·
+   `busy`)만 partial이다. 장기 복구(7번)의 실패·양보·건너뜀은 partial이 아니다.
 5. **끊김의 run 원장**: 원천 commit 뒤 재대조 도중 실행이 끊겨도 이미 확정한 원본과 그 bucket 통계는 맞다.
    취소(asyncio 취소·op 시간 예산)는 run 원장을 예전처럼 `failed`(`collection cancelled`)로 닫고 원천 상태는 덮지 않는다.
    SIGKILL·OOM처럼 프로세스가 바로 죽으면 원장은 `running`으로 남고, worker 회수 sensor가 Dagster 실행 종료·소유권
@@ -126,14 +127,27 @@ source 전체 rollback). 단계별 계측은 없었다. 아래 변경은 통계 
    조각으로 하루 한 바퀴 맞춘다(`repair_traffic_statistics`). 창 시작에서 과거로 2시간 구간(`TRAFFIC_STATISTICS_REPAIR_CHUNK`)씩
    걸어가며 구간마다 한 transaction(통계 try-lock → 진행 위치 읽기 → 차이 기반 재대조 → 진행 위치 전진 → commit)이다.
    지평은 `TRANSPORT_TRAFFIC_STATISTICS_REPAIR_HORIZON_HOURS`(기본 168 = 7일, 0이면 끔, 최대 90일)이고, 가장 오래된 원본이
-   담긴 첫 온전한 bucket보다 앞은 하지 않는다(원본 보존 정책이 생겨 원본만 먼저 지워져도 그 통계를 지우지 않게).
+   담긴 첫 온전한 bucket보다 앞은 하지 않는다(원본 보존 정책이 생겨 원본만 먼저 지워져도 그 통계를 지우지 않게). 하한은
+   구간마다 그 transaction에서 다시 잰다. 지평 안이라도 **원본이 하나도 없는 bucket**(원본 정리·부분 복원으로 가운데가 빈
+   경우)의 통계 행은 지우지 않는다 — 정본에 없는 행 삭제를 원본이 있는 bucket으로 한정한다(`keep_rawless_buckets`). 원본이
+   있는 bucket의 원본 없는 행(유령 노선·방향)은 지운다. 최근 창 재대조는 예전대로 둘 다 지운다.
    - **진행 원장**: migration 없이 `transport_collection_states`의 전용 행 `krex_traffic_statistics_repair`를 쓴다(공항
      KAC 할당량 원장과 같은 방식). `next_due_at` = 다음 구간의 끝(배타, 5분 경계, NULL이면 진행 중인 한 바퀴 없음),
-     `last_started_at` = 이번 한 바퀴 시작, `last_success_at` = 마지막 한 바퀴 완료, `last_error` = 마지막 구간 실패의
-     원인 코드. 진행 위치는 그 구간의 재대조와 같은 transaction에서 commit되므로 실패·취소·예산 소진 뒤 다음 실행이
-     마지막으로 commit한 구간 다음부터 이어 한다. 한 바퀴가 하한에 닿으면 끝나고, 다음 한 바퀴는 이번 한 바퀴 시작 + 24시간
-     (지평이 더 짧으면 지평) 뒤에 시작한다 — 창에서 빠진 bucket은 다음 한 바퀴에 반드시 든다. 수집 상태 API의 `sources`
-     목록에서는 뺀다.
+     `last_started_at` = 이번 한 바퀴 시작, `last_success_at` = 마지막 한 바퀴 완료, `last_error` = 연속 구간 실패의
+     원인 코드와 횟수(`statement_timeout;failures=2`, 구간을 하나 끝내면 NULL, 마지막 실패 시각은 `updated_at`). 진행 위치는
+     그 구간의 재대조와 같은 transaction에서 commit되므로 실패·취소·예산 소진 뒤 다음 실행이 마지막으로 commit한 구간
+     다음부터 이어 한다. 새 한 바퀴의 첫 구간이 실패하면 그 위치(창 시작)와 한 바퀴 시작 시각을 실패 기록과 함께 남긴다 —
+     막힌 위치가 원장과 `traffic_statistics_repair_cursor`에 보이고, 다음 실행은 그 위치에서 이어 한다. 한 바퀴가 하한에
+     닿으면 끝나고, 다음 한 바퀴는 이번 한 바퀴 시작 + 간격(24시간, 지평의 절반이 더 짧으면 그 절반) 뒤에 시작한다. 다음
+     한 바퀴의 하한(그때 창 시작 − 지평)이 이번 한 바퀴의 시작점보다 앞이므로, 한 바퀴가 `지평 − 간격`(기본 144시간) 안에
+     끝나는 한 그 사이 창에서 빠진 bucket은 다음 한 바퀴에 빠짐없이 든다. 실패 쉼·양보가 길어 한 바퀴가 그보다 오래
+     걸리면 그 차이만큼의 bucket은 다음 한 바퀴에서 빠질 수 있다 — 그때는 수동 재대조(8번)로 맞춘다. 수집 상태 API의
+     `sources` 목록에서는 뺀다.
+   - **실패**: 실패한 구간은 위치를 옮기지 않고, 다음 실행이 같은 위치에서 구간 폭을 연속 실패 횟수만큼 반으로 줄여 다시
+     한다(2시간 → 1시간 → 30분 → 15분). 연속 세 번 실패하면 마지막 실패 뒤 한 시간 동안 장기 복구를 쉰다(`deferred`,
+     `failure_backoff`) — 한 시간에 한 번만 다시 해 본다. 구간 문장은 `statement_timeout=30s`(수집 기본 60초보다 짧게)로
+     돌아, 통계 잠금을 쥐고 원천 transaction의 잠금 대기 상한(55초)을 넘기지 않는다. 같은 원인의 데이터 오류(SQLSTATE
+     22 등)는 시간이 지나도 낫지 않으므로 그 위치에서 멈춰 있다 — 트러블슈팅 대응을 따른다.
    - **예산**: 한 실행은 다음 구간을 시작하기 전에 5초 예산(`TRAFFIC_STATISTICS_REPAIR_RUN_BUDGET_SECONDS`, 이미 시작한
      구간은 끝냄)과 12구간 상한을 본다. 독립 transaction이라 병렬 집계를 끈다(`max_parallel_workers_per_gather=0`). 창
      재대조가 실패·지연한 실행(DB 부하 신호, `window_deferred`)과 수집이 이미 10분 넘게 걸린 실행(`run_budget`)은
@@ -149,8 +163,11 @@ source 전체 rollback). 단계별 계측은 없었다. 아래 변경은 통계 
 8. **수동 재대조**: `python scripts/reconcile-traffic-statistics.py --start … --end … [--dry-run]`(backend·code-server
    컨테이너 안, 시간대가 없으면 KST). 같은 구현을 구간(기본 2시간)마다 commit하며 돌린다. `--dry-run`은 읽기 전용
    transaction에서 바꿀 행 수만 센다. 쓰기는 구간마다 통계 try-lock을 잡고, 정기 수집이 쥐고 있으면 잠시 뒤 다시 해 본 뒤
-   멈추며 이어 할 `--start`를 출력한다(종료 코드 3). 한 번에 90일까지. 장기 복구와 같이 가장 오래된 원본보다 앞 구간은
-   건너뛴다(`--include-before-oldest-raw`로만 포함). 장기 복구 진행 위치는 바꾸지 않는다.
+   멈추며 이어 할 `--start`를 출력한다(종료 코드 3). `--budget-seconds`(기본 1,800초 = 30분)가 지나도 다음 구간을
+   시작하지 않고 같은 안내와 종료 코드 3으로 멈춘다. 한 번에 90일까지, `--chunk-hours`는 5분의 배수로 최대 6시간이고
+   구간 문장은 30초 안에 끝나야 한다(넘으면 구간을 줄인다). 입력 오류는 종료 코드 2다. 장기 복구와 같이 가장 오래된 원본보다
+   앞 구간과 원본이 하나도 없는 bucket의 통계는 지우지 않는다(`--include-before-oldest-raw`로만 포함). 장기 복구 진행
+   위치는 바꾸지 않는다.
 
 #### 차이 기반 재대조(`services/traffic_statistics.py`)
 

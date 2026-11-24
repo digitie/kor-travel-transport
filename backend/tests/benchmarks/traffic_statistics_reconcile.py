@@ -94,6 +94,8 @@ async def main() -> None:
     parser.add_argument("--window-hours", type=int, default=2)
     parser.add_argument("--repeat", type=int, default=5)
     parser.add_argument("--drift-rows", type=int, default=25)
+    parser.add_argument("--parallel", choices=("serial", "default"), default="serial",
+                        help="두 방식에 같은 병렬 설정을 쓴다. serial은 운영 창 재대조(병렬 집계 끔)와 같다")
     args = parser.parse_args()
     engine, factory = create_engine_and_session_factory(os.environ["TEST_DATABASE_URL"])
     start = five_minute_bucket(datetime.now(timezone.utc) - timedelta(hours=args.hours + 1))
@@ -108,13 +110,20 @@ async def main() -> None:
                                                {"s": window_start})
         print(f"seeded raw={raw} window_statistics_rows={window_rows} in {time.perf_counter() - began:.1f}s")
 
+        async def same_parallel(session):
+            # 두 방식에 같은 설정을 걸어 같은 조건으로 잰다(운영 창 재대조는 serial).
+            if args.parallel == "serial":
+                await session.execute(text("SELECT set_config('max_parallel_workers_per_gather', '0', true)"))
+
         async def old(session):
+            await same_parallel(session)
             await session.execute(OLD_DELETE, {"start": window_start, "end": end})
             await session.execute(OLD_INSERT, {"start": window_start, "end": end})
 
         async def diff(session):
-            await session.execute(text("SELECT set_config('max_parallel_workers_per_gather', '0', true)"))
-            await reconcile_traffic_statistics(session, window_start, end)
+            await same_parallel(session)
+            # 운영 창 재대조와 같은 끝 없는(open-ended) 문장이다. 시험 원본은 `end` 뒤에 없어 옛 방식의 범위와 같다.
+            await reconcile_traffic_statistics(session, window_start)
 
         async def corrupt() -> None:
             # 측정 밖에서 어긋남을 만든다(값이 틀린 행). 재대조는 이 행만 고쳐야 한다.

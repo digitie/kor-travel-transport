@@ -17,7 +17,7 @@ export function trafficReasonLabel(value: unknown): string | null {
 /** 소통 5분 통계 재대조 지연 안내(원본·이번 원본의 통계는 보존, 다음 수집이 자동 복구). */
 export const TRAFFIC_STATISTICS_DEFERRED_NOTE = "원본·통계 보존 · 소통 5분 통계 최근 2시간 재대조 대기 (다음 수집이 자동 복구)";
 /** 장기 복구를 이번 실행에서 건너뛴 사유(backend `REPAIR_DEFER_REASONS`). */
-export const TRAFFIC_REPAIR_DEFER_LABELS: Record<string, string> = { run_budget: "이번 수집이 이미 오래 걸림", window_deferred: "최근 2시간 재대조가 지연됨" };
+export const TRAFFIC_REPAIR_DEFER_LABELS: Record<string, string> = { run_budget: "이번 수집이 이미 오래 걸림", window_deferred: "최근 2시간 재대조가 지연됨", failure_backoff: "구간이 연속 실패해 한 시간 쉬는 중" };
 const UTC_SECOND = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 /** backend가 싣는 UTC 초 단위 시각(`…Z`)을 KST `MM.DD HH:mm`으로 바꾼다(실행 환경 ICU와 무관). 형식이 다르면 null. */
 export function trafficRepairTime(value: unknown): string | null {
