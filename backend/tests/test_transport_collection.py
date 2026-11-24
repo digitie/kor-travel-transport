@@ -1671,8 +1671,11 @@ def test_fuel_success_logs_fetch_and_store_progress(tmp_path: Path, caplog) -> N
 
 @pytest.mark.parametrize("first_size,next_size,complete,status", [
     (0, 0, False, "failed"), (1, 1, False, "failed"), (106, 106, False, "success"),
-    (0, 106, False, "success"), (0, 0, True, "success"), (1, 1, True, "success"),
-    (0, 1, True, "success"),
+    # 돌발 0건은 완결 증거(total_count=0)가 두 번 있어도 받지 않는다(운영 0건 집합 37회, INCIDENT-EMPTY-SET-20261124).
+    # 돌발은 완결 증거가 있어도 직전 성공 건수와 비교한다 — 0건 뒤 재조회 1건(106→1)도 받지 않는다. 0건이 아닌 급감은
+    # 두 완결 응답이 같은 건수로 확인하면 받는다.
+    (0, 106, False, "success"), (0, 0, True, "failed"), (1, 1, True, "success"),
+    (0, 1, True, "failed"),
 ])
 def test_highway_empty_or_reduced_response_is_reconfirmed_before_success(
     client, monkeypatch, first_size, next_size, complete, status,
@@ -1706,11 +1709,11 @@ def test_highway_empty_or_reduced_response_is_reconfirmed_before_success(
             await session.commit()
             second = await service.collect(session, scope="highway")
             assert second["status"] == status
-            assert baseline.await_count == (0 if complete else 1)
+            assert baseline.await_count == 1  # 돌발은 완결 여부와 상관없이 직전 성공 건수를 읽는다.
             await session.refresh(state)
             if status == "failed":
                 assert state.last_success_at == previous_success
-                assert "unconfirmed" in state.last_error
+                assert "unconfirmed" in state.last_error or "empty incident set" in state.last_error
                 retained = await session.scalar(select(func.count()).select_from(
                     HighwayIncidentSnapshot).where(
                         HighwayIncidentSnapshot.collected_at == previous_success))
@@ -1722,7 +1725,7 @@ def test_highway_empty_or_reduced_response_is_reconfirmed_before_success(
                 RawApiResponse.source == INCIDENT_SOURCE, RawApiResponse.status_code == 200,
             ))).all())
             assert len(successful_raw) == (1 if status == "failed" else 2)
-        assert provider.collect_highway.await_count == (2 if complete or first_size == 106 else 3)
+        assert provider.collect_highway.await_count == (2 if first_size == 106 else 3)
         assert provider.collect_highway.await_args.kwargs["sources"] == (INCIDENT_SOURCE,)
 
     client.portal.call(run)

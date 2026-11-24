@@ -1,5 +1,9 @@
 ## 2026-11-24 — 수집 실패 감사 후속
 
+- [ ] **INCIDENT-EMPTY-SET-20261124 / P0** — 돌발 0건(완결 증거 포함)을 성공으로 받지 않고 export는 503. **남은 것**: 배포 뒤
+  Map `transport_state_highway_incidents`에서 0건 집합 교체가 사라졌는지, 0건 응답이 얼마나 자주 오는지(`empty incident set after one re-fetch` 실패 수)
+  확인 — 잦으면 KREX 측 원인(python-krex-api)으로 넘긴다. [journal](journal.md) 2026-11-24.
+
 - [ ] **BUS-REF-PARTIAL-20261124 / P1** — 좌표 보강(VWorld·카카오)의 일부 호출 실패를 부분 성공으로, VWorld 수집이 실패 대상 하나에
   멈추지 않게, 실패 대상 지수 대기, 철도 주소 첫 줄 검색(감사 2026-11-23 §2.2 bus_reference). **남은 것**: 배포 뒤 운영에서
   bus_reference run SUCCESS·export 준비 실행, 철도역 1096 영수증 성공 수용. [journal](journal.md) 2026-11-24.

@@ -133,7 +133,7 @@
 
 - T2: 새 정상/동일관측 replay0/같은시각 정정/오래된관측/collected_at 및 PK tie/두 source 동시 성공·실패/claim 만료·late writer/rollback 직전 실패/통계 실패/duplicate input/parking unique 경합과 lot legacy ID.
 - 버스 후기 실패: express upsert가 DB transaction을 시작한 뒤 intercity가 실패/취소할 때 기존 reference/pointer/head rollback과 durable failed run 기록을 함께 검증한다. 현재 bus `_fail`은 rollback 뒤 ORM run.id를 읽으므로, 새 hook 구현 시 scalar run_id를 선취해 만료 객체 접근을 피하는지 점검한다. 이는 코드상 위험 조사이며 이번에 실행 재현한 결함이라는 뜻은 아니다.
-- 성공 보호: 초도 빈·106→0/1·정상0 완결·재확인 복구·timeout/quota·scope 변경·필터 denominator·KAC 성공+ICN 실패·주차 성공+요금 실패·parking unconfirmed empty.
+- 성공 보호: 초도 빈·106→0/1·정상0 완결(돌발 제외 — 2026-11-24부터 돌발 0건은 완결이어도 실패)·재확인 복구·timeout/quota·scope 변경·필터 denominator·KAC 성공+ICN 실패·주차 성공+요금 실패·parking unconfirmed empty.
 - T3: 기관/노선별 동명이역, 001 등 코드 선행0, 미매핑 보존, inactive 코드, 수동 mapping 우선·경합 revision, code catalog commit 뒤 시간표 실패, rail 위치파일 빈/급감, express/intercity 같은 terminal_id, 이름/도시 변경 후 좌표 무효화.
 - 좌표/admin: 수동 좌표 보존·동시 수정409·정확1e-8 좌표 이동 후 stale reverse null·not_found 옛 payload null·같은좌표 error의 실제 resolved_at 보존·가이드라인 좌표 미공개·KOMSA 보충 실패/정상 무결과 차이·null airport anchor.
 - snapshot: 페이지 사이 source 재수집·같은 PK UPDATE·mapping/좌표/address 변경에도 최초 snapshot 값은 고정, 신규 snapshot은 새 revision. stale/failed health는304로 숨기지 않음. TTL/GC reader lease/filter/limit 변경/위조 handle/point-byte cap/empty page/취소·풀 반환 후 gzip.

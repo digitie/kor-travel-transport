@@ -1,3 +1,9 @@
+## 현재 상태 — 2026-11-24 고속도로 돌발 0건 집합 거부(INCIDENT-EMPTY-SET-20261124)
+
+- backend만(수집 판정). migration·UI 없음. export 계약: 돌발 0건은 이제 200 빈 목록 대신 503(not-ready)이다.
+- 배포(Codex 담당): backend 이미지(API·Dagster code-server 공용).
+- 다음 한 작업: 배포 뒤 Map의 0건 집합 교체 0회, 돌발 `empty incident set after one re-fetch` 실패 빈도 확인.
+
 ## 현재 상태 — 2026-11-24 좌표 보강 일부 실패 = 부분 성공(BUS-REF-PARTIAL-20261124)
 
 - bus_reference·maritime·place_location·kakao job: 좌표 호출 몇 건의 실패는 run SUCCESS + partial 태그, export 준비 계속.
