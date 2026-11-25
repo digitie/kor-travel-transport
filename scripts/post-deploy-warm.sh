@@ -2,10 +2,14 @@
 # 배포 직후 best-effort warm(감사 WLH-03·MC-07·RT-03·RT-11). 배포 성패를 바꾸지 않는다 — 인수 오류(exit 2)를 빼면
 # 항상 exit 0이고, 문제는 stderr의 `WARN` 줄로만 남긴다.
 #
-# 언제 부르나: 배포 명령이 **끝난 뒤**(배포 lock이 풀리고 소유 일정·sensor가 복원된 뒤) 운영자가 Odroid에서 부른다.
-#   배포 스크립트 안(lock·일정 STOPPED 동안)에서 부르지 않는다 — 준비·smoke가 길어지면 주차 수집 공백이 그만큼 늘어난다.
-#   - Odroid 정본인 Manager v2(`ktdctl service-release apply-core-candidate transport ... --confirm`)가 성공하고 location이
-#     다시 실린 뒤, 배포한 이미지와 같은 revision의 승인된 source clone에서 부른다(Manager 쪽 자동 호출은 후속).
+# 언제 부르나: 배포 lock과 Transport 배포 lease가 풀린 뒤.
+#   - Odroid 정본인 Manager v2(`ktdctl service-release apply-core-candidate transport ... --confirm`)가 게시에 성공하면
+#     승인된 `--source-sha`의 이 스크립트를 자동으로 부른다(kor-travel-docker-manager#651, 상한 600초, 결과는 JSON
+#     `post_deploy_warm`). 운영자가 일정·sensor를 아직 복원하기 전이므로, 본문 재사용(`reused`)이면 몇 초지만 지문이
+#     바뀐 배포는 최대 약 8분 주차 수집 공백이 늘어난다 — 소유자 결정(2026-11-25)으로 자동 실행을 기본으로 받아들였다.
+#     빼려면 `--skip-post-deploy-warm`을 넘기고 복원 뒤 운영자가 직접 부른다.
+#   - legacy `deploy-prod*.sh`(배포 스크립트 안, lock·일정 STOPPED 동안)는 부르지 않는다.
+#   - 두 번 불러도 해롭지 않다(두 번째는 `reused`).
 #   - 확인 절차·결과 해석은 docs/runbooks/deployment.md "배포 직후 best-effort warm".
 #
 # 하는 일:

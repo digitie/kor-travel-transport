@@ -1,3 +1,12 @@
+## 2026-11-25 — Manager 자동 post-deploy warm·Common 예외 정정(MAP-CALL-FOLLOWUPS)
+
+- kor-travel-docker-manager#651: `service-release apply-core-candidate transport --confirm`이 게시에 성공하면 lock·lease를 푼 뒤
+  승인된 source-sha의 `post-deploy-warm.sh`를 자동 실행한다(상한 600초, 결과 JSON `post_deploy_warm`, 배포 성패 불변).
+  소유자 결정(2026-11-25): 일정·sensor 복원 전에 돌아 주차 수집 공백이 는다(재사용 몇 초, 지문 변경 최대 약 8분) — 자동 실행을 기본으로 받아들였다.
+  빼려면 `--skip-post-deploy-warm`. deployment.md·스크립트 헤더를 맞췄다.
+- kor-travel-common#92: `openapi-exceptions.yaml` airport 항목을 현재 Transport에 맞췄다(M3는 export 503에만 `code`, N4 신규 등).
+  M4(`request_id`) sunset 2026-12-31 연장 여부는 소유자 결정. `ci.yml`의 "Map vendoring" 주석을 ADR-013 결정 6에 맞게 고쳤다.
+
 ## 2026-11-25 — places `X-Limit-Applied`와 공개 per-client 제한 조사(MAP-CALL-FOLLOWUPS)
 
 - backend `/v1/transport/features/places`의 목록 200 응답(재사용 페이지·상세, 낮은 축척 요약 제외)에 `X-Limit-Applied: <적용 limit>`을 붙인다.
