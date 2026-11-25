@@ -245,8 +245,14 @@ def test_refresh_generation_stays_before_first_snapshot_read(analytics_app, monk
     client, settings, _, _ = analytics_app
     engine = client.app.state.engine.sync_engine
     reads = []
+    refresh_connection = None
 
-    def advance_clock(_connection, _cursor, statement, _parameters, _context, _executemany):
+    def advance_clock(connection, _cursor, statement, _parameters, _context, _executemany):
+        # 엔진 전역 listener는 lifespan의 주차 이력 캐시 재구성(기동 warmup 뒤 별도 session)이 읽는
+        # parking_snapshots에도 불린다. 그 읽기가 refresh 시작 전에 끼면 시계가 먼저 넘어가 generated_at이
+        # NOW+11분이 되는 경합이 있었으므로, 검증 대상 refresh session의 연결에서 나온 읽기만 센다.
+        if connection is not refresh_connection:
+            return
         if statement.lstrip().lower().startswith("select") and "parking_snapshots" in statement:
             reads.append(statement)
             monkeypatch.setattr(cache, "now_utc", lambda: NOW + timedelta(minutes=11))
@@ -254,7 +260,9 @@ def test_refresh_generation_stays_before_first_snapshot_read(analytics_app, monk
     event.listen(engine, "before_cursor_execute", advance_clock)
     try:
         async def check():
+            nonlocal refresh_connection
             async with client.app.state.session_factory() as session:
+                refresh_connection = (await session.connection()).sync_connection
                 assert await cache.refresh_default_analytics_cache(session, settings) == 32
                 await session.flush()
                 rows = (await session.scalars(select(AnalyticsCache))).all()
