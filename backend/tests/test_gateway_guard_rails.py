@@ -1,8 +1,9 @@
 """공개·export gateway의 소요 시간 access log, places limit 상한, export 버퍼·동시 상한, Server-Timing 숨김,
 공개 유가 gzip 계약.
 
-실제 nginx 동작(반복·인코딩 query, 정규화 경로, temp file 경고, gzip 이중 압축 여부)은 PR에서
-nginx:1.27-alpine과 loopback stub으로 따로 확인했다. 이 시험은 그 동작을 만드는 설정 문장을 고정한다.
+실제 nginx 동작(nginx -t, limit 상한·422, 공개 표지 덮어쓰기, Server-Timing 숨김, export·유가 places 동시 상한,
+temp file 경고, access log 형식)은 CI `gateway-probe` job이 nginx:1.27-alpine과 loopback stub으로 확인한다
+(`scripts/gateway-probe.py`). 이 시험은 그 동작을 만드는 설정 문장을 고정한다.
 """
 import json
 import re
@@ -195,3 +196,38 @@ def test_public_fuel_gateway_compresses_json_cheaply_without_recompressing():
     assert "application/problem+json" not in re.search(r"gzip_types [^;]*;", server).group(0)
     # 모바일 NAT 뒤의 정상 사용자를 막지 않도록 IP별 요청 제한은 두지 않는다(PR 설명 참고).
     assert "limit_req" not in text
+
+
+def test_public_fuel_places_never_buffers_to_temp_files_and_bounds_total_memory():
+    text = _text(FUEL)
+    block = _block(text, "    location = /v1/transport/fuel/places")
+    assert "proxy_max_temp_file_size 0;" in block
+    assert "proxy_buffering off;" not in block
+    match = re.search(r"proxy_buffers (\d+) (\d+)k;", block)
+    assert match
+    per_request = int(match.group(1)) * int(match.group(2)) * 1024
+    # 공개 UI 한 번(종류당 300곳, 약 0.4MB 비압축)은 메모리 버퍼에 다 들어간다.
+    assert per_request >= 400 * 1000
+    # 동시 상한 × 요청당 버퍼가 64MiB fuel gateway의 1/4(16MiB)을 넘지 않는다.
+    limit = re.search(r"limit_conn fuel_places (\d+);", block)
+    assert limit
+    assert int(limit.group(1)) * per_request <= 16 * 1024 * 1024
+    # 주소별이 아니라 listener 전체 한 key다(모바일 NAT 공유 주소를 막지 않는다).
+    assert "map $server_port $fuel_places_slot {" in text
+    assert "limit_conn_zone $fuel_places_slot zone=fuel_places:1m;" in text
+    assert "$binary_remote_addr" not in text
+    assert "limit_conn_status 429;" in block
+    assert "error_page 429 = @fuel_places_busy;" in block
+    # 거절은 backend 입장 거절과 같은 429 + Retry-After 2(공개 지도 자동 재조회 범위) problem+json이다.
+    busy = _block(text, "    location @fuel_places_busy")
+    assert "add_header Retry-After 2 always;" in busy
+    assert "default_type application/problem+json;" in busy
+    problem = _returned_json(busy, 429)
+    assert set(problem) == {"type", "title", "status", "detail", "instance"}
+    assert problem["status"] == 429 and problem["instance"] == "/v1/transport/fuel/places"
+    # location의 add_header는 server 목록 상속을 끊으므로 CORS 줄을 모두 다시 적어야 한다.
+    server = text.split("server {", 1)[1].split("    location", 1)[0]
+    cors = re.findall(r"^    (add_header [^\n]+;)$", server, re.M)
+    assert len(cors) == 5
+    for line in cors:
+        assert "        " + line in busy, line

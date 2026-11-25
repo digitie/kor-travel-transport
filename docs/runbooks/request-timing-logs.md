@@ -35,7 +35,7 @@ MUI-11 압축)을 메운 계약이다. 세 원천 모두 **query string·본문�
 | `"METHOD 경로"` | 클라이언트가 보낸 경로(디코드 전, query 제외). nginx 1.21.1+는 요청 줄의 공백을 거절하므로 이 값에는 공백이 없고 필드 위치가 고정된다. `"`·제어 문자는 nginx 기본 escape(`\x22`)로 남는다 |
 | status, bytes | 클라이언트에 보낸 상태와 본문 bytes(압축 뒤) |
 | `rt` | gateway가 요청을 받은 뒤 마지막 byte를 보낼 때까지(초). 느린 클라이언트 수신 시간이 포함된다 |
-| `uct` | backend 연결 수립(초). `-`는 upstream을 부르지 않은 응답(403·404·422 limit 거절·export 503 동시 상한·preflight) |
+| `uct` | backend 연결 수립(초). `-`는 upstream을 부르지 않은 응답(403·404·422 limit 거절·export 503 동시 상한·12307 places 429 동시 상한·preflight) |
 | `uht` | backend 첫 응답 header까지(초). backend 처리 시간에 가장 가깝다 |
 | `urt` | backend 응답을 끝까지 받은 시점(초) |
 | `ust` | backend 상태. gateway 504/502이면 `504`·`502` 또는 연결 실패 표시가 남는다 |
@@ -49,6 +49,7 @@ MUI-11 압축)을 메운 계약이다. 세 원천 모두 **query string·본문�
   (gateway가 끊은 뒤에도 backend가 작업을 계속한 경우).
 - `uct`가 0이 아니고 커지거나 `ust=502` → backend가 연결을 받지 못했다(재기동·lifespan 대기).
 - export `503`이고 `uct=-` → gateway 동시 상한(아래 가드레일) 거절이다. `ust`가 `503`이면 backend의 503(ADR-013)이다.
+- 12307 places `429`이고 `uct=-` → gateway places 동시 상한(아래 가드레일) 거절이다. `ust`가 `429`이면 backend 입장 거절이다.
 
 export 경로의 p50/p95 예(필드 위치 대신 `"GET /v1/service/exports/`와 `rt=`를 문자열로 찾는다):
 
@@ -157,6 +158,20 @@ location(Map)과 backend 직접(loopback 12302, 관리 BFF·측정 스크립트)
     API·MCP와 공유). 넘으면 gateway가 `503` + `Retry-After: 10` problem+json(export 503 사유 `code`=`EXPORT_BUSY`,
     [handoff](../map-service-exports-handoff.md))으로 거절한다(`uct=-`). Map은 dataset
     페이지를 순차 조회하므로 평소에는 닿지 않는다.
+- 12307 공개 유가 places location(`/v1/transport/fuel/places`)은 `proxy_buffers 16 32k`(요청당 최대 512KiB)와
+  `proxy_max_temp_file_size 0`이다.
+  - 전에는 팬·줌마다 오는 본문(공개 UI 300곳 약 0.4MB, 상한 900곳 약 1.2MB, 비압축)이 기본 버퍼(8×4k)를 넘어
+    컨테이너 쓰기 계층의 `proxy_temp` 파일에 쓰였다(`an upstream response is buffered to a temporary file` 경고).
+  - 512KiB는 공개 UI 한 번(약 0.4MB)이 메모리에 다 들어가는 크기다. backend 연결은 곧바로 풀리고 느린 모바일
+    클라이언트는 gateway 버퍼에서 받는다. 그보다 큰 본문(limit 300 초과 직접 호출)은 임시 파일 없이 클라이언트가
+    읽는 속도로 흘리며 그동안 backend 연결을 잡는다(`send_timeout` 60초가 한계). 응답 gzip은 이 버퍼 뒤에서 하므로
+    크기는 평문 기준이다.
+  - `limit_conn fuel_places 32`(listener 전체 한 key)로 버퍼 합을 32×512KiB=16MiB 이하(64MiB gateway의 1/4,
+    export와 같은 기준)로 묶는다. backend 공개 몫은 동시 계산 3·대기 8(`PLACES_MAX_RUNNING` 4 − 관리 몫 1,
+    `PLACES_MAX_WAITING` 8)이라 정상 부하는 이보다 작고, 공개 UI BFF는 같은 호스트 loopback이라 곧바로 받아 간다.
+    넘으면 gateway가 backend 입장 거절과 같은 `429` + `Retry-After: 2` problem+json(다섯 항목, CORS header 포함)으로
+    거절하고, 공개 지도는 한 번 자동 재조회한다(`lib/place-retry.ts`). 상한은 places location에만 있어 stations·
+    statistics 등 다른 경로는 막히지 않는다. backend의 429·504는 가로채지 않고 그대로 전달한다.
 - 공개 유가 gateway는 JSON을 gzip level 1(1KiB 이상, `gzip_proxied any`, `Vary: Accept-Encoding`)로 압축한다(MUI-11).
   - backend가 이미 gzip으로 준 가격 이력은 다시 압축하지 않는다. 압축 효과는 access log `gz`로 본다.
   - nginx gzip은 200·403·404만 압축한다. 오류 본문(problem+json)은 1KiB 미만이라 `gzip_types`에 넣지 않았다.
@@ -164,6 +179,28 @@ location(Map)과 backend 직접(loopback 12302, 관리 BFF·측정 스크립트)
   - 이 압축은 `fuel-api` 직접 호출용이다. 공개 UI BFF(`/api/public/fuel/*`)는 같은 호스트 loopback으로
     `Accept-Encoding: identity`를 보내 압축·해제 CPU를 쓰지 않는다(그 요청은 `127.0.0.1`, `gz=-`).
     브라우저↔Next 구간의 압축 여부는 Next 실행 설정이 정하며 이 변경 범위 밖이다.
-- IP별 `limit_req`·`limit_conn`은 공개 경로에 두지 않는다. 공개 유가 사용자는 모바일 통신사 NAT 뒤에서 같은 주소를
+- IP별(주소별) `limit_req`·`limit_conn`은 공개 경로에 두지 않는다. 공개 유가 사용자는 모바일 통신사 NAT 뒤에서 같은 주소를
   공유하므로 주소별 제한은 정상 사용자를 막는다. 무거운 요청은 위 `limit` 상한과 backend places 검증의
-  `CapacityLimiter(2)`(`fuel_map_limiter`)로 묶는다. export의 `limit_conn`은 주소별이 아니라 listener 전체 한 key다.
+  `CapacityLimiter(2)`(`fuel_map_limiter`)로 묶는다. export와 12307 places의 `limit_conn`은 주소별이 아니라 listener 전체 한 key다(메모리 상한용).
+
+## CI 검증 (`gateway-probe`)
+
+CI `gateway-probe` job이 `scripts/gateway-probe.py`로 위 가드레일을 실제 nginx에서 확인한다(약 20초, 네트워크는 이미지
+pull만). 12301은 compose와 같은 `nginx:1.27-alpine`에 template·`19-export-allowlist.sh`를 mount하고, 12307은
+`deploy/transport-fuel/Dockerfile.gateway`를 template 하나만 든 문맥으로 빌드한다. 두 경우 모두 공식 entrypoint가
+렌더링하며, 결과가 template에서 port 변수만 바꾼 문자열과 같은지 먼저 본다. 그 뒤 `nginx -t`와 loopback 12302 stub
+upstream으로 다음을 확인한다.
+
+- places `limit`: 생략·900 초과 → upstream 마지막 `limit=900`, 반복 query는 첫 값, 0·부호·앞자리 0·인코딩·소수 → 422
+  problem+json 다섯 항목(upstream 미호출).
+- `X-Transport-Listener`: 클라이언트가 보내도(대소문자·중복 포함) upstream은 `public` 하나만 받는다(12301 places·공개
+  조회, 12307 places·stations·statistics).
+- `Server-Timing`: 12301 `/health`·places·공개 조회·일반철도·MCP와 12307 전체에서 숨김, 12301 export에서는 유지.
+- export: 클라이언트 XFF 제거, 1.3MB 본문, 동시 8건 → 200 6건·503 2건(`Retry-After: 10`, `code`=`EXPORT_BUSY`,
+  `uct=-`), backend 503 그대로 전달.
+- 12307 places: 0.42MB·1.25MB 본문(identity·gzip), 동시 35건 → 200 32건·429 3건(`Retry-After: 2`, CORS), 상한이 찬
+  동안 stations 200, backend 429 그대로 전달.
+- access log: 모든 줄이 timing 형식(12307은 `gz=` 포함), query·cursor 값 없음, `/health` 없음.
+- error log에 `buffered to a temporary file` 경고 없음.
+
+로컬에서는 12301·12302·12307이 비어 있는 Linux Docker(WSL 등)에서 `python3 scripts/gateway-probe.py`로 실행한다.

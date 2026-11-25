@@ -26,6 +26,12 @@ map $arg_limit $fuel_places_limit {
     ~^([1-9][0-9]?|[1-8][0-9][0-9]|900)$ $arg_limit;
     ~^[1-9][0-9]*$ 900;
 }
+# places 동시 처리 상한(아래 limit_conn). 공개 사용자는 모바일 NAT 뒤에서 주소를 공유하므로 주소별이 아니라
+# listener 전체를 한 key로 센다.
+map $server_port $fuel_places_slot {
+    default places;
+}
+limit_conn_zone $fuel_places_slot zone=fuel_places:1m;
 # 소요 시간 access log 형식. 요청 줄($request)·query($args) 대신 클라이언트가 보낸 경로(디코드 전,
 # query 제외)만 남긴다. 경로 안의 공개 식별자(주유소 id)는 남는다. 디코드 전 경로에는 공백이 없다.
 # rt=gateway 전체, uct=upstream 연결, uht=upstream 첫 응답 header, urt=upstream 응답 끝까지(초),
@@ -97,6 +103,32 @@ server {
         # Starlette/FastAPI는 반복 query의 마지막 값을 사용한다.
         # kinds 혼용은 기존 reader가 422로 거절한다. 실제 zoom/bbox는 변경하지 않는다.
         proxy_pass http://127.0.0.1:12302/v1/transport/features/places?$args&kind=fuel_station&limit=$fuel_places_limit;
+        # 팬·줌마다 오는 places 본문(공개 UI 300곳 약 0.4MB, 상한 900곳 약 1.2MB, 비압축)은 기본 버퍼(8×4k)를
+        # 넘어 컨테이너 쓰기 계층의 proxy_temp 파일로 내려갔다. 요청당 최대 512KiB 메모리 버퍼로 받는다.
+        # 공개 UI 크기(약 0.4MB)는 다 들어가 backend 연결을 바로 돌려준다. 그보다 큰 본문(limit 300 초과 직접 호출)은
+        # 임시 파일 없이 클라이언트가 읽는 속도로 흘린다(그동안 backend 연결을 잡는다. send_timeout 60초가 한계).
+        # gzip은 이 버퍼 뒤(출력 단계)에서 하므로 크기는 평문 기준이다.
+        proxy_buffers 16 32k;
+        proxy_max_temp_file_size 0;
+        # 64MiB gateway에서 places 버퍼 합을 32×512KiB=16MiB(1/4) 이하로 묶는다. backend 공개 몫은 동시 계산 3·대기 8
+        # (PLACES_MAX_RUNNING 4 − 관리 몫 1, PLACES_MAX_WAITING 8)이라 정상 부하는 이보다 작다. 넘으면 backend
+        # 입장 거절과 같은 429 + Retry-After 2(공개 지도는 한 번 자동 재조회한다, lib/place-retry.ts)로 알린다.
+        limit_conn fuel_places 32;
+        limit_conn_status 429;
+        error_page 429 = @fuel_places_busy;
+    }
+
+    # limit_conn 거절만 받는다(proxy_intercept_errors가 꺼져 있어 backend 429는 그대로 전달된다).
+    # location에 add_header를 두면 server의 CORS add_header 상속이 끊기므로 같은 줄을 다시 적는다.
+    location @fuel_places_busy {
+        default_type application/problem+json;
+        add_header Access-Control-Allow-Origin $fuel_cors_origin always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Accept, If-None-Match, Content-Type" always;
+        add_header Access-Control-Expose-Headers "ETag, Retry-After" always;
+        add_header Vary "Origin" always;
+        add_header Retry-After 2 always;
+        return 429 '{"type":"about:blank","title":"Too Many Requests","status":429,"detail":"장소 지도 조회가 혼잡합니다. 잠시 후 다시 시도하세요.","instance":"/v1/transport/fuel/places"}';
     }
 
     location ~ ^/v1/transport/fuel/(stations|statistics|price-distribution|area-catalog|stations/[1-9][0-9]*/price-history)$ {

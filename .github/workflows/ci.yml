@@ -79,6 +79,17 @@ jobs:
       - run: uv run python ../scripts/export_openapi.py --check
       - run: uv run pytest tests -q --durations=25
 
+  gateway-probe:
+    # 공개·export gateway(12301)·공개 유가 gateway(12307) template을 운영 이미지 entrypoint로 렌더링해
+    # nginx -t와 loopback stub upstream 동작 시험을 한다(scripts/gateway-probe.py). 네트워크는 이미지 pull만 쓴다.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/gateway-probe.py
+
   frontend:
     needs: common-policy
     runs-on: ubuntu-latest
