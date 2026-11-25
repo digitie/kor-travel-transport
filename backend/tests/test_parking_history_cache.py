@@ -769,7 +769,7 @@ def test_rebuild_interval_logs_are_paired_safe_and_skip_unchanged(monkeypatch, c
     assert finish["duration_ms"] >= 0 and finish["outcome"] == outcome
     assert set(start) == {"event", "phase", "rebuild_id", "at", "duration_ms", "row_count", "mode", "reason",
                           "peak_rss_kib"}
-    assert set(finish) == {*start, "outcome", "changed_keys", "phases_ms", "incremental_errors",
+    assert set(finish) == {*start, "outcome", "changed_keys", "phases_ms", "incremental_errors", "adoption", "catchups",
                            "worker_cpu_ms", "process_cpu_ms"}
     for event in (start, finish):
         assert event["peak_rss_kib"] is None or (type(event["peak_rss_kib"]) is int and event["peak_rss_kib"] > 0)

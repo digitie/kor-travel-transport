@@ -121,6 +121,20 @@ export_request route=/v1/service/exports/rail-stations method=GET status=200 sta
 (T1 503의 `Retry-After` 10/60과 응답 본문으로 구분한다, ADR-013 개정 2026-11-24). 오래 걸린 503은
 `duration_ms`로만 구분한다. 일일 로그 양은 export 하루 약 800줄(Map T1 매시 약 32~33건 기준)과 임계 이상 요청 수다.
 
+### 30일 이력 캐시 갱신 로그(`event=parking_history_rebuild`)
+
+요청 로그가 아니라 백그라운드 갱신 로그다. 무제한 `/v1/parking/history`가 직접 SQL로 떨어졌다면(느린 응답) 같은 시각의 finish 줄을 본다.
+필드 뜻과 `outcome`·`adoption`·`reason` 표는 `docs/architecture/performance.md`의 PARKING-HISTORY-INCREMENTAL 단락("전체 재생성 채택")에 있다.
+
+- 정상: 수집마다 `mode=incremental`·`outcome=published`. 기동·새벽 안전망 전체 재생성이 수집과 겹치면
+  `mode=full`·`adoption=published`·`catchups=1`이 한 번 나오고 끝난다. 드물게 `outcome=adopted_pending` 한 줄 뒤 5초 안에
+  `reason=adopted_pending`·`outcome=published`가 오는 것도 정상이다.
+- 살펴볼 것: 기동 직후 `mode=full`·`outcome=source_changed`(`adoption=update_or_delete`·`late_commit_or_delete` 등)가 되풀이되거나,
+  `adopted_pending` 다음에 `source_changed`·전체 재생성이 반복되는 고리. 원본에 update·delete·이관 쓰기가 계속 들어오고 있는지 먼저 본다
+  (운영 수집 경로는 삽입 전용이다).
+- 전체 재생성 비용 비교는 `duration_ms`(채택·따라잡기 포함)가 아니라 `phases_ms.full_load_ms`, 따라잡기 비용은 `phases_ms.catchup_ms`로 본다.
+  `adopted_pending`이 있는 동안 검증 전 기준과 게시된 캐시가 함께 남아 `peak_rss_kib`가 오를 수 있다.
+
 ## Server-Timing 응답 header
 
 `app;dur`, `sql;dur`, `sql_count;desc`, `cpu;dur`, `page_builds;desc`, `fingerprint_calculations;desc` 뒤에

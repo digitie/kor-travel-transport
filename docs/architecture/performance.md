@@ -98,9 +98,9 @@ DB 자체 JSON 집계는 45초로 더 느려 채택하지 않는다. 목표 충�
 재사용하며 압축 응답만 최대 8개 보유한다(75MB 수준의 비압축 본문은 보유하지 않는다).
 시작 행이 바뀌거나 원본이 갱신되면
 새로 만든다. 이 캐시는 응답 계약을 바꾸지 않고 반복 압축 CPU만 줄인다.
-압축 준비 중 원본 지문이 달라지면 준비 결과를 게시하지 않고 다음 폴링에
-재시도한다. 준비 전에만 지문을 읽고 끝난 시각을 새로 찍는 신선도 오류를
-막기 위한 것이다.
+압축 준비 중 원본 지문이 달라지면 준비 결과를 그대로 게시하지 않는다. 준비 전에만 지문을 읽고 끝난 시각을
+새로 찍는 신선도 오류를 막기 위한 것이다. 증분 결과는 버리고 다음 폴링에 재시도하고, 전체 재생성 결과는 증분
+기준으로 채택해 그 뒤 행만 따라잡은 결과를 다시 확인한 뒤 게시한다(아래 PARKING-HISTORY-INCREMENTAL 단락의 "전체 재생성 채택").
 5초마다 원본 최대 ID와 PostgreSQL의 해당 테이블 insert/update/delete 통계
 변화를 확인해 변경 시 백그라운드에서 재생성한다. 마지막 정상 확인이 30초를
 넘거나 캐시가 요청 기간을 전부 덮지 못하면 오래된 캐시를 반환하지 않고
@@ -225,6 +225,32 @@ PARKING-HISTORY-INCREMENTAL 단락)이 주로 줄였다. 통계 반영 지연으
   진행 중이던 transaction이 낮은 id로 늦게 commit하면 `count(*) WHERE id <= W`가 저장값과 달라진다 → 전체 재생성. 삭제도 같은 검사로,
   update·delete는 `pg_stat` 지문으로 잡는다(운영 코드에 이 쓰기 경로는 없다). 새 키가 5만 개를 넘으면(대량 이관·복원) 전체 재생성.
   안전망으로 마지막 전체 재생성이 20시간을 넘으면 새벽(KST 03~04시)에 한 번 전체 재생성한다.
+- **전체 재생성 채택**(PARKING-HISTORY-ADOPT-FULL-REBUILD, #284·#281 후속): 전체 재생성(운영 ARM 77~98초) 중 수집이 끼어 지문이
+  바뀌면 예전에는 결과를 버리고 다음 확인에서 또 전체 재생성했다. 지금은 그 결과를 증분 기준으로 채택한다. 전체 적재는 REPEATABLE READ 한
+  시점의 (최대 id, 행 수, 본문)이라 기동 직후 전체 적재와 똑같이 증분 기준이 된다. 곧바로 그 뒤 행만 증분으로 따라잡고(`load_changes`),
+  따라잡은 결과를 읽기 직전 지문과 읽은 뒤 지문이 같을 때만 게시·검증한다 — 일반 증분 게시와 같은 신선도 근거라 30초 계약은 그대로다.
+  - 채택하지 않고 예전처럼 버리는(`outcome=source_changed`, 다음 확인이 전체 재생성) 경우: 전체 적재 직전 지문부터 update·delete 통계가
+    움직였다(적재 시점 뒤의 update는 행 수 검사가 못 본다), 최대 id가 줄었다, 따라잡기 증분이 늦게 commit된 낮은 id·삭제(`count(*) WHERE id <= W`)·
+    대량 변경을 찾았다, 따라잡기(증분·사전 압축·지문 확인 중 어느 것이든)가 오류로 실패했다(`catchup_error:*`). rollback된 행은 어느 읽기
+    시점에도 보이지 않아 최대 id·행 수·본문에 들지 않는다.
+  - 따라잡는 사이에도 수집이 끼면 최대 3번(`ADOPT_MAX_CATCHUPS`) 다시 따라잡는다. 그래도 바뀌면 마지막 결과와 그 읽기 직전 지문을
+    검증 전 기준(`pending_base`)으로만 둔다(`outcome=adopted_pending`). 이 기준은 요청에 쓰지 않고, 다음 확인이 이 기준·지문으로 `refresh_mode`를
+    판단해(`reason=adopted_pending`) 증분한다. 그 증분 중에도 지문이 바뀌면 결과를 버리지 않고 새 기준(그 읽기 직전 지문과 함께)으로 올린다
+    (점점 커지는 차이를 다시 읽지 않게). 그 뒤 update·delete 통계가 보이면 이 지문과 비교해 전체 재생성으로 간다.
+  - 게시된 snapshot에서 한 일반 증분의 지문 변화는 그대로 버린다(다음 확인의 같은 기준 증분이 싸다).
+  - 메모리: 검증 전 기준이 있는 동안은 게시된 snapshot과 두 벌이 남는다(기동 직후가 아니면 이력 캐시 상주가 약 2배). 그래서 수집이 몰릴 때
+    finish 로그의 `peak_rss_kib`가 오를 수 있다. 기준에서 증분이 안 되어 전체 재생성으로 가면 전체 적재 전에 그 기준을 놓는다.
+  - 로그 finish에 `adoption`·`catchups`(성공한 따라잡기 증분 수)·`phases_ms.catchup_ms`(따라잡기 합계)·`catchup_count_ms`·`catchup_changes_ms`·
+    `catchup_splice_ms`(따라잡기 증분 내부, 여러 번이면 합)가 붙는다. 전체 재생성 비용을 비교할 때는 `duration_ms`(채택·따라잡기 포함)가 아니라
+    `phases_ms.full_load_ms`를 쓴다.
+
+  | finish `outcome` | `adoption` | 다음 `reason` | 사용자가 보는 것 |
+  |---|---|---|---|
+  | `published` | null | — | 새 캐시(일반 증분·전체 재생성) |
+  | `published` | `published` | — | 전체 재생성이 수집과 겹쳤지만 따라잡아 새 캐시. 두 번째 전체 재생성 없음 |
+  | `adopted_pending` | `adopted_pending` | `adopted_pending`(증분) | 아직 새 캐시 없음. 이전 캐시가 30초 안에 확인됐으면 그것, 아니면 직접 SQL. 다음 확인(5초 뒤)이 증분으로 이어 감 |
+  | `source_changed` | null | 같은 기준 증분 | 이전 캐시(30초 확인 안) 또는 직접 SQL. 다음 확인이 싼 증분 |
+  | `source_changed` | `update_or_delete`·`max_id_decreased`·`late_commit_or_delete`·`too_many_changes`·`catchup_error:*` | `cold` 또는 그 이유의 전체 재생성 | 예전과 같다. 다음 확인이 전체 재생성(운영 ARM 77~98초) 동안 직접 SQL |
 - **날짜 조각**: 범위(전체·공항·주차장)마다 항목을 UTC 하루 단위 조각(불변)으로 나눠 둔다. 증분은 바뀐 키가 있는 날짜의 조각과 기간
   경계의 첫 조각만 새로 만들고 나머지 조각 객체를 그대로 넘긴다(전체 튜플 복사 없음, 55만 항목 기준 0.3초 → 10~20ms).
 - **보관 기간**: 30일 + 15분 여유. 여유가 없으면 갱신 직전에 시각을 정하고 전송 슬롯을 기다리던 30일 요청이 앞부분이 잘린 snapshot을
@@ -238,7 +264,7 @@ PARKING-HISTORY-INCREMENTAL 단락)이 주로 줄였다. 통계 반영 지연으
   캐시 적중 응답은 클라이언트가 gzip을 받으면 gzip이다(br은 매번 전체 압축이 필요해 gzip을 받지 않는 클라이언트에만). 그래서 공개 전체 이력
   (`br, gzip`)은 br 약 1.2MB 대신 gzip 약 2.0MB(합성 55만 행)를 받는다 — 갱신 비용과 바꾼 선택이다. 30일 전체 gzip 본문은 게시 전에 만들어 둔다.
 - 로그 `event=parking_history_rebuild`에 `mode`(`incremental`·`full`)·`reason`(`new_rows`·`cold`·`late_commit_or_delete`·`update_or_delete`·
-  `too_many_changes`·`periodic`·`incremental_error:*` 등)·`changed_keys`·`phases_ms`(`count_ms`·`changes_ms`·`splice_ms`·`full_load_ms`·`gzip_ms`)가 붙는다.
+  `too_many_changes`·`periodic`·`incremental_error:*`·`adopted_pending` 등)·`changed_keys`·`phases_ms`(`count_ms`·`changes_ms`·`splice_ms`·`full_load_ms`·`gzip_ms`·`catchup_ms`)가 붙는다.
 - 남은 한계: 늦은 commit 감지용 `count(*)`는 기간이 아니라 표 전체를 센다(원본 정리가 막혀 표가 계속 커진다 — `count_ms`로 본다).
   update·delete 감지는 `pg_stat` 통계(`track_counts` 켜짐 전제)에 기대며 반영 지연 동안은 직전 값을 낼 수 있다. 공항 코드 변경은
   다음 전체 재생성(새벽 안전망)까지 반영되지 않는다. 원본 정리(`parking-retention.md`)를 켜면 정리마다 전체 재생성이 돈다.
