@@ -1,3 +1,12 @@
+## 2026-11-25 — places `X-Limit-Applied`와 공개 per-client 제한 조사(MAP-CALL-FOLLOWUPS)
+
+- backend `/v1/transport/features/places`의 모든 200 응답(재사용 페이지·축척 요약·상세)에 `X-Limit-Applied: <적용 limit>`을 붙인다.
+  공개 gateway(12301·12307)는 판정 값을 upstream query 끝에 붙이므로 backend가 받은 값이 곧 적용 값이다. gateway는 통과만 시키고
+  (location `add_header`가 12307 server 단위 CORS 상속을 끊는 문제를 피한다), 12307 `Access-Control-Expose-Headers`에 이름을 더했다.
+  공개 유가 BFF도 이 header를 넘긴다. OpenAPI 200 header 문서화, gateway-probe에 통과·위조·CORS 노출 검사를 더했다.
+- 공개 places per-client 제한은 코드로 넣지 않았다. HAProxy 설정이 저장소 밖(OPNsense)이라 XFF 신뢰 근거가 관측 peer
+  `192.168.1.1`과 Manager 문서 한 줄뿐이다. 운영자 확인 절차를 tasks.md MAP-CALL-FOLLOWUPS에 적었다.
+
 ## 2026-11-25 — Map 호출 개선 후속 정산(MAP-CALL-FOLLOWUPS)
 
 - #293 gateway: CI `gateway-probe` job 추가(`scripts/gateway-probe.py`, 고정 digest nginx로 12301·12307 렌더링 비교·`nginx -t`·stub 동작 시험).

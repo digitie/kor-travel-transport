@@ -566,6 +566,12 @@ T1의 55P03·57014·요청 상한 503은 이 경로가 직접 낸다(`Retry-Afte
   `X-Forwarded-For`를 비운다. `real_ip`로 HAProxy의 XFF를 믿으려면 HAProxy 주소·XFF 설정을 운영에서 확인해야 해서
   이 변경에 넣지 않았다. 그 확인 없이 `$remote_addr` 기준으로 걸면 모든 공개 사용자를 연결 몇 개로 묶는다.
   공개 줄 안의 공정성은 지금 대기열 상한(8)과 대기 중 동일 요청 합치기가 맡는다.
+  2026-11-25 재조사(MAP-CALL-FOLLOWUPS): HAProxy 설정은 어느 저장소에도 없다(Manager `prod-deployment.md` §9.4
+  "OPNsense, 저장소 밖", `multi-host.md` "저장소 밖 손 설정"). 버전 관리되는 근거는 관측된 peer `192.168.1.1`
+  (`docs/fuel-mcp.md`, `runbooks/request-timing-logs.md` 로그 예)과 Manager 문서의 한 줄 전제("weather web은 HAProxy의 XFF strip+append 전제")뿐이다.
+  transport·fuel frontend의 `option forwardfor`·기존 XFF 제거 여부, `send-proxy` 사용 여부, `192.168.1.1`에서 XFF 없이 오는
+  다른 트래픽(NAT reflection 등)이 있는지는 운영 확인이 필요하다. 그래서 `real_ip_from`·IP별 `limit_conn`/`limit_req`는
+  넣지 않았다. 운영자 확인 절차는 `docs/tasks.md` MAP-CALL-FOLLOWUPS 항목에 있다.
 
 ### 25초 시한과 앞단 30초 여유
 

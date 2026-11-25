@@ -116,6 +116,8 @@ Dagster 운영 UI ── TLS ── dagster.digitie.mywire.org (Manager 공용 g
 
 공개 API gateway(12301)는 `GET /v1/transport/features/places`의 `limit`을 900 이하로 고정한다. 생략하면 900,
 900 초과 정수는 900으로 낮추고(응답 `truncated`), 1~900 정수가 아니면 gateway가 422 problem+json으로 거절한다.
+places 200 응답의 `X-Limit-Applied`가 실제로 적용된 limit을 알린다(backend가 붙이고 gateway는 그대로 통과시킨다 —
+12301·12307·12302 모두 같은 값. 클라이언트가 요청 header로 보내도 응답 값에는 영향이 없다).
 backend 직접(12302) 상한은 5000 그대로라 관리 UI의 목록 검색(5000)은 영향이 없다. 내부 계측 header
 `Server-Timing`은 공개 location에서 빼고 export location(Map)에만 남긴다.
 자세한 내용은 [요청 소요 시간 로그 읽기](../runbooks/request-timing-logs.md#공개-gateway-가드레일)를 따른다.

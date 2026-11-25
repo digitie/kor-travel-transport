@@ -8,8 +8,19 @@
   이력 재구성 중 이전 캐시 30초 초과 제공.
 - [ ] **MAP-CALL-FOLLOWUPS / P2** — 2026-11-25 처리: ADR-016 artifact identity를 본문 코드 지문으로(#294, code-server `RELEASE_SHA`
   빌드 전달 필요성 해소), CI에서 nginx `-t`·stub 시험과 12307 places 버퍼·동시 상한(#293), 이력 full rebuild 결과의 증분 기준 채택(#295).
-  **남은 것**: Manager v2가 `post-deploy-warm.sh` 자동 호출(Manager 저장소); 공개 places per-client 제한(HAProxy 주소·XFF 확인 선행);
-  `X-Limit-Applied`; Common `openapi-exceptions.yaml` airport M3 항목. [journal](journal.md) 2026-11-25.
+  `X-Limit-Applied`(places 200에 backend가 적용 limit을 붙이고 12307 CORS로 노출)는 2026-11-25 처리.
+  **남은 것**: Manager v2가 `post-deploy-warm.sh` 자동 호출(Manager 저장소); Common `openapi-exceptions.yaml` airport M3 항목;
+  공개 places per-client 제한 — **운영 확인 선행(코드 보류)**. 2026-11-25 조사: HAProxy 설정은 버전 관리되지 않는다
+  (OPNsense, Manager `prod-deployment.md` §9.4 "저장소 밖"). 근거는 관측 peer `192.168.1.1`(`fuel-mcp.md`)과 Manager 문서의
+  "weather web은 HAProxy XFF strip+append 전제" 한 줄뿐이다. 운영자 확인(읽기 전용): ① OPNsense `/usr/local/etc/haproxy.conf`에서
+  `transport-api.`·`fuel-api.` frontend/backend의 `mode http`, `option forwardfor`, XFF 제거(`http-request del-header X-Forwarded-For`
+  또는 set-header), `send-proxy` 유무를 `grep -nE 'forwardfor|send-proxy|X-Forwarded-For|^\s*mode'`로 확인; ② odroid gateway access log의
+  peer 분포(`docker logs --since 24h <gateway> | awk '{print $2}' | sort | uniq -c`)가 `192.168.1.1`·`127.0.0.1`·n150뿐인지;
+  ③ `192.168.1.1`에서 XFF 없이 오는 트래픽(NAT reflection 등)이 없는지(`tcpdump -A 'tcp dst port 12307'`로 XFF 존재 확인).
+  셋 다 확인되면 `set_real_ip_from 192.168.1.1/32; real_ip_header X-Forwarded-For; real_ip_recursive off;`(HAProxy가 붙인 마지막 값)와
+  모바일 NAT를 감안한 넉넉한 IP별 `limit_conn`을 places location에만 두고 gateway-probe에 XFF 위조·다른 peer 시험을 더한다.
+  12307의 공개 지도 BFF 몫(127.0.0.1)은 fuel-web BFF가 브라우저 주소를 넘기지 않으므로 IP별로 나누려면 BFF도 바꿔야 한다.
+  [journal](journal.md) 2026-11-25.
 
 ## 2026-11-24 — 수집 실패 감사 후속
 

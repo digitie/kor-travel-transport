@@ -129,6 +129,9 @@ class Stub(BaseHTTPRequestHandler):
             time.sleep(SLOW_SECONDS)
         status = 200
         headers = {"Content-Type": "application/json", "Server-Timing": "app;dur=1.0, sql;dur=0.5"}
+        # backend처럼 places 200에 실제로 받은(마지막) limit을 X-Limit-Applied로 돌려준다(main.py places route).
+        if parts.path == "/v1/transport/features/places" and params.get("limit"):
+            headers["X-Limit-Applied"] = params["limit"]
         if parts.path.endswith("/backend-busy") or params.get("status") == "503":
             status, headers["Retry-After"] = 503, "60"
         elif params.get("status") == "429":
@@ -302,15 +305,18 @@ def check_limit_cap(gw: Gateway, path: str, extra: dict[str, str] | None = None)
     cases = [("", "900"), ("?limit=5000", "900"), ("?limit=901", "900"), ("?limit=300", "300"),
              ("?limit=900", "900"), ("?limit=10&limit=5000", "10"), ("?bbox=1,2,3,4", "900")]
     for query, expected in cases:
-        status, _, _, seen = upstream_after(gw.port, path + query)
+        # 클라이언트가 요청 header로 X-Limit-Applied를 보내도 응답 값은 backend(stub)가 받은 limit 하나다.
+        status, headers, _, seen = upstream_after(gw.port, path + query, [("X-Limit-Applied", "5000")])
         ok = status == 200 and seen is not None and seen["limit"] == expected
         if ok and extra:
             ok = all(seen.get(key) == value for key, value in extra.items())
         check(f"{gw.name}: {path}{query or ' (limit 생략)'} → upstream 마지막 limit={expected}", ok, seen)
+        check(f"{gw.name}: {path}{query or ' (limit 생략)'} → 응답 X-Limit-Applied=[{expected}] 하나(gateway 통과)",
+              status == 200 and headers.get("x-limit-applied") == [expected], headers.get("x-limit-applied"))
     for query in ("?limit=abc", "?limit=0", "?limit=-1", "?limit=0300", "?limit=%35000", "?limit=5.0"):
         status, headers, body, seen = upstream_after(gw.port, path + query)
         problem = problem_of(body)
-        ok = (status == 422 and seen is None
+        ok = (status == 422 and seen is None and "x-limit-applied" not in headers
               and headers.get("content-type", [""])[0].startswith("application/problem+json")
               and set(problem) == {"type", "title", "status", "detail", "instance"}
               and problem.get("status") == 422 and problem.get("instance") == path)
@@ -425,9 +431,13 @@ def probe_fuel(gw: Gateway) -> None:
     check_server_timing(gw, hidden=["/health", places, "/v1/transport/fuel/stations"], kept=[])
 
     origin = [("Origin", FUEL_ORIGIN)]
-    status, headers, _ = request(gw.port, places, origin)
+    status, headers, _ = request(gw.port, places + "?limit=5000", origin)
     check("fuel: places 200 + CORS 허용 origin 유지",
           status == 200 and headers.get("access-control-allow-origin") == [FUEL_ORIGIN], (status, headers))
+    exposed = [name.strip().lower() for name in (headers.get("access-control-expose-headers") or [""])[0].split(",")]
+    check("fuel: places 200 X-Limit-Applied=900 + CORS Expose-Headers에 x-limit-applied(다른 출처 화면이 읽음)",
+          status == 200 and headers.get("x-limit-applied") == ["900"] and "x-limit-applied" in exposed
+          and len(headers.get("access-control-expose-headers") or []) == 1, headers)
 
     # 공개 UI 300곳(실측 약 0.40MB)과 상한 900곳(약 1.18MB) 크기 본문. 임시 파일 없이 전부 받아야 한다.
     for size in (420_000, 1_250_000):
@@ -454,7 +464,8 @@ def probe_fuel(gw: Gateway) -> None:
               and set(problem) == {"type", "title", "status", "detail", "instance"}
               and problem.get("status") == 429 and problem.get("instance") == places
               and headers.get("access-control-allow-origin") == [FUEL_ORIGIN]
-              and "Retry-After" in (headers.get("access-control-expose-headers") or [""])[0],
+              and "Retry-After" in (headers.get("access-control-expose-headers") or [""])[0]
+              and "x-limit-applied" not in headers,
               (headers, body[:300]))
 
     for label, source, limit in (("BFF(127.0.0.1)", BFF_ADDR, FUEL_BFF_CONN_LIMIT),

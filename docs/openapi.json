@@ -15458,7 +15458,17 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "X-Limit-Applied": {
+                "description": "이 응답에 실제로 적용된 limit(합계 상한, 정수). 모든 200 응답에 있다. 공개 gateway(12301·12307)는 limit을 생략하면 900, 900을 넘으면 900으로 바꿔 전달하므로 요청한 값보다 작으면 상한에 묶인 것이다. 실제로 잘렸는지는 본문 truncated로 본다. fuel-api(12307)는 CORS Access-Control-Expose-Headers로 노출한다.",
+                "schema": {
+                  "maximum": 5000,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "422": {
             "content": {

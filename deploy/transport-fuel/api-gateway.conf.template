@@ -64,7 +64,8 @@ server {
     add_header Access-Control-Allow-Origin $fuel_cors_origin always;
     add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
     add_header Access-Control-Allow-Headers "Accept, If-None-Match, Content-Type" always;
-    add_header Access-Control-Expose-Headers "ETag, Retry-After" always;
+    # X-Limit-Applied: places 200에 backend가 붙이는 실제 적용 limit(아래 판정 값). gateway는 만들지 않고 통과만 시킨다.
+    add_header Access-Control-Expose-Headers "ETag, Retry-After, X-Limit-Applied" always;
     add_header Vary "Origin" always;
     proxy_hide_header Access-Control-Allow-Origin;
     proxy_hide_header Access-Control-Allow-Credentials;
@@ -145,7 +146,7 @@ server {
         add_header Access-Control-Allow-Origin $fuel_cors_origin always;
         add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
         add_header Access-Control-Allow-Headers "Accept, If-None-Match, Content-Type" always;
-        add_header Access-Control-Expose-Headers "ETag, Retry-After" always;
+        add_header Access-Control-Expose-Headers "ETag, Retry-After, X-Limit-Applied" always;
         add_header Vary "Origin" always;
         add_header Retry-After 2 always;
         return 429 '{"type":"about:blank","title":"Too Many Requests","status":429,"detail":"장소 지도 조회가 혼잡합니다. 잠시 후 다시 시도하세요.","instance":"/v1/transport/fuel/places"}';
