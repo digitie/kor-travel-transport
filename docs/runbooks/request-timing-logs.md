@@ -49,7 +49,8 @@ MUI-11 압축)을 메운 계약이다. 세 원천 모두 **query string·본문�
   (gateway가 끊은 뒤에도 backend가 작업을 계속한 경우).
 - `uct`가 0이 아니고 커지거나 `ust=502` → backend가 연결을 받지 못했다(재기동·lifespan 대기).
 - export `503`이고 `uct=-` → gateway 동시 상한(아래 가드레일) 거절이다. `ust`가 `503`이면 backend의 503(ADR-013)이다.
-- 12307 places `429`이고 `uct=-` → gateway places 동시 상한(아래 가드레일) 거절이다. `ust`가 `429`이면 backend 입장 거절이다.
+- 12307 places `429`이고 `uct=- ust=-` → gateway places 동시 상한(아래 가드레일) 거절이다. 같은 시각 error log의
+  `limiting connections by zone "fuel_places_bff"`·`"fuel_places_direct"`로 어느 몫인지 본다. `ust=429`이면 backend 입장 거절이다.
 
 export 경로의 p50/p95 예(필드 위치 대신 `"GET /v1/service/exports/`와 `rt=`를 문자열로 찾는다):
 
@@ -160,18 +161,49 @@ location(Map)과 backend 직접(loopback 12302, 관리 BFF·측정 스크립트)
     페이지를 순차 조회하므로 평소에는 닿지 않는다.
 - 12307 공개 유가 places location(`/v1/transport/fuel/places`)은 `proxy_buffers 16 32k`(요청당 최대 512KiB)와
   `proxy_max_temp_file_size 0`이다.
-  - 전에는 팬·줌마다 오는 본문(공개 UI 300곳 약 0.4MB, 상한 900곳 약 1.2MB, 비압축)이 기본 버퍼(8×4k)를 넘어
-    컨테이너 쓰기 계층의 `proxy_temp` 파일에 쓰였다(`an upstream response is buffered to a temporary file` 경고).
-  - 512KiB는 공개 UI 한 번(약 0.4MB)이 메모리에 다 들어가는 크기다. backend 연결은 곧바로 풀리고 느린 모바일
-    클라이언트는 gateway 버퍼에서 받는다. 그보다 큰 본문(limit 300 초과 직접 호출)은 임시 파일 없이 클라이언트가
-    읽는 속도로 흘리며 그동안 backend 연결을 잡는다(`send_timeout` 60초가 한계). 응답 gzip은 이 버퍼 뒤에서 하므로
-    크기는 평문 기준이다.
-  - `limit_conn fuel_places 32`(listener 전체 한 key)로 버퍼 합을 32×512KiB=16MiB 이하(64MiB gateway의 1/4,
-    export와 같은 기준)로 묶는다. backend 공개 몫은 동시 계산 3·대기 8(`PLACES_MAX_RUNNING` 4 − 관리 몫 1,
-    `PLACES_MAX_WAITING` 8)이라 정상 부하는 이보다 작고, 공개 UI BFF는 같은 호스트 loopback이라 곧바로 받아 간다.
-    넘으면 gateway가 backend 입장 거절과 같은 `429` + `Retry-After: 2` problem+json(다섯 항목, CORS header 포함)으로
-    거절하고, 공개 지도는 한 번 자동 재조회한다(`lib/place-retry.ts`). 상한은 places location에만 있어 stations·
-    statistics 등 다른 경로는 막히지 않는다. backend의 429·504는 가로채지 않고 그대로 전달한다.
+  - 전에는 팬·줌마다 오는 본문이 기본 버퍼(8×4k)를 넘어 컨테이너 쓰기 계층의 `proxy_temp` 파일에 쓰였다
+    (`an upstream response is buffered to a temporary file` 경고).
+  - 본문 크기(비압축, 2026-11-25 실측): 공개 UI와 같은 query(`kind=fuel_station`·`include_fuel_statistics`·
+    `include_viewport_sigungu`, 4개 유종 가격)로 300곳 411,384 bytes(약 0.40MB), 900곳 1,233,185 bytes(약 1.18MB).
+    SQLite 시험 DB에 현실적인 이름·주소를 넣어 backend 응답을 직접 잰 값이다(운영 DB 표본은 아니다).
+  - 512KiB는 공개 UI 한 번(300곳)이 메모리에 다 들어가는 크기다. backend 연결은 곧바로 풀린다. 그보다 큰 본문
+    (limit 300 초과 직접 호출, 생략·900 초과는 900곳 약 1.18MB)은 임시 파일 없이 클라이언트가 읽는 속도로 흘리며,
+    그동안 backend 연결과 아래 상한의 자리를 잡는다. 관리 목록 검색(`limit=5000`)은 관리 BFF가 12302를 직접 부르므로
+    여기를 지나지 않는다. gateway를 거치면 900곳(약 1.18MB > 512KiB)으로 낮춰지고 흘려 보내는 쪽이 된다.
+    응답 gzip은 이 버퍼 뒤에서 하므로 크기는 평문 기준이다.
+  - `send_timeout 10s`: nginx가 10초 동안 한 byte도 보내지 못하면(클라이언트가 읽지 않으면) 끊는다. **쓰기 사이 간격**
+    상한이지 응답 전체 시간 상한이 아니다. 조금씩 계속 읽는 클라이언트는 자리를 계속 잡을 수 있다(nginx에는 응답
+    전체 시한이 없다). 그래서 아래처럼 호출자 몫을 나눈다.
+  - 동시 상한은 두 몫이다(주소별이 아니다).
+    - `fuel_places_bff` 16: `$remote_addr`가 `127.0.0.1`인 요청, 곧 같은 호스트의 공개 UI BFF(fuel-web,
+      `BACKEND_INTERNAL_URL=http://127.0.0.1:12307`)와 healthcheck다. BFF는 loopback에서 본문을 곧바로 받아 가므로
+      자리는 대부분 backend 계산 동안만 잡힌다. 16은 backend 공개 몫(동시 계산 3·대기 8 = 11, `PLACES_MAX_RUNNING` 4 −
+      관리 몫 1, `PLACES_MAX_WAITING` 8. 넘으면 backend가 바로 429)보다 크다.
+    - `fuel_places_direct` 8: 그 밖의 모든 주소, 곧 `fuel-api.digitie.mywire.org` 직접 호출이다. OPNsense HAProxy는
+      다른 호스트라 LAN 주소로 들어오고 127.0.0.1로는 오지 않는다(listen은 IPv4 `0.0.0.0` 하나). 직접 호출자는 HAProxy
+      한 주소를 공유하므로 그 안에서 주소별로 나누지 않는다. 느린 직접 호출이 이 몫을 다 써도 공개 지도(BFF)는 막히지
+      않는다(직접 호출만 429). 같은 호스트에서 12307을 부르는 다른 프로세스는 BFF 몫으로 센다(운영자 영역).
+  - 메모리 계산(요청당): `proxy_buffers` 512KiB + `proxy_buffer_size` 4KiB. gzip 응답(직접 호출. BFF는 identity)은
+    zlib deflate 상태 약 264KiB(window 15·memLevel 8: 128KiB + 128KiB + 약 8KiB)와 `gzip_buffers` 최대 128KiB(32×4k)를
+    더해 약 908KiB다. BFF 16×516KiB + 직접 8×908KiB ≈ 15.2MiB로 64MiB gateway의 1/4(export와 같은 기준) 이하다.
+    limit_conn zone은 worker끼리 공유하므로 이 합은 worker 수와 무관하다. 여기에 worker 상주 메모리(운영 ODROID M1S
+    4코어 → worker 4개)와 커널 socket 버퍼가 더해진다. 클라이언트 쪽 송신 버퍼는 `listen ... sndbuf=256k`(실제 약
+    512KiB)로 연결마다 묶는다. upstream 쪽 수신 버퍼에는 gateway 버퍼에 못 들어간 본문 나머지가 남는데, 실제 places
+    본문은 1.18MB 이하라 연결당 약 0.7MB 이하다. probe가 64MiB·worker 4개로 두 몫을 모두 채우고(직접 호출 8건은
+    읽지 않는 3MB gzip 응답 — 실제보다 크게 잡았다) 잰 값: 기동 직후 약 9~10MiB, 가득 찬 동안 약 38~41MiB(anon 약
+    14.5MiB, sock 약 20~22MiB, 대부분 upstream 수신 버퍼의 본문 나머지), peak 약 38~41MiB, OOM 없음. sock은 cgroup
+    v2(CI·WSL)에서 컨테이너 한도에 들어간다(운영 odroid는 cgroup v1이라 기본으로 TCP 버퍼를 한도에 넣지 않는다).
+  - 넘으면 gateway가 backend 입장 거절과 같은 `429` + `Retry-After: 2` problem+json(다섯 항목, CORS header 포함)으로
+    거절하고, 공개 지도는 한 번 자동 재조회한다(`lib/place-retry.ts`). `instance`는 클라이언트가 부른 gateway 경로
+    `/v1/transport/fuel/places`다(backend 입장 거절의 `instance`는 `/v1/transport/features/places`). access log는
+    `uct=- ust=-`, error log는 `limit_conn_log_level warn`으로 다음 한 줄을 남긴다(요청 줄에 query가 들어간다).
+
+    ```text
+    2026/11/25 08:30:01 [warn] 22#22: *1234 limiting connections by zone "fuel_places_direct", client: 192.168.1.1, server: _, request: "GET /v1/transport/fuel/places?... HTTP/1.1", host: "fuel-api.digitie.mywire.org"
+    ```
+
+    상한은 places location에만 있어 stations·statistics 등 다른 경로는 막히지 않는다. backend의 429·504는
+    가로채지 않고 그대로 전달한다(`ust=429`·`ust=504`).
 - 공개 유가 gateway는 JSON을 gzip level 1(1KiB 이상, `gzip_proxied any`, `Vary: Accept-Encoding`)로 압축한다(MUI-11).
   - backend가 이미 gzip으로 준 가격 이력은 다시 압축하지 않는다. 압축 효과는 access log `gz`로 본다.
   - nginx gzip은 200·403·404만 압축한다. 오류 본문(problem+json)은 1KiB 미만이라 `gzip_types`에 넣지 않았다.
@@ -181,15 +213,17 @@ location(Map)과 backend 직접(loopback 12302, 관리 BFF·측정 스크립트)
     브라우저↔Next 구간의 압축 여부는 Next 실행 설정이 정하며 이 변경 범위 밖이다.
 - IP별(주소별) `limit_req`·`limit_conn`은 공개 경로에 두지 않는다. 공개 유가 사용자는 모바일 통신사 NAT 뒤에서 같은 주소를
   공유하므로 주소별 제한은 정상 사용자를 막는다. 무거운 요청은 위 `limit` 상한과 backend places 검증의
-  `CapacityLimiter(2)`(`fuel_map_limiter`)로 묶는다. export와 12307 places의 `limit_conn`은 주소별이 아니라 listener 전체 한 key다(메모리 상한용).
+  `CapacityLimiter(2)`(`fuel_map_limiter`)로 묶는다. export의 `limit_conn`은 listener 전체 한 key, 12307 places는 호출자 종류별 두 key(BFF·직접 호출)이며 둘 다 주소별이 아니다(메모리 상한용).
 
 ## CI 검증 (`gateway-probe`)
 
-CI `gateway-probe` job이 `scripts/gateway-probe.py`로 위 가드레일을 실제 nginx에서 확인한다(약 20초, 네트워크는 이미지
-pull만). 12301은 compose와 같은 `nginx:1.27-alpine`에 template·`19-export-allowlist.sh`를 mount하고, 12307은
-`deploy/transport-fuel/Dockerfile.gateway`를 template 하나만 든 문맥으로 빌드한다. 두 경우 모두 공식 entrypoint가
-렌더링하며, 결과가 template에서 port 변수만 바꾼 문자열과 같은지 먼저 본다. 그 뒤 `nginx -t`와 loopback 12302 stub
-upstream으로 다음을 확인한다.
+CI `gateway-probe` job이 `scripts/gateway-probe.py`로 위 가드레일을 실제 nginx에서 확인한다(약 30초, 네트워크는 이미지
+pull만, pull은 한 번 재시도). 이미지는 compose·fuel Dockerfile의 `nginx:1.27-alpine` tag를 probe 안의 digest로 고정해
+쓴다(tag가 바뀌면 probe가 먼저 실패한다). 12301은 그 이미지에 template·`19-export-allowlist.sh`를 mount하고, 12307은
+`deploy/transport-fuel/Dockerfile.gateway`를 template 하나만 든 문맥으로 빌드해 `--memory 64m --memory-swap 64m`과
+worker 4개(`--cpuset-cpus 0-3`, 운영 ODROID M1S와 같다)로 띄운다. 두 경우 모두 공식 entrypoint가 렌더링하며, 결과가
+template에서 port 변수만 바꾼 문자열과 같은지 먼저 본다(다르면 unified diff를 출력한다). 그 뒤 `nginx -t`와 loopback
+12302 stub upstream으로 다음을 확인한다. 12307의 직접 호출은 source 주소 127.0.0.2로 만든다.
 
 - places `limit`: 생략·900 초과 → upstream 마지막 `limit=900`, 반복 query는 첫 값, 0·부호·앞자리 0·인코딩·소수 → 422
   problem+json 다섯 항목(upstream 미호출).
@@ -197,10 +231,33 @@ upstream으로 다음을 확인한다.
   조회, 12307 places·stations·statistics).
 - `Server-Timing`: 12301 `/health`·places·공개 조회·일반철도·MCP와 12307 전체에서 숨김, 12301 export에서는 유지.
 - export: 클라이언트 XFF 제거, 1.3MB 본문, 동시 8건 → 200 6건·503 2건(`Retry-After: 10`, `code`=`EXPORT_BUSY`,
-  `uct=-`), backend 503 그대로 전달.
-- 12307 places: 0.42MB·1.25MB 본문(identity·gzip), 동시 35건 → 200 32건·429 3건(`Retry-After: 2`, CORS), 상한이 찬
-  동안 stations 200, backend 429 그대로 전달.
+  `uct=-`), backend 503 그대로 전달(`ust=503`).
+- 12307 places: 0.42MB·1.25MB 본문(identity·gzip), BFF 동시 17건 → 200 16건·429 1건, 직접 호출 동시 9건 → 200 8건·429 1건
+  (`Retry-After: 2`, problem+json, CORS). 읽지 않는 직접 호출 8건이 몫을 채운 동안 다음 직접 호출은 429, BFF places는 200.
+  BFF 몫까지 채우면 17번째 BFF 429, 그동안 stations 200. 멈춘 직접 호출은 `send_timeout` 뒤 끊겨 8~16초 안에 자리가 풀린다.
+  backend 429는 그대로 전달(`ust=429`), gateway 429 줄은 `uct=- ust=-`, error log에 두 zone의 `[warn] limiting connections`.
+  64MiB 한도에서 OOM 없음(memory.peak 출력).
 - access log: 모든 줄이 timing 형식(12307은 `gz=` 포함), query·cursor 값 없음, `/health` 없음.
-- error log에 `buffered to a temporary file` 경고 없음.
+- error log에 `buffered to a temporary file` 경고 없음. `proxy_max_temp_file_size 0`이 있으면 날 수 없는 경고라 이 검사는
+  그 지시문이 빠지는 회귀를 잡는다(main의 옛 fuel template으로 돌리면 실제로 실패했다).
 
-로컬에서는 12301·12302·12307이 비어 있는 Linux Docker(WSL 등)에서 `python3 scripts/gateway-probe.py`로 실행한다.
+출력은 `PASS`·`FAIL`(동작 불일치)·`SETUP FAIL`(port 사용 중·pull·build·기동 실패)·`INFO`(메모리)다. 로컬에서는
+12301·12302·12307이 비어 있는 Linux Docker(WSL 등)에서 `python3 scripts/gateway-probe.py`로 실행한다.
+
+## 배포와 배포 뒤 확인
+
+- 12301(`transport-api-gateway`)은 template을 bind mount하므로 admin 배포의 `--force-recreate`로 반영된다.
+- 12307(`fuel-api-gateway`)은 template을 이미지에 COPY하므로 **새 gateway 이미지**(`scripts/build-images.py`의
+  `fuel-api-gateway` 역할, `TRANSPORT_FUEL_GATEWAY_IMAGE`)를 만들어 바꿔야 반영된다. 컨테이너 재생성만으로는 옛
+  template이 그대로다.
+- 배포 뒤 확인(12307):
+
+  ```bash
+  docker logs --since 1h kor-travel-transport-fuel-fuel-api-gateway-1 2>&1 | grep -c 'buffered to a temporary file'   # 0
+  docker logs --since 24h kor-travel-transport-fuel-fuel-api-gateway-1 2>&1 | grep -c 'limiting connections by zone'  # 평소 0
+  docker logs --since 24h kor-travel-transport-fuel-fuel-api-gateway-1 2>/dev/null | grep '"GET /v1/transport/fuel/places" 429 ' | grep -c ' uct=- '
+  docker stats --no-stream kor-travel-transport-fuel-fuel-api-gateway-1   # MEM USAGE가 64MiB에 가깝지 않은지
+  ```
+
+  `fuel_places_bff` 거절이 보이면 공개 지도 사용자가 혼잡 안내를 받은 것이다. backend places 입장 거절(`ust=429`)과
+  함께 늘었는지 보고, BFF 몫만 차는 것이면 상한(16)을 다시 검토한다.
