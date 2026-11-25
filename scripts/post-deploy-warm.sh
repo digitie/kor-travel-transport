@@ -59,13 +59,18 @@ running() { [[ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null || tru
 fingerprint_pattern='^[0-9a-f]{64}$'
 
 # 서빙 중인 API가 실제로 쓰는 본문 코드 지문(ADR-016). 본문 준비는 이 값과 같은 code-server에서만 한다(모듈이 대조).
+# 필드가 없으면(지문 이전 이미지) `absent`, null이면(API가 지문을 못 만들어 artifact 경로가 꺼짐) `null`로 구분한다.
 api_fingerprint="$(curl -fsS --max-time 5 "http://127.0.0.1:${api_port}/health" 2>/dev/null \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("reference_payload_fingerprint") or "")' 2>/dev/null || true)"
+  | python3 -c 'import json,sys; b=json.load(sys.stdin); print("absent" if "reference_payload_fingerprint" not in b else (b["reference_payload_fingerprint"] or "null"))' 2>/dev/null || true)"
 
 # (a) 기준정보 본문 준비. 컨테이너 안 상한(--timeout-seconds)이 정본이다 — 바깥 timeout이 docker exec 클라이언트를
 # 끊어도 컨테이너 안 프로세스는 남으므로 바깥 값은 안 상한보다 넉넉한 안전망일 뿐이다.
 if ! running "${code_server}"; then
   warn "${code_server} is not running; reference prepare skipped"
+elif [[ "${api_fingerprint}" == "absent" ]]; then
+  warn "backend /health has no reference_payload_fingerprint (API image predates the payload fingerprint); reference prepare skipped"
+elif [[ "${api_fingerprint}" == "null" ]]; then
+  warn "backend reference artifacts are DISABLED: the API could not compute its payload fingerprint (/health reference_artifacts=disabled); every Map first page rebuilds in-request - check the image has app sources; reference prepare skipped"
 elif [[ ! "${api_fingerprint}" =~ ${fingerprint_pattern} ]]; then
   warn "backend /health reference_payload_fingerprint is unavailable (${api_fingerprint:-none}); reference prepare skipped"
 else
@@ -77,6 +82,8 @@ else
   elapsed="$((SECONDS - started))s"
   case "${prepare_status}" in
     0) log "reference prepare (${elapsed}): ${prepare_output}" ;;
+    2) warn "reference prepare skipped: code-server image predates the payload fingerprint (prepare_references rejected --expect-payload-fingerprint); deploy the same image to the code-server" ;;
+    6) warn "reference prepare skipped: the code-server could not compute its payload fingerprint (its reference artifacts are disabled; check the image has app sources): ${prepare_output:-no output}" ;;
     4) warn "reference prepare skipped: code-server payload fingerprint differs from the API; artifacts would be keyed to a revision the API does not read (${prepare_output:-no output})" ;;
     5) warn "reference prepare incomplete (${elapsed}): not every Map reference body is ready yet (not_ready/busy/deferred); the next airport-job prepare or the first Map page builds it: ${prepare_output:-no output}" ;;
     *) warn "reference prepare did not fully succeed (exit ${prepare_status}, ${elapsed}): ${prepare_output:-no output}" ;;

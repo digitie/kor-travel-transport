@@ -205,8 +205,12 @@ def test_prepare_module_prints_one_summary_line(monkeypatch, capsys, local_finge
     assert summary["busy"] == result["busy"]
 
 
-@pytest.mark.parametrize("local", ["fedcba9876543210" * 4, None])
-def test_prepare_module_skips_when_its_fingerprint_differs_from_the_api(monkeypatch, capsys, local):
+@pytest.mark.parametrize(("local", "exit_code", "status"), [
+    ("fedcba9876543210" * 4, 4, "fingerprint_mismatch"),
+    # 이 컨테이너가 지문을 못 만들면(artifact 경로 꺼짐) 불일치가 아니라 별도 상태다.
+    (None, 6, "fingerprint_unavailable"),
+])
+def test_prepare_module_skips_when_its_fingerprint_differs_from_the_api(monkeypatch, capsys, local, exit_code, status):
     """code-server와 API의 본문 코드가 다르면(한쪽만 롤백 등) API가 읽지 않을 revision을 만들지 않는다(head 되돌림 방지)."""
     from app.core import config
     from app.services import export_references
@@ -219,9 +223,10 @@ def test_prepare_module_skips_when_its_fingerprint_differs_from_the_api(monkeypa
     monkeypatch.setattr(export_references, "REFERENCE_PAYLOAD_FINGERPRINT", local)
     monkeypatch.setattr(prep, "prepare_reference_exports_for_settings", must_not_run)
     code = prepare_references.main(["--timeout-seconds", "30", "--expect-payload-fingerprint", FINGERPRINT])
-    assert code == prepare_references.EXIT_FINGERPRINT_MISMATCH == 4
+    assert code == exit_code
+    assert prepare_references.EXIT_FINGERPRINT_MISMATCH == 4 and prepare_references.EXIT_FINGERPRINT_UNAVAILABLE == 6
     summary = json.loads(capsys.readouterr().out)
-    assert summary["status"] == "fingerprint_mismatch" and summary["api_payload_fingerprint"] == FINGERPRINT
+    assert summary["status"] == status and summary["api_payload_fingerprint"] == FINGERPRINT
 
 
 def test_prepare_module_runs_without_release_sha_when_fingerprints_match(monkeypatch, capsys, local_fingerprint):
@@ -300,7 +305,9 @@ if os.environ.get("FAKE_API_DOWN"):
     sys.exit(7)
 assert sys.argv[-1] == "http://127.0.0.1:12302/health", sys.argv
 body = {"status": "ok", "database": "ready", "seeded": True, "release_sha": "unknown"}
-if os.environ.get("FAKE_API_FINGERPRINT") != "absent":
+if os.environ.get("FAKE_API_FINGERPRINT") == "null":
+    body["reference_payload_fingerprint"] = None
+elif os.environ.get("FAKE_API_FINGERPRINT") != "absent":
     body["reference_payload_fingerprint"] = os.environ.get("FAKE_API_FINGERPRINT", "0123456789abcdef" * 4)
 print(json.dumps(body))
 '''
@@ -354,6 +361,8 @@ def test_wrapper_runs_prepare_in_code_server_then_smoke_in_backend(tmp_path: Pat
     ({"FAKE_PREPARE_EXIT": "1"}, "reference prepare did not fully succeed"),
     ({"FAKE_PREPARE_EXIT": "5"}, "reference prepare incomplete"),
     ({"FAKE_PREPARE_EXIT": "4"}, "code-server payload fingerprint differs from the API"),
+    ({"FAKE_PREPARE_EXIT": "2"}, "code-server image predates the payload fingerprint"),
+    ({"FAKE_PREPARE_EXIT": "6"}, "the code-server could not compute its payload fingerprint"),
     ({"FAKE_STOPPED": "kor-travel-transport-dagster-code-server-1"}, "reference prepare skipped"),
 ])
 def test_wrapper_never_fails_the_deploy(tmp_path: Path, env: dict[str, str], warning: str):
@@ -363,7 +372,8 @@ def test_wrapper_never_fails_the_deploy(tmp_path: Path, env: dict[str, str], war
 
 
 @pytest.mark.parametrize(("env", "warning"), [
-    ({"FAKE_API_FINGERPRINT": "absent"}, "reference_payload_fingerprint is unavailable (none)"),
+    ({"FAKE_API_FINGERPRINT": "absent"}, "API image predates the payload fingerprint"),
+    ({"FAKE_API_FINGERPRINT": "null"}, "backend reference artifacts are DISABLED"),
     ({"FAKE_API_FINGERPRINT": "unknown"}, "reference_payload_fingerprint is unavailable (unknown)"),
     ({"FAKE_API_DOWN": "1"}, "reference_payload_fingerprint is unavailable"),
 ])

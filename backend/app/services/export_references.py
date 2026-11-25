@@ -30,11 +30,13 @@ from app.schemas import BusTerminalExportPage, FerryPortExportPage, RailStationE
 from app.services.bus_collection import TAGO_BUS_SOURCE
 from app.services.rail_maritime_collection import KRIC_FILE_SOURCE, MARITIME_SOURCE, PORT_GUIDELINE_SOURCE
 from app.services.general_rail_reference import KRIC_GENERAL_SOURCE, KRIC_GENERAL_SCOPE
+from app.core import time_utils as _time_utils_module
 from app.services import export_addresses as _export_addresses_module
+from app.services import rail_station_mapping as _rail_station_mapping_module
 from app.services import reference_artifacts as _reference_artifacts_module
 from app.services import reference_export_revision as _reference_export_revision_module
-from app.services.rail_station_mapping import mapping_revision, persisted_mapping_context, persisted_station_links
-from app.services.reference_payload_fingerprint import payload_code_fingerprint
+from app.services.rail_station_mapping import persisted_mapping_context, persisted_station_links
+from app.services.reference_payload_fingerprint import FINGERPRINT_SCHEME, payload_code_fingerprint
 from app.services.parking_exports import parking_scope, parking_sources
 from app.services.export_addresses import export_admin_addresses
 from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SnapshotRace, budget_exceeded, build_started, cache_generation, _snapshot_transaction, expire_snapshots, gc_quietly, read_snapshot_with_retry, snapshot_expires_at
@@ -428,7 +430,10 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
             else:
                 model, identity = ServiceExportSnapshotItem, ServiceExportSnapshotItem.snapshot_id == snapshot.id
             # 불변 본문의 digest와 페이지/상태/만료 metadata만으로 조건부 응답을 판정한다.
-            semantic = ["reference-page-v2", spec.kind, spec.scope, snapshot.content_digest,
+            # 조회 경로·envelope가 바뀐 배포에서 옛 응답을 304로 재사용하지 않게 본문 코드 지문(이 모듈 전체 포함)과
+            # 지문 구성 방식을 넣는다. 지문 입력 밖에서 envelope를 바꾸면 "reference-page-vN"을 올린다.
+            semantic = ["reference-page-v3", FINGERPRINT_SCHEME, REFERENCE_PAYLOAD_FINGERPRINT,
+                        spec.kind, spec.scope, snapshot.content_digest,
                         snapshot.id, serialize_utc(snapshot.expires_at).isoformat(),
                         serialize_utc(snapshot.source_collected_at).isoformat(), snapshot.item_count,
                         after, limit, "stale" if stale else "ok"]
@@ -467,13 +472,17 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
     return router
 
 
-#: 본문 코드 지문(ADR-016). import 때 한 번 계산한다 — 입력 revision namespace에 RELEASE_SHA 대신 들어간다.
-#: 본문 DTO를 만드는 builder·주소/매핑 helper·artifact 저장/입력 revision 코드, 이 모듈의 단순 상수, page model schema,
-#: 형제 라이브러리 버전만 본다. 조회 경로(ETag·cursor 등) 코드나 관계없는 모듈의 변경은 본문을 무효로 만들지 않는다.
+#: 본문 코드 지문에 **전체 소스**가 들어가는 모듈(ADR-016). 함수 단위 허용 목록이 아니라 모듈 단위다 — 이 모듈
+#: (builder·spec 배선·조회 경로), 주소 DTO, 철도 매핑, 시각 직렬화(serialize_utc), artifact 저장, 입력 revision.
+#: builder에서 닿는 `app.*` 코드가 여기(또는 시험의 사유 있는 제외 목록)에 없으면
+#: `test_reference_payload_fingerprint.py`가 실패한다. 새 helper 모듈을 builder에서 부르면 여기에 넣는다.
+PAYLOAD_CODE = (sys.modules[__name__], _export_addresses_module, _rail_station_mapping_module, _time_utils_module,
+                _reference_artifacts_module, _reference_export_revision_module)
+PAYLOAD_PAGE_MODELS = (BusTerminalExportPage, FerryPortExportPage, RailStationExportPage, ParkingCurrentExportPage)
+
+#: 본문 코드 지문. import 때 한 번 계산한다 — 입력 revision namespace에 RELEASE_SHA 대신 들어간다. 이 모듈 전체가
+#: 들어가므로 조회 경로(ETag·cursor·envelope) 변경도 새 namespace·새 handle이 된다(더 무효화되는 쪽이 안전하다).
+#: None이면 artifact 경로가 꺼지고 `/health`의 `reference_artifacts`가 "disabled"다.
 REFERENCE_PAYLOAD_FINGERPRINT: str | None = payload_code_fingerprint(
-    code=(_bus_payload_batches, _ferry_payload_batches, _rail_payload_batches, _parking_payload_batches,
-          _export_addresses_module, persisted_mapping_context, persisted_station_links, mapping_revision,
-          _reference_artifacts_module, _reference_export_revision_module),
-    constant_modules=(sys.modules[__name__],),
-    page_models=(BusTerminalExportPage, FerryPortExportPage, RailStationExportPage, ParkingCurrentExportPage),
+    code=PAYLOAD_CODE, constant_modules=(sys.modules[__name__],), page_models=PAYLOAD_PAGE_MODELS,
 )

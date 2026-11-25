@@ -994,6 +994,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             seeded=bool(seeded),
             release_sha=resolved_settings.release_sha,
             reference_payload_fingerprint=export_references.REFERENCE_PAYLOAD_FINGERPRINT,
+            reference_artifacts="enabled" if export_references.REFERENCE_PAYLOAD_FINGERPRINT else "disabled",
         )
 
     router = APIRouter()

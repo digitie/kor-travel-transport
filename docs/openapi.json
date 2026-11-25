@@ -5891,6 +5891,15 @@
             "title": "Database",
             "type": "string"
           },
+          "reference_artifacts": {
+            "default": "disabled",
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "title": "Reference Artifacts",
+            "type": "string"
+          },
           "reference_payload_fingerprint": {
             "anyOf": [
               {

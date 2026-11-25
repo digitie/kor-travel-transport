@@ -50,6 +50,7 @@ def test_health_seeded_checks_presence_without_count(tmp_path, rows):
             assert response.json() == {
                 "status": "ok", "database": "ready", "seeded": bool(rows), "release_sha": "health-test",
                 "reference_payload_fingerprint": export_references.REFERENCE_PAYLOAD_FINGERPRINT,
+                "reference_artifacts": "enabled",
             }
             assert len(response.json()["reference_payload_fingerprint"]) == 64
             assert len(observed) == 1

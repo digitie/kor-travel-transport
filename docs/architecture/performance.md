@@ -675,16 +675,22 @@ ADR-016 결정 갱신. 입력 revision namespace의 배포 식별자가 `RELEASE
 (`export_references.REFERENCE_PAYLOAD_FINGERPRINT`, `app/services/reference_payload_fingerprint.py`)으로 바뀌었다.
 
 - **무효화 범위** — 전에는 배포마다(같은 코드의 재배포·문서만 바뀐 배포 포함) rail·ferry·bus·parking 본문이 모두
-  무효가 되어, 배포 직후 준비나 첫 Map 페이지가 전체를 다시 구성했다(감사 WLH-03·MC-07). 이제는 payload builder·주소/
-  매핑 읽기 helper·artifact 저장/입력 revision 코드, builder 모듈의 단순 상수, 네 page model의 JSON schema,
-  `kor-travel-common`·`python-krairport-api` 버전/commit 중 하나가 바뀐 배포만 무효로 만든다. 그 밖의 배포에서 배포
-  직후 준비는 `reused`이고 첫 Map 페이지는 기존 본문의 새 handle만 발급한다.
+  무효가 되어, 배포 직후 준비나 첫 Map 페이지가 전체를 다시 구성했다(감사 WLH-03·MC-07). 이제는 `PAYLOAD_CODE` 모듈
+  (`export_references`·`export_addresses`·`rail_station_mapping`·`app.core.time_utils`·`reference_artifacts`·
+  `reference_export_revision`)의 전체 소스, builder 모듈의 단순 상수, 네 page model의 JSON schema, 형제 라이브러리·
+  pydantic·pydantic-core·SQLAlchemy·asyncpg 버전/commit, Python major.minor 중 하나가 바뀐 배포만 무효로 만든다. 그 밖의
+  배포에서 배포 직후 준비는 `reused`이고 첫 Map 페이지는 기존 본문의 새 handle만 발급한다. 모듈 단위라 조회 경로만 바뀐
+  배포도 다시 만든다(덜 무효화되어 낡은 본문을 내는 것보다 싸다). builder에서 닿는 `app.*` 코드가 지문 밖이면 시험이
+  실패한다(ADR-016 범위 가드).
+- **조건부 응답** — ETag semantic(`reference-page-v3`)에 지문 구성 방식과 지문을 넣어, 지문이 바뀐 배포에서 옛 ETag로
+  304를 내지 않는다.
 - **skew** — API와 code-server의 `RELEASE_SHA`가 달라도(한쪽만 `unknown` 등) 코드가 같으면 같은 namespace라 head를
   서로 덮어쓰지 않는다. `RELEASE_SHA` 없이 띄운 컨테이너도 artifact 경로·기동 warmup(`main.py`의 조건은 Map current
   활성 + 지문 있음)·오프라인 준비를 쓴다.
-- **비용** — 지문은 import 때 한 번 계산한다(소스 읽기 + schema 4개 + metadata 2개, 수십 ms). 요청 경로 비용은 그대로다
+- **비용** — 지문은 import 때 한 번 계산한다(소스 읽기 + schema 4개 + metadata 6개, 수십 ms). 요청 경로 비용은 그대로다
   (입력 지문 memo 키의 한 값이 바뀌었을 뿐이다).
 - **이전** — 처음 배포될 때 namespace 값(`reference-input-v2`)이 한 번 바뀌어 모든 본문을 한 번 다시 만든다. 옛 본문은
   남은 handle이 만료된 뒤 기존 GC가 지운다.
-- **안전장치** — 지문을 만들 수 없으면(소스 없는 이미지) artifact 없는 완전 구성 경로로 간다. 읽을 때의 page model
-  재검증은 그대로다. 지문 입력 밖의 코드가 본문 값을 바꾸게 되면 입력에 추가하거나 `FINGERPRINT_SCHEME`을 올린다.
+- **안전장치·저하 표시** — 지문을 만들 수 없으면(소스 없는 이미지) artifact 없는 완전 구성 경로로 간다(정확하지만 느리다).
+  `/health`의 `reference_artifacts: "disabled"`·`reference_payload_fingerprint: null`, 기동 WARNING 로그로 드러난다. 읽을
+  때의 page model 재검증은 그대로다.
