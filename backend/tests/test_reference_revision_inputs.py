@@ -28,7 +28,7 @@ def test_bus_and_parking_reuse_and_live_value_invalidation(export_client, monkey
     if c.app.state.engine.dialect.name != "postgresql":
         pytest.skip("PostgreSQL 입력 지문 검증")
     c.app.state.settings.transport_map_current_enabled = True
-    c.app.state.settings.release_sha = "other-reference-test-v1"
+    c.app.state.settings.release_sha = "unknown"
     if kind == "bus":
         from test_bus_export import seed, PATH
         _run(c, seed)
@@ -110,7 +110,7 @@ def test_manual_revision_and_signed_zero_are_not_hidden_by_jsonb(export_client):
     if c.app.state.engine.dialect.name != "postgresql":
         pytest.skip("PostgreSQL float bit 지문 검증")
     c.app.state.settings.transport_map_current_enabled = True
-    c.app.state.settings.release_sha = "ferry-revision-test-v1"
+    c.app.state.settings.release_sha = "unknown"
     async def seed(s):
         now = now_utc()
         port = FerryPort(source=MARITIME_SOURCE, port_id="001", port_name="항구", latitude=35.0,

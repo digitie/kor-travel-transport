@@ -162,7 +162,7 @@ from app.schemas import (
     WeekdayHourlyPattern,
 )
 from app.services.fuel_map import FUEL_FACILITY_LABELS, fuel_map_items_statement
-from app.services import place_map_cache
+from app.services import export_references, place_map_cache
 from app.core.read_timing import observe_page_build
 from app.services.fuel_map_validation import validated_fuel_map_items, validated_place_map_items
 from app.services.place_map_admission import PlaceMapGate, place_map_admission, run_in_thread_holding
@@ -667,10 +667,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if fuel_mcp_http is not None:
                     await stack.enter_async_context(fuel_mcp_http.router.lifespan_context(fuel_mcp_http))
                 # yield 전에는 기다리지 않는다(task만 만든다 — 포트 개방을 늦추지 않는다). 풀 채우기 → 철도·여객선 지문 →
-                # 주차 이력 캐시 순서다. 입력 revision에 release_sha가 들어가므로(ADR-016) 그 값이 있을 때만 지문을 데운다.
+                # 주차 이력 캐시 순서다. 입력 revision은 RELEASE_SHA가 아니라 본문 코드 지문을 쓰므로(ADR-016) RELEASE_SHA
+                # 없이 띄운 컨테이너도 데운다. 지문을 만들 수 없는 배포(소스 없음)만 건너뛴다.
                 if engine.dialect.name == "postgresql":
                     reference_identity = (resolved_settings.transport_map_current_enabled
-                                          and resolved_settings.release_sha not in {None, "", "unknown"})
+                                          and export_references.REFERENCE_PAYLOAD_FINGERPRINT is not None)
                     startup_warmup_task = asyncio.create_task(run_startup_warmup(
                         engine,
                         warm_references=(
@@ -992,6 +993,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             database="ready",
             seeded=bool(seeded),
             release_sha=resolved_settings.release_sha,
+            reference_payload_fingerprint=export_references.REFERENCE_PAYLOAD_FINGERPRINT,
         )
 
     router = APIRouter()

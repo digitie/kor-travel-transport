@@ -21,6 +21,7 @@ from app.services.export_current import (
     _snapshot_transaction,
     expire_snapshots,
 )
+from app.services import export_references as _export_references
 from app.services.export_references import (
     _reference_heads,
     _valid_heads,
@@ -70,6 +71,11 @@ _BUDGET_TOLERANCE_SECONDS = 2.0
 BUSY_ESCALATION_STREAK = 3
 
 
+def _code_fingerprint():
+    # 모듈 속성으로 읽는다(시험이 지문을 바꿔 끼울 수 있게). RELEASE_SHA는 입력 revision에 들어가지 않는다(ADR-016).
+    return _export_references.REFERENCE_PAYLOAD_FINGERPRINT
+
+
 def _elapsed_ms(started: float) -> int:
     return round((monotonic() - started) * 1000)
 
@@ -93,7 +99,7 @@ async def warm_reference_revisions(session_factory, *, settings, kinds=STARTUP_W
                 heads = await _reference_heads(session, spec)
                 if not _valid_heads(heads, spec):
                     result["status"] = "source_unavailable"
-                elif await reference_payload_revision(session, heads, spec.kind, settings.release_sha) is None:
+                elif await reference_payload_revision(session, heads, spec.kind, _code_fingerprint()) is None:
                     result["status"] = "unsupported_revision"
                 else:
                     result["status"] = "warmed"
@@ -168,7 +174,7 @@ async def _prepare_kind(session, spec, *, settings, deadline, lock_timeout_ms, s
             if not _valid_heads(heads, spec):
                 await session.rollback()
                 return {"status": "source_unavailable"}
-            revision = await reference_payload_revision(session, heads, spec.kind, settings.release_sha)
+            revision = await reference_payload_revision(session, heads, spec.kind, _code_fingerprint())
             if revision is None:
                 await session.rollback()
                 return {"status": "unsupported_revision"}

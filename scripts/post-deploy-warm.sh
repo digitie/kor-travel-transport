@@ -10,11 +10,11 @@
 #
 # 하는 일:
 #   (a) 새 code-server 컨테이너 안에서 Map이 읽는 기준정보 본문(ADR-016 artifact, 철도역·여객선)을 준비한다. 입력
-#       revision에 release_sha가 들어가 배포마다 본문이 모두 무효가 되므로, 다음 공항 수집을 기다리지 않고 미리 만든다.
-#       먼저 code-server의 RELEASE_SHA가 서빙 중인 API /health의 release_sha와 같은지 본다 — 다르면(code-server만 롤백,
-#       RELEASE_SHA 없이 기동, compose build처럼 이미지에 RELEASE_SHA가 없는 경우 등) API가 읽지 않을 revision을 만들고
-#       head를 되돌리게 되므로 건너뛴다. Dagster run 밖에서 돌므로 5분 공항 수집의 준비와 겹칠 수 있다. 겹친 종류는
-#       `busy`로 끝나고 어느 쪽도 실패하지 않는다.
+#       revision에는 본문 코드 지문이 들어가 본문 코드가 바뀐 배포는 본문이 모두 무효가 되므로(관계없는 배포는 그대로
+#       재사용한다 — 그때 준비는 `reused`다), 다음 공항 수집을 기다리지 않고 미리 만든다. 서빙 중인 API /health의
+#       reference_payload_fingerprint를 넘기고, 컨테이너 안 모듈이 자기 지문과 대조한다 — 다르면(한쪽만 롤백 등) API가
+#       읽지 않을 revision을 만들고 head를 되돌리게 되므로 건너뛴다(exit 4). RELEASE_SHA는 보지 않는다. Dagster run
+#       밖에서 돌므로 5분 공항 수집의 준비와 겹칠 수 있다. 겹친 종류는 `busy`로 끝나고 어느 쪽도 실패하지 않는다.
 #   (b) 서빙 중인 backend 컨테이너 안에서 loopback으로 Map export(T1 limit=1, 철도역·여객선 첫 페이지)를 한 번씩
 #       부른다. 토큰은 컨테이너 env에서만 읽고(argv·출력 없음) 경로·상태·problem code·지연만 출력한다.
 #
@@ -56,35 +56,28 @@ backend="${project}-backend-1"
 log() { printf 'post-deploy-warm: %s\n' "$*"; }
 warn() { printf 'post-deploy-warm: WARN %s\n' "$*" >&2; }
 running() { [[ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null || true)" == "true" ]]; }
-release_pattern='^[0-9A-Za-z._-]{1,80}$'
+fingerprint_pattern='^[0-9a-f]{64}$'
 
-# 서빙 중인 API가 실제로 쓰는 release_sha. 본문 준비는 이 값과 같은 code-server에서만 한다.
-api_release="$(curl -fsS --max-time 5 "http://127.0.0.1:${api_port}/health" 2>/dev/null \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("release_sha") or "")' 2>/dev/null || true)"
-code_server_release=""
-if running "${code_server}"; then
-  code_server_release="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "${code_server}" 2>/dev/null \
-    | sed -n 's/^RELEASE_SHA=//p' | head -n 1 || true)"
-fi
+# 서빙 중인 API가 실제로 쓰는 본문 코드 지문(ADR-016). 본문 준비는 이 값과 같은 code-server에서만 한다(모듈이 대조).
+api_fingerprint="$(curl -fsS --max-time 5 "http://127.0.0.1:${api_port}/health" 2>/dev/null \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("reference_payload_fingerprint") or "")' 2>/dev/null || true)"
 
 # (a) 기준정보 본문 준비. 컨테이너 안 상한(--timeout-seconds)이 정본이다 — 바깥 timeout이 docker exec 클라이언트를
 # 끊어도 컨테이너 안 프로세스는 남으므로 바깥 값은 안 상한보다 넉넉한 안전망일 뿐이다.
 if ! running "${code_server}"; then
   warn "${code_server} is not running; reference prepare skipped"
-elif [[ ! "${api_release}" =~ ${release_pattern} || "${api_release}" == "unknown" ]]; then
-  warn "backend /health release_sha is unavailable (${api_release:-none}); reference prepare skipped"
-elif [[ "${code_server_release}" != "${api_release}" ]]; then
-  warn "release_sha mismatch: code-server ${code_server_release:-none} vs API ${api_release}; reference prepare skipped (artifacts would be keyed to a revision the API does not read)"
+elif [[ ! "${api_fingerprint}" =~ ${fingerprint_pattern} ]]; then
+  warn "backend /health reference_payload_fingerprint is unavailable (${api_fingerprint:-none}); reference prepare skipped"
 else
   started=${SECONDS}
   prepare_output="$(timeout --kill-after=10 "$((prepare_timeout + 60))" \
     docker exec "${code_server}" python -I -B -m app.deploy.prepare_references \
-      --timeout-seconds "${prepare_timeout}" --expect-release-sha "${api_release}")"
+      --timeout-seconds "${prepare_timeout}" --expect-payload-fingerprint "${api_fingerprint}")"
   prepare_status=$?
   elapsed="$((SECONDS - started))s"
   case "${prepare_status}" in
     0) log "reference prepare (${elapsed}): ${prepare_output}" ;;
-    4) warn "reference prepare skipped: code-server settings release_sha differs from the API (${prepare_output:-no output})" ;;
+    4) warn "reference prepare skipped: code-server payload fingerprint differs from the API; artifacts would be keyed to a revision the API does not read (${prepare_output:-no output})" ;;
     5) warn "reference prepare incomplete (${elapsed}): not every Map reference body is ready yet (not_ready/busy/deferred); the next airport-job prepare or the first Map page builds it: ${prepare_output:-no output}" ;;
     *) warn "reference prepare did not fully succeed (exit ${prepare_status}, ${elapsed}): ${prepare_output:-no output}" ;;
   esac

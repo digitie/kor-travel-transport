@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import sys
 from dataclasses import dataclass
 from collections.abc import AsyncIterator, Callable
 from datetime import timedelta
@@ -29,7 +30,11 @@ from app.schemas import BusTerminalExportPage, FerryPortExportPage, RailStationE
 from app.services.bus_collection import TAGO_BUS_SOURCE
 from app.services.rail_maritime_collection import KRIC_FILE_SOURCE, MARITIME_SOURCE, PORT_GUIDELINE_SOURCE
 from app.services.general_rail_reference import KRIC_GENERAL_SOURCE, KRIC_GENERAL_SCOPE
-from app.services.rail_station_mapping import persisted_mapping_context, persisted_station_links
+from app.services import export_addresses as _export_addresses_module
+from app.services import reference_artifacts as _reference_artifacts_module
+from app.services import reference_export_revision as _reference_export_revision_module
+from app.services.rail_station_mapping import mapping_revision, persisted_mapping_context, persisted_station_links
+from app.services.reference_payload_fingerprint import payload_code_fingerprint
 from app.services.parking_exports import parking_scope, parking_sources
 from app.services.export_addresses import export_admin_addresses
 from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SnapshotRace, budget_exceeded, build_started, cache_generation, _snapshot_transaction, expire_snapshots, gc_quietly, read_snapshot_with_retry, snapshot_expires_at
@@ -284,10 +289,10 @@ async def _artifact_snapshot(session, heads, spec, input_revision, started):
     return await session.get(ServiceExportSnapshot, snapshot_id), artifact
 
 
-async def _freeze_reference(session, heads, spec, *, payload_revision=None):
+async def _freeze_reference(session, heads, spec, *, code_fingerprint=None):
     # 요청 경로의 재시도는 첫 시도의 예산을 이어 쓴다(`read_snapshot_with_retry`).
     started = build_started()
-    input_revision = await reference_payload_revision(session, heads, spec.kind, payload_revision)
+    input_revision = await reference_payload_revision(session, heads, spec.kind, code_fingerprint)
     if input_revision is not None:
         return await _artifact_snapshot(session, heads, spec, input_revision, started)
     observe_fingerprint()
@@ -408,7 +413,8 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                 if problem is not None:
                     code, detail, retry_after = problem
                     raise unavailable(code, detail, retry_after=retry_after)
-                snapshot, artifact = await _freeze_reference(session, heads, spec, payload_revision=settings.release_sha)
+                snapshot, artifact = await _freeze_reference(session, heads, spec,
+                                                             code_fingerprint=REFERENCE_PAYLOAD_FINGERPRINT)
             stale = (not _valid_heads(heads, spec) or any(h.last_error is not None for h in heads)
                      or now_utc() - serialize_utc(snapshot.source_collected_at) > spec.max_age)
             if snapshot.artifact_id is not None:
@@ -459,3 +465,15 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
         router.add_api_route(spec.path, endpoint_for(spec), methods=["GET"], response_model=spec.page_model,
                              name=spec.path.strip("/").replace("-", "_"), responses={304: {}, 404: {}, 410: {}, 422: {}, 503: {}})
     return router
+
+
+#: 본문 코드 지문(ADR-016). import 때 한 번 계산한다 — 입력 revision namespace에 RELEASE_SHA 대신 들어간다.
+#: 본문 DTO를 만드는 builder·주소/매핑 helper·artifact 저장/입력 revision 코드, 이 모듈의 단순 상수, page model schema,
+#: 형제 라이브러리 버전만 본다. 조회 경로(ETag·cursor 등) 코드나 관계없는 모듈의 변경은 본문을 무효로 만들지 않는다.
+REFERENCE_PAYLOAD_FINGERPRINT: str | None = payload_code_fingerprint(
+    code=(_bus_payload_batches, _ferry_payload_batches, _rail_payload_batches, _parking_payload_batches,
+          _export_addresses_module, persisted_mapping_context, persisted_station_links, mapping_revision,
+          _reference_artifacts_module, _reference_export_revision_module),
+    constant_modules=(sys.modules[__name__],),
+    page_models=(BusTerminalExportPage, FerryPortExportPage, RailStationExportPage, ParkingCurrentExportPage),
+)

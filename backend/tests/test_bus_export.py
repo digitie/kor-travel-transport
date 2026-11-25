@@ -291,16 +291,18 @@ def test_reference_freeze_reads_and_hashes_each_source_payload_once(export_clien
     from app.services import export_references
     c = export_client
     c.app.state.settings.transport_map_current_enabled = True
+    # artifact 없는 완전 구성 경로(본문 코드 지문 없음)의 계약이다. 지문이 있으면 두 번째 요청은 본문을 재사용한다.
+    monkeypatch.setattr(export_references, "REFERENCE_PAYLOAD_FINGERPRINT", None)
     _run(c, seed)
     passes = 0
     original = export_references._freeze_reference
-    async def counted_freeze(session, heads, spec, *, payload_revision=None):
+    async def counted_freeze(session, heads, spec, *, code_fingerprint=None):
         async def batches(session, heads):
             nonlocal passes
             passes += 1
             async for batch in spec.payload_batches(session, heads):
                 yield batch
-        return await original(session, heads, replace(spec, payload_batches=batches), payload_revision=payload_revision)
+        return await original(session, heads, replace(spec, payload_batches=batches), code_fingerprint=code_fingerprint)
     monkeypatch.setattr(export_references, "_freeze_reference", counted_freeze)
     first = c.get(PATH, headers=HEADERS)
     assert first.status_code == 200, first.text

@@ -11,7 +11,7 @@ from app.models import RailStationReference
 from app.models import ReferenceExportArtifact as Artifact
 from app.models import ReferenceExportArtifactHead as Head
 from app.models import ServiceExportSnapshot as Snapshot
-from app.services import export_current
+from app.services import export_current, export_references
 from app.services import reference_export_preparation as prep
 
 
@@ -92,7 +92,7 @@ def test_preparing_the_same_body_as_another_builder_is_busy_then_reused(export_c
                 spec = next(s for s in reference_specs(settings) if s.kind == "rail-stations-v1")
                 await _snapshot_transaction(holder, lock_timeout_ms=5_000, statement_timeout_ms=60_000)
                 heads = await _reference_heads(holder, spec)
-                revision = await reference_payload_revision(holder, heads, spec.kind, settings.release_sha)
+                revision = await reference_payload_revision(holder, heads, spec.kind, export_references.REFERENCE_PAYLOAD_FINGERPRINT)
                 _artifact, created = await prepare_artifact(holder, heads, spec, revision, budget_seconds=120)
                 assert created
                 busy = await prep.prepare_reference_exports(

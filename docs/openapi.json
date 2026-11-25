@@ -5891,6 +5891,17 @@
             "title": "Database",
             "type": "string"
           },
+          "reference_payload_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Payload Fingerprint"
+          },
           "release_sha": {
             "title": "Release Sha",
             "type": "string"

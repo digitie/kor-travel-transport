@@ -69,15 +69,17 @@ def test_old_cursor_pins_old_body_and_gc_keeps_current_without_handles(export_cl
     _run(c, expire)
 
 
-def test_legacy_cursor_remains_readable_with_new_artifact_reader(export_client):
+def test_legacy_cursor_remains_readable_with_new_artifact_reader(export_client, monkeypatch):
     c = export_client
     if c.app.state.engine.dialect.name != "postgresql":
         pytest.skip("PostgreSQL의 가산 artifact 전환")
     c.app.state.settings.transport_map_current_enabled = True
-    c.app.state.settings.release_sha = "unknown"
+    real = refs.REFERENCE_PAYLOAD_FINGERPRINT
+    # 지문이 없으면(소스 없는 배포) artifact 없는 완전 구성 경로다.
+    monkeypatch.setattr(refs, "REFERENCE_PAYLOAD_FINGERPRINT", None)
     _run(c, seed)
     old = _get(c).json()
-    c.app.state.settings.release_sha = "artifact-policy-v2"
+    monkeypatch.setattr(refs, "REFERENCE_PAYLOAD_FINGERPRINT", real)
     new = _get(c).json()
     assert new["snapshot_id"] != old["snapshot_id"] and new["items"] == old["items"]
     assert _get(c, cursor=old["next_cursor"]).status_code == 200

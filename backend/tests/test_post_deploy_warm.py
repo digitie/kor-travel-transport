@@ -150,8 +150,16 @@ def test_smoke_connection_failure_is_a_warning(monkeypatch, capsys):
     assert "unreachable=5" in out
 
 
-RELEASE = "0123456789abcdef0123456789abcdef01234567"
-_SETTINGS = SimpleNamespace(release_sha=RELEASE)
+FINGERPRINT = "0123456789abcdef" * 4
+_SETTINGS = SimpleNamespace(release_sha="unknown")
+
+
+@pytest.fixture
+def local_fingerprint(monkeypatch):
+    """code-server 쪽 본문 코드 지문. RELEASE_SHA(위 settings는 unknown)와 무관하게 이 값만 대조한다."""
+    from app.services import export_references
+    monkeypatch.setattr(export_references, "REFERENCE_PAYLOAD_FINGERPRINT", FINGERPRINT)
+    return FINGERPRINT
 
 
 @pytest.mark.parametrize(("result", "exit_code"), [
@@ -175,7 +183,7 @@ _SETTINGS = SimpleNamespace(release_sha=RELEASE)
     ]}, 1),
     ({"status": "disabled", "prepared": 0, "reused": 0, "busy": 0, "failed": 0, "kinds": []}, 0),
 ])
-def test_prepare_module_prints_one_summary_line(monkeypatch, capsys, result, exit_code):
+def test_prepare_module_prints_one_summary_line(monkeypatch, capsys, local_fingerprint, result, exit_code):
     from app.core import config
     from app.services import reference_export_preparation as prep
 
@@ -187,7 +195,7 @@ def test_prepare_module_prints_one_summary_line(monkeypatch, capsys, result, exi
 
     monkeypatch.setattr(config, "get_settings", lambda: _SETTINGS)
     monkeypatch.setattr(prep, "prepare_reference_exports_for_settings", fake_prepare)
-    assert prepare_references.main(["--timeout-seconds", "30", "--expect-release-sha", RELEASE]) == exit_code
+    assert prepare_references.main(["--timeout-seconds", "30", "--expect-payload-fingerprint", FINGERPRINT]) == exit_code
     lines = capsys.readouterr().out.strip().splitlines()
     assert len(lines) == 1
     summary = json.loads(lines[0])
@@ -197,33 +205,56 @@ def test_prepare_module_prints_one_summary_line(monkeypatch, capsys, result, exi
     assert summary["busy"] == result["busy"]
 
 
-@pytest.mark.parametrize("local_release", ["fedcba9876543210fedcba9876543210fedcba98", "unknown", ""])
-def test_prepare_module_skips_when_its_release_differs_from_the_api(monkeypatch, capsys, local_release):
-    """code-server만 롤백됐거나 RELEASE_SHA 없이 떴으면 API가 읽지 않을 revision을 만들지 않는다(head 되돌림 방지)."""
+@pytest.mark.parametrize("local", ["fedcba9876543210" * 4, None])
+def test_prepare_module_skips_when_its_fingerprint_differs_from_the_api(monkeypatch, capsys, local):
+    """code-server와 API의 본문 코드가 다르면(한쪽만 롤백 등) API가 읽지 않을 revision을 만들지 않는다(head 되돌림 방지)."""
     from app.core import config
+    from app.services import export_references
     from app.services import reference_export_preparation as prep
 
     async def must_not_run(_settings, **_kwargs):
-        raise AssertionError("release가 다르면 준비하지 않는다")
+        raise AssertionError("지문이 다르면 준비하지 않는다")
 
-    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(release_sha=local_release))
+    monkeypatch.setattr(config, "get_settings", lambda: _SETTINGS)
+    monkeypatch.setattr(export_references, "REFERENCE_PAYLOAD_FINGERPRINT", local)
     monkeypatch.setattr(prep, "prepare_reference_exports_for_settings", must_not_run)
-    code = prepare_references.main(["--timeout-seconds", "30", "--expect-release-sha", RELEASE])
-    assert code == prepare_references.EXIT_RELEASE_MISMATCH == 4
+    code = prepare_references.main(["--timeout-seconds", "30", "--expect-payload-fingerprint", FINGERPRINT])
+    assert code == prepare_references.EXIT_FINGERPRINT_MISMATCH == 4
     summary = json.loads(capsys.readouterr().out)
-    assert summary["status"] == "release_mismatch" and summary["api_release_sha"] == RELEASE
+    assert summary["status"] == "fingerprint_mismatch" and summary["api_payload_fingerprint"] == FINGERPRINT
 
 
-def test_prepare_module_requires_a_plain_release_argument():
+def test_prepare_module_runs_without_release_sha_when_fingerprints_match(monkeypatch, capsys, local_fingerprint):
+    """RELEASE_SHA 없이(unknown) 띄운 code-server여도 본문 코드가 API와 같으면 준비한다(ADR-016)."""
+    from app.core import config
+    from app.services import reference_export_preparation as prep
+    seen = []
+
+    async def fake_prepare(settings, **_kwargs):
+        seen.append(settings.release_sha)
+        return {"status": "success", "prepared": 0, "reused": 2, "busy": 0, "failed": 0, "kinds": []}
+
+    monkeypatch.setattr(config, "get_settings", lambda: _SETTINGS)
+    monkeypatch.setattr(prep, "prepare_reference_exports_for_settings", fake_prepare)
+    assert prepare_references.main(["--timeout-seconds", "30", "--expect-payload-fingerprint", FINGERPRINT]) == 0
+    assert seen == ["unknown"]
+    assert json.loads(capsys.readouterr().out)["status"] == "success"
+
+
+def test_prepare_module_requires_a_plain_fingerprint_argument():
     with pytest.raises(SystemExit):
         prepare_references.main(["--timeout-seconds", "30"])
     with pytest.raises(SystemExit):
-        prepare_references.main(["--expect-release-sha", "abc; rm -rf /"])
+        prepare_references.main(["--expect-payload-fingerprint", "abc; rm -rf /"])
     with pytest.raises(SystemExit):
-        prepare_references.main(["--timeout-seconds", "29", "--expect-release-sha", RELEASE])
+        prepare_references.main(["--expect-release-sha", "0123456789abcdef0123456789abcdef01234567"])
+    with pytest.raises(SystemExit):
+        prepare_references.main(["--expect-payload-fingerprint", FINGERPRINT.upper()])
+    with pytest.raises(SystemExit):
+        prepare_references.main(["--timeout-seconds", "29", "--expect-payload-fingerprint", FINGERPRINT])
 
 
-def test_prepare_module_timeout_and_error_are_warnings_without_messages(monkeypatch, capsys):
+def test_prepare_module_timeout_and_error_are_warnings_without_messages(monkeypatch, capsys, local_fingerprint):
     from app.core import config
     from app.services import reference_export_preparation as prep
 
@@ -235,7 +266,7 @@ def test_prepare_module_timeout_and_error_are_warnings_without_messages(monkeypa
 
     monkeypatch.setattr(config, "get_settings", lambda: _SETTINGS)
     monkeypatch.setattr(prep, "prepare_reference_exports_for_settings", timed_out)
-    args = ["--timeout-seconds", "30", "--expect-release-sha", RELEASE]
+    args = ["--timeout-seconds", "30", "--expect-payload-fingerprint", FINGERPRINT]
     assert prepare_references.main(args) == 1
     assert json.loads(capsys.readouterr().out)["status"] == "timeout"
     monkeypatch.setattr(prep, "prepare_reference_exports_for_settings", leaky)
@@ -248,10 +279,6 @@ _FAKE_DOCKER = r'''
 import json, os, sys
 with open(os.environ["FAKE_LOG"], "a") as log:
     log.write(json.dumps(sys.argv[1:]) + "\n")
-if sys.argv[1] == "inspect" and "Config.Env" in sys.argv[3]:
-    print("PATH=/opt/venv/bin:/usr/bin")
-    print("RELEASE_SHA=" + os.environ.get("FAKE_CS_RELEASE", "0123456789abcdef0123456789abcdef01234567"))
-    sys.exit(0)
 if sys.argv[1] == "inspect":
     print("false" if os.environ.get("FAKE_STOPPED") == sys.argv[-1] else "true")
     sys.exit(0)
@@ -272,8 +299,10 @@ with open(os.environ["FAKE_LOG"], "a") as log:
 if os.environ.get("FAKE_API_DOWN"):
     sys.exit(7)
 assert sys.argv[-1] == "http://127.0.0.1:12302/health", sys.argv
-print(json.dumps({"status": "ok", "database": "ready", "seeded": True,
-                  "release_sha": os.environ.get("FAKE_API_RELEASE", "0123456789abcdef0123456789abcdef01234567")}))
+body = {"status": "ok", "database": "ready", "seeded": True, "release_sha": "unknown"}
+if os.environ.get("FAKE_API_FINGERPRINT") != "absent":
+    body["reference_payload_fingerprint"] = os.environ.get("FAKE_API_FINGERPRINT", "0123456789abcdef" * 4)
+print(json.dumps(body))
 '''
 
 
@@ -305,11 +334,11 @@ def test_wrapper_runs_prepare_in_code_server_then_smoke_in_backend(tmp_path: Pat
     execs = [call for call in calls if call[0] == "exec"]
     assert execs[0][:2] == ["exec", "kor-travel-transport-dagster-code-server-1"]
     assert execs[0][2:] == ["python", "-I", "-B", "-m", "app.deploy.prepare_references", "--timeout-seconds", "180",
-                            "--expect-release-sha", RELEASE]
-    # 준비 전에 API health와 code-server의 RELEASE_SHA를 먼저 본다.
+                            "--expect-payload-fingerprint", FINGERPRINT]
+    # 준비 전에 API health의 본문 코드 지문을 먼저 본다. RELEASE_SHA(API는 unknown)·code-server env는 보지 않는다.
     first_exec = calls.index(execs[0])
     assert any(call[0] == "curl" for call in calls[:first_exec])
-    assert any(call[0] == "inspect" and "Config.Env" in call[2] for call in calls[:first_exec])
+    assert not any(call[0] == "inspect" and "Config.Env" in " ".join(call) for call in calls)
     assert execs[1][:2] == ["exec", "kor-travel-transport-backend-1"]
     assert execs[1][2:7] == ["python", "-I", "-B", "-m", "app.deploy.export_smoke"]
     # 토큰은 argv로 넘기지 않는다(컨테이너 env에서 읽는다).
@@ -324,7 +353,7 @@ def test_wrapper_runs_prepare_in_code_server_then_smoke_in_backend(tmp_path: Pat
     ({"FAKE_SMOKE_EXIT": "5"}, "some T1 exports are not available"),
     ({"FAKE_PREPARE_EXIT": "1"}, "reference prepare did not fully succeed"),
     ({"FAKE_PREPARE_EXIT": "5"}, "reference prepare incomplete"),
-    ({"FAKE_PREPARE_EXIT": "4"}, "settings release_sha differs from the API"),
+    ({"FAKE_PREPARE_EXIT": "4"}, "code-server payload fingerprint differs from the API"),
     ({"FAKE_STOPPED": "kor-travel-transport-dagster-code-server-1"}, "reference prepare skipped"),
 ])
 def test_wrapper_never_fails_the_deploy(tmp_path: Path, env: dict[str, str], warning: str):
@@ -334,12 +363,11 @@ def test_wrapper_never_fails_the_deploy(tmp_path: Path, env: dict[str, str], war
 
 
 @pytest.mark.parametrize(("env", "warning"), [
-    ({"FAKE_CS_RELEASE": "fedcba9876543210fedcba9876543210fedcba98"}, "release_sha mismatch: code-server fedcba98"),
-    ({"FAKE_CS_RELEASE": "unknown"}, "release_sha mismatch: code-server unknown"),
-    ({"FAKE_API_RELEASE": "unknown"}, "release_sha is unavailable"),
-    ({"FAKE_API_DOWN": "1"}, "release_sha is unavailable"),
+    ({"FAKE_API_FINGERPRINT": "absent"}, "reference_payload_fingerprint is unavailable (none)"),
+    ({"FAKE_API_FINGERPRINT": "unknown"}, "reference_payload_fingerprint is unavailable (unknown)"),
+    ({"FAKE_API_DOWN": "1"}, "reference_payload_fingerprint is unavailable"),
 ])
-def test_wrapper_skips_prepare_unless_code_server_and_api_releases_match(tmp_path: Path, env, warning):
+def test_wrapper_skips_prepare_without_an_api_payload_fingerprint(tmp_path: Path, env, warning):
     result, calls = _wrapper(tmp_path, **env)
     assert result.returncode == 0
     assert warning in result.stderr and "reference prepare skipped" in result.stderr

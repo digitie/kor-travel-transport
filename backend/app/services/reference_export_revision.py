@@ -64,9 +64,13 @@ def _part(tag, table, fields, conditions):
                   _sha(func.coalesce(joined, "")).label("digest")).select_from(table).where(*conditions)
 
 
-async def reference_payload_revision(session, heads, kind: str, revision: str | None) -> str | None:
-    """DB 값·주소·저장 매핑을 모두 확인한다. 미지원/개발 환경은 기존 완전 구성 경로다."""
-    if session.bind.dialect.name != "postgresql" or not revision or revision == "unknown":
+async def reference_payload_revision(session, heads, kind: str, code_fingerprint: str | None) -> str | None:
+    """DB 값·주소·저장 매핑과 본문 코드 지문을 모두 확인한다. 미지원 DB·지문 없음은 기존 완전 구성 경로다.
+
+    `code_fingerprint`는 `export_references.REFERENCE_PAYLOAD_FINGERPRINT`(본문을 만드는 코드의 지문)다. 배포
+    식별자(RELEASE_SHA)는 쓰지 않는다 — 관계없는 배포는 본문을 재사용하고, RELEASE_SHA 없이 띄운 컨테이너도 같은 값이다.
+    """
+    if session.bind.dialect.name != "postgresql" or not code_fingerprint:
         return None
     components = {
         "bus-terminals-v1": ("bus_source", "address_bus_terminal"),
@@ -94,7 +98,7 @@ async def reference_payload_revision(session, heads, kind: str, revision: str | 
     cache = _REVISION_CACHE.setdefault(session.bind, OrderedDict())
     head_key = json.dumps([[h.scope_key, h.generation, h.confirmed_at.isoformat(), h.member_ids, h.proof]
                            for h in heads], sort_keys=True, separators=(",", ":"))
-    cache_key = (input_versions, revision, kind, head_key)
+    cache_key = (input_versions, code_fingerprint, kind, head_key)
     if can_memo and cache_key in cache:
         cache.move_to_end(cache_key)
         return cache[cache_key]
@@ -129,7 +133,8 @@ async def reference_payload_revision(session, heads, kind: str, revision: str | 
                           registry.c.automatic_mappings_json, registry.c.manual_mappings_json], [registry.c.id == 1]))
     observe_fingerprint()
     rows = (await session.execute(union_all(*parts))).all()
-    namespace = ["reference-input-v1", revision, kind,
+    # v2: 두 번째 값이 RELEASE_SHA에서 본문 코드 지문으로 바뀌었다(첫 배포에서 한 번 모두 다시 만든다).
+    namespace = ["reference-input-v2", code_fingerprint, kind,
                  [[head.scope_key, head.generation, head.confirmed_at.isoformat(), head.member_ids, head.proof] for head in heads],
                  [tuple(row) for row in rows]]
     result = hashlib.sha256(json.dumps(namespace, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

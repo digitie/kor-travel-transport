@@ -1437,6 +1437,8 @@ class HealthResponse(BaseModel):
     database: str
     seeded: bool
     release_sha: str
+    #: T3 기준정보 본문 코드 지문(ADR-016). 배포 직후 준비가 code-server와 API의 본문 namespace를 대조한다.
+    reference_payload_fingerprint: str | None = None
 
 
 class BackupFile(BaseModel):
