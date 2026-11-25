@@ -388,7 +388,7 @@ def test_wrapper_skips_prepare_without_an_api_payload_fingerprint(tmp_path: Path
 
 
 def test_deploy_scripts_do_not_warm_inside_the_deploy_lock():
-    """warm은 배포 lock이 풀리고 소유 일정이 복원된 뒤 운영자가 부른다(lock 안에서 돌면 주차 수집 공백이 는다)."""
+    """legacy 배포 스크립트는 lock·일정 STOPPED 안에서 warm하지 않는다(자동 warm은 lock을 푼 뒤 Manager v2가 부른다)."""
     for name in ("deploy-prod-remote.sh", "deploy-prod.sh"):
         path = _SCRIPTS / name
         if path.is_file():

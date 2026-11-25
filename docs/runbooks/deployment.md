@@ -271,12 +271,23 @@ compute-log 디렉터리의 배타 잠금이 동시 sweep을 막는다. 동시 s
 
 ### 언제·어디서 부르나
 
-배포 명령이 **끝난 뒤** — 배포 lock이 풀리고 소유 일정·sensor가 복원된 뒤 — 운영자가 Odroid에서 부른다. 배포
-스크립트 안(lock·일정 STOPPED 동안)에서는 부르지 않는다. 준비(최대 약 3분)·smoke(최대 약 4분)가 그만큼 주차 수집
-공백을 늘리기 때문이다. 그래서 legacy `deploy-prod-remote.sh`도 자동으로 부르지 않는다. 이 스크립트는 state mount가
-있는 현재 Odroid core를 거절하므로 운영에서는 어차피 쓰이지 않는다.
+**Odroid 정본(Manager v2) — 자동(2026-11-25, kor-travel-docker-manager#651)**: `ktdctl service-release
+apply-core-candidate transport ... --confirm`이 게시에 성공하면(`success: true`) 전역 lock과 Transport 배포 lease를
+푼 뒤, 승인된 `--source-sha`의 git 객체에 든 이 스크립트를 `--project kor-travel-transport --api-port 12302`로 부른다.
+dry-run·실패에서는 부르지 않는다. 바깥 상한은 600초(넘으면 `timeout`, 신호는 `interrupted`)이고, 결과는 명령 JSON의
+`post_deploy_warm`(status, exit code, WARN 줄 수·목록, 비밀값을 가린 출력, `clean`)과 stderr에 남는다. 스크립트는 거의
+항상 exit 0이므로 **`clean`으로 판단한다**(`false`면 아래 "결과 해석"의 WARN을 본다). warm 결과는 배포 exit code와
+게시된 release를 바꾸지 않는다.
 
-**Odroid 정본(Manager v2)**:
+이때 운영자는 아직 소유 일정·sensor를 복원하기 전이다. 그래서 warm 시간만큼 주차 수집 공백이 는다 — 본문 재사용
+(`reused`)이면 몇 초, 지문이 바뀐 배포(첫 #294 배포 포함)는 준비(최대 약 3분)·smoke(최대 약 4분)로 최대 약 8분이다.
+소유자 결정(2026-11-25)으로 자동 실행을 기본으로 받아들였다. 공백을 피해야 하는 배포는 `--skip-post-deploy-warm`을
+넘기고, 일정·sensor 복원 뒤 아래 수동 절차로 부른다. 두 번 불러도 해롭지 않다(두 번째는 `reused`).
+
+legacy `deploy-prod-remote.sh`(배포 스크립트 안, lock·일정 STOPPED 동안)는 자동으로 부르지 않는다. 이 스크립트는
+state mount가 있는 현재 Odroid core를 거절하므로 운영에서는 어차피 쓰이지 않는다.
+
+**수동(자동 warm을 건너뛰었거나 `clean: false`를 다시 확인할 때)**:
 
 1. `ktdctl service-release apply-core-candidate transport ... --confirm`이 성공으로 끝났는지 본다(실패·중단이면
    warm하지 않는다).
@@ -292,7 +303,7 @@ compute-log 디렉터리의 배타 잠금이 동시 sweep을 막는다. 동시 s
    bash scripts/post-deploy-warm.sh --project kor-travel-transport --api-port 12302
    ```
 
-Manager가 이 단계를 자동으로 부르는 것은 후속이다.
+Manager 자동 warm의 결과가 `clean: true`면 이 수동 절차는 필요 없다.
 
 ### 하는 일
 
