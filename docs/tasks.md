@@ -1,6 +1,6 @@
 ## 2026-11-24 — Map 호출 개선 후속(MAP-CALL-REVIEW-20261124)
 
-- [ ] **MAP-CALL-DEPLOY-HOLD / P1** — #277 export 500→503 변경 배포는 Map "나이 기준 혼합"(#1542+#1549 흡수+후속 4항목) 운영 반영 통보 뒤.
+- [x] **MAP-CALL-DEPLOY-HOLD / P1** — 2026-11-25 소유자 해제. Map #1542(e2e7e66)가 #1549 분류·나이 기준 혼합 흡수. 남은 것: 배포 뒤 Map 상태 job의 503 code 분류 1~2주기 확인.
 - [ ] **MAP-CALL-BASELINE / P1** — 배포 뒤 odroid 운영 기준선 측정(보고서 §4.4): T1·T3 첫·warm 지연, places `proxy_margin_ms`, 통계 재대조·장기 복구 시간,
   이력 재구성 `peak_rss_kib`(512MiB 한도 판단, 보고서 §9 #4).
 - [ ] **MAP-CALL-OWNER / 소유자 결정** — 보고서 §9: 돌발 유예, T1 stale 200, 원본 보존 기한(디스크 고갈 P1), API 메모리 한도, Manager 협의

@@ -591,7 +591,7 @@ def test_postgres_direct_history_matches_cache_bytes(client) -> None:
         pytest.skip("PostgreSQL 통합 검증에서만 실행")
     observed_at = datetime.now(UTC).replace(microsecond=0) - timedelta(minutes=30)
 
-    async def seed() -> None:
+    async def seed() -> int:
         async with client.app.state.session_factory() as session:
             airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
             lot = await session.scalar(select(ParkingLot).where(ParkingLot.airport_id == airport.id))
@@ -608,14 +608,20 @@ def test_postgres_direct_history_matches_cache_bytes(client) -> None:
                 ),
             ])
             await session.commit()
+            return lot.id
 
-    asyncio.run(seed())
+    lot_id = asyncio.run(seed())
     response = client.get("/v1/parking/history", params={"days": 2}, headers={"Accept-Encoding": "identity"})
     assert response.status_code == 200
     assert "content-encoding" not in response.headers
     items = json.loads(response.content)["items"]
-    assert any(item["occupied_spaces"] == 41 for item in items)
-    assert not any(item["occupied_spaces"] == 90 for item in items)
+    # 표본 데이터에도 같은 값(예: 90)이 시각에 따라 생길 수 있으므로 넣은 주차장·관측 시각의 행만 본다.
+    seeded = [
+        item for item in items
+        if item["parking_lot_id"] == lot_id
+        and datetime.fromisoformat(item["observed_at"].replace("Z", "+00:00")) == observed_at
+    ]
+    assert [item["occupied_spaces"] for item in seeded] == [41]
     cache = history_cache.ParkingHistoryReadCache(client.app.state.session_factory)
     asyncio.run(cache.refresh_once())
     first_observed = datetime.fromisoformat(items[0]["observed_at"].replace("Z", "+00:00"))
