@@ -774,6 +774,7 @@ class ParkingHistoryReadCache:
         self.prepared_responses: OrderedDict[tuple[int, str | None, int | None, str], bytes] = OrderedDict()
         #: 검증하지 못한(요청에 쓰지 않는) 증분 기준과 그 읽기 직전 지문. 전체 재생성 결과를 채택했지만 따라잡는
         #: 동안에도 원본이 계속 바뀌었을 때만 생긴다. 다음 확인이 이 기준에서 증분하고, 게시되면 비운다.
+        #: 있는 동안은 게시된 snapshot과 함께 두 벌(기동 직후가 아니면 약 2배 상주 메모리)이 남는다.
         self.pending_base: tuple[ParkingHistorySnapshot, tuple[int, int, int, int]] | None = None
         #: 연속 증분 오류 수(경보용, finish 로그 `incremental_errors`). 증분이 한 번 성공하면 0.
         self.incremental_errors = 0
@@ -847,7 +848,7 @@ class ParkingHistoryReadCache:
         if (built_at is not None and now - built_at >= FULL_REBUILD_MAX_AGE
                 and now.astimezone(_KST).hour in FULL_REBUILD_LOCAL_HOURS):
             return "full", "periodic"
-        return "incremental", "adopted_base" if self.pending_base is not None else "new_rows"
+        return "incremental", "adopted_pending" if self.pending_base is not None else "new_rows"
 
     async def prepare_full_window(
         self, snapshot: ParkingHistorySnapshot,
@@ -873,40 +874,55 @@ class ParkingHistoryReadCache:
 
         - `published`: 따라잡은 결과를 읽은 뒤 지문이 그 읽기 직전 지문 그대로다. 그 지문으로 게시·검증한다
           (일반 증분 게시와 같은 신선도 근거).
-        - `pending`: 상한만큼 따라잡는 동안에도 수집이 끼었다. 마지막 결과를 검증 없이 기준으로만 둔다(요청에 안 쓴다).
+        - `adopted_pending`: 상한만큼 따라잡는 동안에도 수집이 끼었다. 마지막 결과를 검증 없이 기준으로만 둔다
+          (요청에 안 쓴다).
         - 그 밖(`update_or_delete`·`max_id_decreased`·`late_commit_or_delete`·`too_many_changes`·`catchup_error:*`):
           채택하면 정확성이 깨질 수 있다. 예전처럼 버린다(`source_changed`, 다음 확인이 전체 재생성).
+
+        따라잡은 증분 횟수는 성공한 것(증분·준비·지문 확인까지 끝난 것)만 센다. 증분·사전 압축·지문 확인 중 어느
+        것이 실패해도 `catchup_error:*`다. 단계 시간은 `phases`의 `catchup_ms`(합계)와 `catchup_count_ms`·
+        `catchup_changes_ms`·`catchup_splice_ms`(증분 내부, 여러 번이면 합)에 더한다.
 
         채택 조건은 일반 증분과 같다. update·delete 통계는 전체 적재 직전 지문부터 줄곧 그대로여야 하고(읽은 뒤의
         update는 행 수 검사가 못 본다), 늦게 commit된 낮은 id·삭제는 `load_changes`의 `count(*) WHERE id <= W`
         검사가 거른다. rollback된 행은 어느 읽기 시점에도 보이지 않아 최대 id·행 수·본문 어디에도 들지 않는다.
         """
+        def add_ms(name: str, value: float) -> None:
+            phases[name] = round(phases.get(name, 0) + value, 1)
+
         base, base_before, current = full, before, after
-        for catchups in range(1, ADOPT_MAX_CATCHUPS + 1):
+        for succeeded in range(ADOPT_MAX_CATCHUPS):
             if current[2:] != base_before[2:]:
-                return "update_or_delete", None, None, None, catchups - 1
+                return "update_or_delete", None, None, None, succeeded
             if current[0] < base.max_snapshot_id:
-                return "max_id_decreased", None, None, None, catchups - 1
+                return "max_id_decreased", None, None, None, succeeded
             # `current`는 다음 읽기 직전 지문이다. 따라잡은 결과를 게시할 때 이 지문으로 검증한다.
             catchup_started = monotonic()
+            timings: dict[str, float] = {}
             try:
-                caught, _ = await load_changes(self.session_factory, base, timings={})
+                caught, _ = await load_changes(self.session_factory, base, timings=timings)
+                prepared = await self.prepare_full_window(caught)
+                latest = await self.source_fingerprint()
             except IncrementalUnavailable as exc:
-                return exc.reason, None, None, None, catchups - 1
+                return exc.reason, None, None, None, succeeded
             except Exception as exc:  # noqa: BLE001 — 채택은 최적화다. 실패하면 예전처럼 버린다.
                 logger.exception("parking history full-rebuild adoption failed; discarding")
-                return f"catchup_error:{type(exc).__name__}", None, None, None, catchups - 1
-            prepared = await self.prepare_full_window(caught)
-            phases["catchup_ms"] = round(phases.get("catchup_ms", 0) + (monotonic() - catchup_started) * 1000, 1)
-            latest = await self.source_fingerprint()
+                return f"catchup_error:{type(exc).__name__}", None, None, None, succeeded
+            finally:
+                add_ms("catchup_ms", (monotonic() - catchup_started) * 1000)
+                for name in ("count_ms", "changes_ms", "splice_ms"):
+                    if name in timings:
+                        add_ms(f"catchup_{name}", timings[name])
             if latest == current:
-                return "published", caught, current, prepared, catchups
+                return "published", caught, current, prepared, succeeded + 1
+            # 이전 기준은 더 쓰지 않는다(전체 적재 결과가 남지 않게 참조를 바로 바꾼다).
             base, base_before, current = caught, current, latest
+            del caught, prepared
         # 따라잡는 사이에도 계속 바뀌었다. 마지막 결과와 그 읽기 직전 지문을 기준으로 남긴다. 그 뒤의
         # update·delete는 다음 확인의 `refresh_mode`가 이 지문과 비교해 전체 재생성으로 보낸다.
         if current[2:] != base_before[2:]:
             return "update_or_delete", None, None, None, ADOPT_MAX_CATCHUPS
-        return "pending", base, base_before, None, ADOPT_MAX_CATCHUPS
+        return "adopted_pending", base, base_before, None, ADOPT_MAX_CATCHUPS
 
     async def refresh_once(self) -> None:
         fingerprint = await self.source_fingerprint()
@@ -929,10 +945,17 @@ class ParkingHistoryReadCache:
                 "peak_rss_kib": peak_rss_kib()}, separators=(",", ":")))
             try:
                 refreshed = None
+                from_pending = False
                 if mode == "incremental":
+                    from_pending = self.pending_base is not None
                     try:
-                        base = self.pending_base[0] if self.pending_base is not None else self.snapshot
-                        refreshed, changed_keys = await load_changes(self.session_factory, base, timings=phases)
+                        # 기준을 지역 변수에 두지 않는다. 증분이 안 되어 전체 재생성으로 가면 아래에서 `pending_base`를
+                        # 비우는 순간 검증 전 기준이 풀려야 한다(전체 적재 중 snapshot 3개가 동시에 남지 않게).
+                        refreshed, changed_keys = await load_changes(
+                            self.session_factory,
+                            self.pending_base[0] if from_pending else self.snapshot,
+                            timings=phases,
+                        )
                     except IncrementalUnavailable as exc:
                         mode, reason = "full", exc.reason
                     except Exception as exc:  # noqa: BLE001 — 증분 고장으로 캐시가 다음 새벽까지 꺼지지 않게 전체로 회복한다.
@@ -956,18 +979,26 @@ class ParkingHistoryReadCache:
                 # 증분이면 다음 확인(POLL_SECONDS 뒤)이 같은 기준에서 다시 증분하므로 비용이 작다.
                 after = await self.source_fingerprint()
                 if after != fingerprint:
+                    if mode == "incremental" and from_pending:
+                        # 검증 전 기준에서 한 증분이다. 버리면 다음 확인이 같은(점점 커지는) 차이를 다시 읽는다.
+                        # 이 결과도 같은 시점 읽기라 기준으로 올리고, 그 읽기 직전 지문(`fingerprint`)을 함께 둔다.
+                        self.pending_base = (refreshed, fingerprint)
+                        logger.info("parking history pending base advanced; source still changing")
+                        adoption = outcome = "adopted_pending"
+                        return
                     if mode != "full" or refreshed.source_row_count is None:
                         logger.info("parking history cache source changed during preparation; retrying")
                         outcome = "source_changed"
                         return
                     # 전체 재생성(운영 ARM 수십 초)을 버리면 다음 확인이 또 전체 재생성이다. 증분 기준으로 채택하고
                     # 그 뒤 행만 따라잡는다. 정확성 조건이 깨질 수 있는 경우만 예전처럼 버린다.
+                    adoption = "attempting"  # 채택 중 취소되면 finish 로그에 이 값이 남는다.
                     adoption, caught, caught_fingerprint, caught_prepared, catchups = await self.adopt_full_rebuild(
                         refreshed, fingerprint, after, phases)
-                    if adoption == "pending":
+                    if adoption == "adopted_pending":
                         self.pending_base = (caught, caught_fingerprint)
                         logger.info("parking history full rebuild adopted as base; source still changing")
-                        outcome = "adopted_base"
+                        outcome = "adopted_pending"
                         return
                     if adoption != "published":
                         logger.info("parking history cache source changed during full rebuild (%s); retrying", adoption)

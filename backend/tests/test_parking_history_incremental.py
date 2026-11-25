@@ -6,11 +6,14 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import gzip
 import json
 import random
+import weakref
 import zlib
 from dataclasses import dataclass
+from dataclasses import fields as dataclass_fields
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -556,13 +559,13 @@ def test_adoption_keeps_unvalidated_base_while_source_keeps_changing(monkeypatch
     pending, pending_fingerprint = cache.pending_base
     assert pending.max_snapshot_id == 13 and pending_fingerprint == (13, 13, 0, 0)
     assert cache.usable_snapshot(NOW - timedelta(days=1)) is None
-    assert _finish_events(caplog)[-1]["outcome"] == "adopted_base"
+    assert _finish_events(caplog)[-1]["outcome"] == "adopted_pending"
     # 다음 확인: 전체 재생성 없이 기준에서 증분하고 게시한다.
     asyncio.run(cache.refresh_once())
     assert loads[4:] == ["inc@13"]
     assert cache.snapshot.max_snapshot_id == 14 and cache.pending_base is None
     finish = _finish_events(caplog)[-1]
-    assert (finish["mode"], finish["reason"], finish["outcome"]) == ("incremental", "adopted_base", "published")
+    assert (finish["mode"], finish["reason"], finish["outcome"]) == ("incremental", "adopted_pending", "published")
 
 
 @pytest.mark.parametrize(("after", "failure", "adoption"), [
@@ -617,12 +620,12 @@ def test_refresh_mode_uses_pending_base_and_its_fingerprint(monkeypatch) -> None
     monkeypatch.setattr(history_cache, "now_utc", lambda: NOW + timedelta(hours=1))
     cache = _cache_with(published, (10, 10, 0, 0))
     cache.pending_base = (pending, (20, 20, 0, 0))
-    assert cache.refresh_mode((21, 21, 0, 0)) == ("incremental", "adopted_base")
+    assert cache.refresh_mode((21, 21, 0, 0)) == ("incremental", "adopted_pending")
     assert cache.refresh_mode((21, 21, 1, 0)) == ("full", "update_or_delete")
     assert cache.refresh_mode((15, 21, 0, 0)) == ("full", "max_id_decreased")
     cold = history_cache.ParkingHistoryReadCache(None)
     cold.pending_base = (pending, (20, 20, 0, 0))
-    assert cold.refresh_mode((20, 20, 0, 0)) == ("incremental", "adopted_base")
+    assert cold.refresh_mode((20, 20, 0, 0)) == ("incremental", "adopted_pending")
 
 
 _STATS_SQL = "SELECT {column} FROM pg_stat_user_tables WHERE relid = 'parking_snapshots'::regclass"
@@ -671,7 +674,9 @@ def _base_time_items(items: list[dict], when: datetime) -> list[dict]:
     return [item for item in items if item["observed_at"] == stamp]
 
 
-def test_postgres_full_rebuild_with_concurrent_inserts_is_adopted_without_second_full_load(client, monkeypatch) -> None:
+def test_postgres_full_rebuild_with_concurrent_inserts_is_adopted_without_second_full_load(
+    client, monkeypatch, caplog,
+) -> None:
     """전체 적재의 읽기 시점 뒤 새 행 commit·rollback이 있어도 두 번째 전체 재생성 없이 직접 조회와 같아진다."""
     _pg_only(client)
     factory = client.app.state.session_factory
@@ -706,7 +711,13 @@ def test_postgres_full_rebuild_with_concurrent_inserts_is_adopted_without_second
         monkeypatch.setattr(history_cache, "load_snapshot", load_then_collect)
         cache = history_cache.ParkingHistoryReadCache(factory)
         await _refresh_until_usable(cache)
-        assert full_loads == 1
+        events = _finish_events(caplog)
+        # 첫 전체 재생성 결과를 채택했다(버리지 않았다).
+        assert events[0]["mode"] == "full" and events[0]["adoption"] in {"published", "adopted_pending"}
+        # 그 뒤 전체 재생성은 시험 밖 쓰기가 update·delete를 일으킨 경우뿐이다(삽입만으로는 생기지 않는다).
+        assert all(event["mode"] == "incremental" or event["reason"] in {"update_or_delete", "max_id_decreased"}
+                   for event in events[1:])
+        assert full_loads == 1 + sum(event["mode"] == "full" for event in events[1:])
         items = json.loads(cache.snapshot.render(base_time - timedelta(minutes=1), None, lot_id))["items"]
         assert [item["occupied_spaces"] for item in _base_time_items(items, base_time)] == [55]
         assert _at(items, base_time + timedelta(minutes=10))["occupied_spaces"] == 10
@@ -812,3 +823,104 @@ def test_postgres_update_or_delete_during_full_rebuild_is_not_adopted(client, mo
         _assert_same(cache.snapshot, await _full_now(factory, cache.snapshot.earliest_observed_at))
 
     asyncio.run(check())
+
+
+class _TrackedSnapshot(history_cache.ParkingHistorySnapshot):
+    """약한 참조로 해제 여부를 볼 수 있는 snapshot(시험 전용)."""
+
+    __slots__ = ("__weakref__",)
+
+
+def _tracked(snapshot):
+    return _TrackedSnapshot(**{field.name: getattr(snapshot, field.name) for field in dataclass_fields(snapshot)})
+
+
+def _pending_cache(monkeypatch, fingerprints, changes, full_check=None):
+    cache, full, loads = _fake_adoption_cache(monkeypatch, fingerprints, changes)
+    pending = _tracked(_add_row(full, 11)[0])
+    cache.pending_base = (pending, (11, 11, 0, 0))
+    if full_check is not None:
+        async def load(_factory):
+            loads.append("full")
+            full_check()
+            return full
+        monkeypatch.setattr(history_cache, "load_snapshot", load)
+    return cache, full, loads, weakref.ref(pending)
+
+
+def test_pending_base_is_released_before_fallback_full_load(monkeypatch, caplog) -> None:
+    """검증 전 기준에서 증분이 안 되면(늦은 commit 등) 전체 적재 전에 그 기준을 놓는다(snapshot 3개 동시 상주 방지)."""
+    released = []
+
+    def changes(_base):
+        raise history_cache.IncrementalUnavailable("late_commit_or_delete")
+
+    def check():
+        gc.collect()
+        released.append(cache.pending_base is None and pending_ref() is None)
+
+    cache, full, loads, pending_ref = _pending_cache(monkeypatch, [(12, 12, 0, 0)], changes, check)
+    asyncio.run(cache.refresh_once())
+    assert loads == ["inc@11", "full"] and released == [True]
+    assert cache.snapshot is full and cache.pending_base is None
+    finish = _finish_events(caplog)[-1]
+    assert (finish["mode"], finish["reason"], finish["outcome"]) == ("full", "late_commit_or_delete", "published")
+
+
+def test_pending_base_advances_when_source_changes_during_its_incremental(monkeypatch, caplog) -> None:
+    """검증 전 기준의 증분 결과는 지문이 또 바뀌어도 버리지 않고 새 기준(읽기 직전 지문과 함께)으로 올린다."""
+    cache, _full, loads, _ref = _pending_cache(
+        monkeypatch, [(12, 12, 0, 0), (13, 13, 0, 0), (13, 13, 0, 0)],
+        lambda base: _add_row(base, base.max_snapshot_id + 1))
+    asyncio.run(cache.refresh_once())
+    assert loads == ["inc@11"] and cache.snapshot is None
+    advanced, advanced_fingerprint = cache.pending_base
+    assert advanced.max_snapshot_id == 12 and advanced_fingerprint == (12, 12, 0, 0)
+    finish = _finish_events(caplog)[-1]
+    assert (finish["reason"], finish["outcome"], finish["adoption"]) == (
+        "adopted_pending", "adopted_pending", "adopted_pending")
+    asyncio.run(cache.refresh_once())  # 지문 (13): 새 기준(12)에서 차이만 읽고 게시
+    assert loads == ["inc@11", "inc@12"]
+    assert cache.snapshot.max_snapshot_id == 13 and cache.pending_base is None
+
+
+@pytest.mark.parametrize("counters", [(1, 0), (0, 1)])
+def test_pending_base_then_update_or_delete_next_poll_rebuilds_in_full(monkeypatch, caplog, counters) -> None:
+    """채택 결과를 검증 전 기준으로 둔 뒤 다음 확인에서 update·delete 통계가 보이면 그 기준을 버리고 전체 재생성한다."""
+    fingerprints = [(10, 10, 0, 0), *((row_id, row_id, 0, 0) for row_id in range(11, 15)), (15, 15, *counters)]
+    cache, full, loads = _fake_adoption_cache(
+        monkeypatch, fingerprints, lambda base: _add_row(base, base.max_snapshot_id + 1))
+    asyncio.run(cache.refresh_once())
+    assert cache.pending_base is not None and _finish_events(caplog)[-1]["outcome"] == "adopted_pending"
+    asyncio.run(cache.refresh_once())
+    assert loads[-1] == "full" and cache.pending_base is None and cache.snapshot is full
+    finish = _finish_events(caplog)[-1]
+    assert (finish["mode"], finish["reason"], finish["outcome"]) == ("full", "update_or_delete", "published")
+
+
+@pytest.mark.parametrize("failing", ["prepare", "fingerprint"])
+def test_adoption_prepare_or_fingerprint_failure_is_a_catchup_error(monkeypatch, caplog, failing) -> None:
+    """따라잡기의 사전 압축·지문 확인 실패도 `catchup_error:*`로 버린다(로그와 문서가 같은 말을 한다)."""
+    calls = {"fingerprint": 0}
+    cache, _full, loads = _fake_adoption_cache(
+        monkeypatch, [(10, 10, 0, 0), (11, 11, 0, 0)], lambda base: _add_row(base, 11))
+    original_prepare, original_fingerprint = cache.prepare_full_window, cache.source_fingerprint
+
+    async def prepare(snapshot):
+        if failing == "prepare" and snapshot.max_snapshot_id == 11:
+            raise OSError("disk")
+        return await original_prepare(snapshot)
+
+    async def fingerprint():
+        calls["fingerprint"] += 1
+        if failing == "fingerprint" and calls["fingerprint"] == 3:
+            raise ConnectionError("db")
+        return await original_fingerprint()
+
+    monkeypatch.setattr(cache, "prepare_full_window", prepare)
+    monkeypatch.setattr(cache, "source_fingerprint", fingerprint)
+    asyncio.run(cache.refresh_once())
+    expected = "catchup_error:OSError" if failing == "prepare" else "catchup_error:ConnectionError"
+    finish = _finish_events(caplog)[-1]
+    assert (finish["outcome"], finish["adoption"], finish["catchups"]) == ("source_changed", expected, 0)
+    assert "catchup_ms" in finish["phases_ms"] and cache.snapshot is None and loads == ["full", "inc@10"]
