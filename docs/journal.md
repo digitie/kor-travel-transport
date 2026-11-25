@@ -1,3 +1,12 @@
+## 2026-11-26 — 분석 사전집계 세대 시각 테스트 flaky 수정
+
+- CI run 45627130633(1차, PR #298 문서 변경)에서 `test_refresh_generation_stays_before_first_snapshot_read`가 한 번 실패했다.
+  원인은 테스트 계측이다: 시계를 NOW+11분으로 넘기는 `before_cursor_execute` listener가 엔진 전역이라, lifespan의 주차 이력 캐시
+  재구성(기동 warmup 뒤 별도 session, 실패 로그에서 setup 중 시작·call 중 종료, 전체 적재·catchup 모두 `parking_snapshots`를 읽음)이 refresh
+  시작 전에 읽으면 refresh가 `generated_at`을 잡기 전에 시계가 넘어갔다. 제품 코드(`refresh_default_analytics_cache`는 첫 읽기 전에
+  `generated_at`을 잡는다)는 정상이다.
+- listener를 검증 대상 refresh session의 연결로만 한정했다. 다른 session의 선행 읽기를 일부러 끼운 재현은 수정 전 실패·수정 후 통과했다.
+
 ## 2026-11-25 — Manager 자동 post-deploy warm·Common 예외 정정(MAP-CALL-FOLLOWUPS)
 
 - kor-travel-docker-manager#651: `service-release apply-core-candidate transport --confirm`이 게시에 성공하면 lock·lease를 푼 뒤
