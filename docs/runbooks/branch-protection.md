@@ -35,13 +35,24 @@ GitHub → `digitie/kor-travel-transport` → Settings → Branches → Branch p
 
 ## Required status checks
 
-`.github/workflows/ci.yml` 기준 현재 job은 3개다. 이 이름 그대로 required로 등록한다.
+`.github/workflows/ci.yml` 기준 현재 job은 6개다(2026-11-25). `common-policy`는 재사용 workflow라 check 이름이
+`common-policy / guard (...)` 두 개로 나온다. 아래 이름 그대로 required로 등록한다.
 
 ```
+common-policy / guard (frontend/package.json, frontend/package-lock.json, web)
+common-policy / guard (packages/kor-travel-transport-admin/frontend/package.json, packages/kor-travel-transport-admin/frontend/package-lock.json, web)
 backend
 frontend
+transport-admin
+gateway-probe
 live-e2e
 ```
+
+`gateway-probe`는 12301·12307 gateway template을 운영 이미지로 렌더링해 `nginx -t`와 stub 동작 시험을 한다
+(`scripts/gateway-probe.py`, [요청 소요 시간 로그 읽기](request-timing-logs.md#ci-검증-gateway-probe)). 약 30초다.
+
+2026-11-25 `gh api repos/digitie/kor-travel-transport/branches/main/protection`은 `Branch not protected`(404)였다.
+위 목록은 등록할 때의 기준이고, 실제 등록은 저장소 소유자가 한다.
 
 `live-e2e`는 실제 n150(`https://pr.digitie.mywire.org`)를 호출하는 job이라 대상
 서버가 내려가 있으면 PR이 막힌다는 점에 주의한다. 이 job을 required로 유지할지, 또는
@@ -62,14 +73,14 @@ gh pr view <PR_NUMBER> --repo digitie/kor-travel-transport --json mergeStateStat
 gh api repos/digitie/kor-travel-transport/branches/main/protection
 ```
 
-마지막 명령의 `required_status_checks.contexts`에 `backend`/`frontend`/`live-e2e`가 실제로
-들어있는지 확인한다.
+마지막 명령의 `required_status_checks.contexts`에 위 목록(`backend`/`frontend`/`transport-admin`/`gateway-probe`/
+`live-e2e`/`common-policy / guard (...)`)이 실제로 들어있는지 확인한다.
 
 ## 체크리스트
 
 - [ ] branch protection rule 대상이 `main`인지
 - [ ] PR 필수 + required approval 1 (또는 명시적 admin bypass 결정 기록)
-- [ ] `backend`/`frontend`/`live-e2e` required status check 등록
+- [ ] `backend`/`frontend`/`transport-admin`/`gateway-probe`/`live-e2e`/`common-policy / guard (...)` required status check 등록
 - [ ] branch up-to-date 요구 설정
 - [ ] force-push 차단, branch 삭제 제한
 - [ ] `digitie/airport-parking-radar`(구 레포)는 더 이상 정본이 아님을 이 레포의 README나

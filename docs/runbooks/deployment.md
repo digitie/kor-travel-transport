@@ -137,6 +137,14 @@ backend와 관리 웹(transport-admin-web)을 **같은 배포에서**(관리 웹
 `TRANSPORT_ADMIN_WRITE_TOKEN` 32자 이상인지 본다). 공개 parking-radar 웹(:12303)·두 공개 gateway는 표지를 덮어쓰도록
 같은 릴리스에 들어 있다. 확인 절차는 [성능 기준](../architecture/performance.md) "25초 시한과 앞단 30초 여유".
 
+### 공개 gateway template 변경 반영(2026-11-25, PR #293)
+
+12301 `transport-api-gateway`는 template bind mount라 admin 배포의 `--force-recreate`로 반영된다. 12307
+`fuel-api-gateway`는 template을 이미지에 COPY하므로 `scripts/build-images.py`의 `fuel-api-gateway` 역할로 새 이미지를
+만들어 `TRANSPORT_FUEL_GATEWAY_IMAGE`를 바꿔야 반영된다(재생성만으로는 옛 template이다). 배포 뒤 temp file 경고 0,
+places 동시 상한 거절(`limiting connections by zone`) 평소 0, 메모리 여유를 확인한다. 명령은
+[요청 소요 시간 로그 읽기](request-timing-logs.md#배포와-배포-뒤-확인).
+
 ### Manager current release 표식(2026-10-28, Manager #568·ADR-60)
 
 현재 실행 이미지의 정본은 Manager의 `/srv/ktdm-releases/current/transport` 표식이다(Manager

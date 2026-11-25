@@ -1,8 +1,9 @@
 """공개·export gateway의 소요 시간 access log, places limit 상한, export 버퍼·동시 상한, Server-Timing 숨김,
 공개 유가 gzip 계약.
 
-실제 nginx 동작(반복·인코딩 query, 정규화 경로, temp file 경고, gzip 이중 압축 여부)은 PR에서
-nginx:1.27-alpine과 loopback stub으로 따로 확인했다. 이 시험은 그 동작을 만드는 설정 문장을 고정한다.
+실제 nginx 동작(nginx -t, limit 상한·422, 공개 표지 덮어쓰기, Server-Timing 숨김, export·유가 places 동시 상한,
+temp file 경고, access log 형식)은 CI `gateway-probe` job이 nginx:1.27-alpine과 loopback stub으로 확인한다
+(`scripts/gateway-probe.py`). 이 시험은 그 동작을 만드는 설정 문장을 고정한다.
 """
 import json
 import re
@@ -195,3 +196,58 @@ def test_public_fuel_gateway_compresses_json_cheaply_without_recompressing():
     assert "application/problem+json" not in re.search(r"gzip_types [^;]*;", server).group(0)
     # 모바일 NAT 뒤의 정상 사용자를 막지 않도록 IP별 요청 제한은 두지 않는다(PR 설명 참고).
     assert "limit_req" not in text
+
+
+def test_public_fuel_places_never_buffers_to_temp_files_and_bounds_total_memory():
+    text = _text(FUEL)
+    block = _block(text, "    location = /v1/transport/fuel/places")
+    assert "proxy_max_temp_file_size 0;" in block
+    assert "proxy_buffering off;" not in block
+    match = re.search(r"proxy_buffers (\d+) (\d+)k;", block)
+    assert match
+    buffers = int(match.group(1)) * int(match.group(2)) * 1024
+    # 공개 UI 한 번(종류당 300곳, 실측 411,384 bytes 비압축)은 메모리 버퍼에 다 들어간다.
+    assert buffers >= 411_384
+    # 요청당 메모리: proxy_buffers + proxy_buffer_size(기본 4KiB). gzip 응답(직접 호출)은 zlib deflate 상태
+    # (window 15·memLevel 8: 2^17 + 2^17 + 약 8KiB) + gzip_buffers 기본 32×4KiB를 더한다. BFF는 identity를 요청한다.
+    for directive in ("proxy_buffer_size", "gzip_buffers", "gzip_window", "gzip_hash", "gzip_memlevel"):
+        assert not re.search(rf"^\s*{directive}\s", text, re.M), directive
+    identity = buffers + 4 * 1024
+    gzipped = identity + (1 << 17) + (1 << 17) + 8 * 1024 + 32 * 4 * 1024
+    bff = re.search(r"limit_conn fuel_places_bff (\d+);", block)
+    direct = re.search(r"limit_conn fuel_places_direct (\d+);", block)
+    assert bff and direct
+    # 두 몫을 모두 채워도 64MiB fuel gateway의 1/4(16MiB, export와 같은 기준)을 넘지 않는다. zone은 worker끼리
+    # 공유하므로 worker 수와 무관하다(worker 상주 메모리·커널 socket 버퍼는 probe가 64MiB 한도로 따로 잰다).
+    assert int(bff.group(1)) * identity + int(direct.group(1)) * gzipped <= 16 * 1024 * 1024
+    # BFF 몫은 backend 공개 몫(동시 계산 3·대기 8)보다 크고, 직접 호출 몫이 BFF를 막지 못하도록 key가 다르다.
+    assert int(bff.group(1)) > 3 + 8
+    bff_map = text.split("map $remote_addr $fuel_places_bff_slot {", 1)[1].split("\n}", 1)[0]
+    direct_map = text.split("map $remote_addr $fuel_places_direct_slot {", 1)[1].split("\n}", 1)[0]
+    assert 'default "";' in bff_map and "127.0.0.1 bff;" in bff_map
+    assert "default direct;" in direct_map and '127.0.0.1 "";' in direct_map
+    assert "limit_conn_zone $fuel_places_bff_slot zone=fuel_places_bff:1m;" in text
+    assert "limit_conn_zone $fuel_places_direct_slot zone=fuel_places_direct:1m;" in text
+    # 주소별로 나누지 않는다(직접 호출은 HAProxy 한 주소·모바일 NAT를 공유한다). listen은 IPv4 하나다.
+    assert "$binary_remote_addr" not in text
+    assert text.count("    listen ") == 1 and "listen 0.0.0.0:" in text
+    # 읽지 않는 연결의 커널 송신 버퍼도 묶는다(cgroup v2에서는 컨테이너 한도에 들어간다).
+    assert "    listen 0.0.0.0:${TRANSPORT_FUEL_API_PORT} sndbuf=256k;" in text
+    # 멈춘 클라이언트는 10초 안에 끊는다(전체 시간 상한은 아니다).
+    assert "send_timeout 10s;" in block
+    assert "limit_conn_status 429;" in block
+    assert "limit_conn_log_level warn;" in block
+    assert "error_page 429 = @fuel_places_busy;" in block
+    # 거절은 backend 입장 거절과 같은 429 + Retry-After 2(공개 지도 자동 재조회 범위) problem+json이다.
+    busy = _block(text, "    location @fuel_places_busy")
+    assert "add_header Retry-After 2 always;" in busy
+    assert "default_type application/problem+json;" in busy
+    problem = _returned_json(busy, 429)
+    assert set(problem) == {"type", "title", "status", "detail", "instance"}
+    assert problem["status"] == 429 and problem["instance"] == "/v1/transport/fuel/places"
+    # location의 add_header는 server 목록 상속을 끊으므로 CORS 줄을 모두 다시 적어야 한다.
+    server = text.split("server {", 1)[1].split("    location", 1)[0]
+    cors = re.findall(r"^    (add_header [^\n]+;)$", server, re.M)
+    assert len(cors) == 5
+    for line in cors:
+        assert "        " + line in busy, line

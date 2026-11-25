@@ -26,6 +26,20 @@ map $arg_limit $fuel_places_limit {
     ~^([1-9][0-9]?|[1-8][0-9][0-9]|900)$ $arg_limit;
     ~^[1-9][0-9]*$ 900;
 }
+# places 동시 처리 상한(아래 limit_conn). 같은 호스트의 공개 UI BFF(fuel-web, BACKEND_INTERNAL_URL=127.0.0.1:12307)와
+# 그 밖의 직접 호출(fuel-api.digitie.mywire.org → OPNsense HAProxy → LAN 주소)을 다른 key로 센다. 직접 호출이 상한을
+# 다 써도 공개 지도(BFF)는 막히지 않는다. HAProxy는 다른 호스트라 외부 호출은 127.0.0.1로 오지 않는다(listen은 IPv4만).
+# 직접 호출자는 HAProxy 한 주소를 공유하고 모바일 NAT도 있으므로 그 안에서 주소별로 나누지 않는다.
+map $remote_addr $fuel_places_bff_slot {
+    default "";
+    127.0.0.1 bff;
+}
+map $remote_addr $fuel_places_direct_slot {
+    default direct;
+    127.0.0.1 "";
+}
+limit_conn_zone $fuel_places_bff_slot zone=fuel_places_bff:1m;
+limit_conn_zone $fuel_places_direct_slot zone=fuel_places_direct:1m;
 # 소요 시간 access log 형식. 요청 줄($request)·query($args) 대신 클라이언트가 보낸 경로(디코드 전,
 # query 제외)만 남긴다. 경로 안의 공개 식별자(주유소 id)는 남는다. 디코드 전 경로에는 공백이 없다.
 # rt=gateway 전체, uct=upstream 연결, uht=upstream 첫 응답 header, urt=upstream 응답 끝까지(초),
@@ -39,7 +53,10 @@ log_format fuel_timing '$time_iso8601 $remote_addr "$request_method $fuel_log_pa
                        'rt=$request_time uct=$upstream_connect_time uht=$upstream_header_time '
                        'urt=$upstream_response_time ust=$upstream_status gz=$gzip_ratio';
 server {
-    listen 0.0.0.0:${TRANSPORT_FUEL_API_PORT};
+    # 클라이언트 송신 socket 버퍼를 256KiB(커널이 두 배로 잡아 약 512KiB)로 고정한다. 기본 자동 조정은 연결마다
+    # 수 MiB(tcp_wmem 최대)까지 커질 수 있고 cgroup v2에서는 그 커널 버퍼도 64MiB 컨테이너 한도에 들어간다.
+    # 256KiB는 RTT 50ms에서도 약 5MB/s라 공개 응답(약 1.2MB 이하)에는 충분하다.
+    listen 0.0.0.0:${TRANSPORT_FUEL_API_PORT} sndbuf=256k;
     server_name _;
     access_log /dev/stdout fuel_timing;
     if ($fuel_read_method = 0) { return 405; }
@@ -97,6 +114,41 @@ server {
         # Starlette/FastAPI는 반복 query의 마지막 값을 사용한다.
         # kinds 혼용은 기존 reader가 422로 거절한다. 실제 zoom/bbox는 변경하지 않는다.
         proxy_pass http://127.0.0.1:12302/v1/transport/features/places?$args&kind=fuel_station&limit=$fuel_places_limit;
+        # 팬·줌마다 오는 places 본문(공개 UI 300곳 약 0.40MB, 상한 900곳 약 1.18MB, 비압축 실측)은 기본 버퍼(8×4k)를
+        # 넘어 컨테이너 쓰기 계층의 proxy_temp 파일로 내려갔다. 요청당 최대 512KiB 메모리 버퍼로 받고 임시 파일은 쓰지 않는다.
+        # 공개 UI 크기(약 0.40MB)는 다 들어가 backend 연결을 바로 돌려준다. 그보다 큰 본문(limit 300 초과 직접 호출)은
+        # 클라이언트가 읽는 속도로 흘리며 그동안 backend 연결과 이 상한의 자리를 잡는다. gzip은 이 버퍼 뒤에서 하므로
+        # 크기는 평문 기준이다.
+        proxy_buffers 16 32k;
+        proxy_max_temp_file_size 0;
+        # 쓰기 사이 간격 상한. 10초 동안 한 byte도 받지 않는 클라이언트는 끊는다. 조금씩 계속 읽는 클라이언트의
+        # 전체 시간은 묶지 않으므로(nginx에 응답 전체 시한은 없다) 직접 호출 몫을 BFF와 나눈 것이 실제 방어다.
+        send_timeout 10s;
+        # 메모리: 요청당 proxy_buffers 512KiB + proxy_buffer_size 4KiB, gzip 응답(직접 호출만, BFF는 identity)은
+        # zlib deflate 상태 약 264KiB(window 15·memLevel 8) + gzip_buffers 최대 128KiB(32×4k)를 더한다.
+        # BFF 16×516KiB + 직접 8×908KiB ≈ 15.2MiB로 64MiB gateway의 1/4(export와 같은 기준) 이하다.
+        # limit_conn zone은 worker끼리 공유하므로 worker 수와 무관하다(worker 자체 상주 메모리는 별도, probe가 잰다).
+        # BFF 16은 backend 공개 몫(동시 계산 3·대기 8 = 11, 넘으면 backend가 바로 429)보다 크다.
+        # 넘으면 backend 입장 거절과 같은 429 + Retry-After 2(공개 지도는 한 번 자동 재조회한다, lib/place-retry.ts).
+        limit_conn fuel_places_bff 16;
+        limit_conn fuel_places_direct 8;
+        limit_conn_status 429;
+        limit_conn_log_level warn;
+        error_page 429 = @fuel_places_busy;
+    }
+
+    # limit_conn 거절만 받는다(proxy_intercept_errors가 꺼져 있어 backend 429는 그대로 전달된다).
+    # instance는 클라이언트가 부른 gateway 경로다(backend 거절의 instance는 /v1/transport/features/places).
+    # location에 add_header를 두면 server의 CORS add_header 상속이 끊기므로 같은 줄을 다시 적는다.
+    location @fuel_places_busy {
+        default_type application/problem+json;
+        add_header Access-Control-Allow-Origin $fuel_cors_origin always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Accept, If-None-Match, Content-Type" always;
+        add_header Access-Control-Expose-Headers "ETag, Retry-After" always;
+        add_header Vary "Origin" always;
+        add_header Retry-After 2 always;
+        return 429 '{"type":"about:blank","title":"Too Many Requests","status":429,"detail":"장소 지도 조회가 혼잡합니다. 잠시 후 다시 시도하세요.","instance":"/v1/transport/fuel/places"}';
     }
 
     location ~ ^/v1/transport/fuel/(stations|statistics|price-distribution|area-catalog|stations/[1-9][0-9]*/price-history)$ {
