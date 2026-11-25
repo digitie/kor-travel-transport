@@ -28,7 +28,8 @@ def test_rail_startup_warmup_preserves_readiness_and_address_invalidation(test_s
         pytest.skip("PostgreSQL 기동 지문 통합 검증")
     test_settings.seed_sample_data = False
     test_settings.transport_map_current_enabled = True
-    test_settings.release_sha = "rail-startup-warmup-test"
+    # 입력 revision은 RELEASE_SHA가 아니라 본문 코드 지문이다(ADR-016) — RELEASE_SHA 없이 띄워도 데운다.
+    test_settings.release_sha = "unknown"
     test_settings.transport_service_export_token = TOKEN
     entries, _ = reverse_address_tables(Base.metadata)
 

@@ -248,8 +248,13 @@ compute-log 디렉터리의 배타 잠금이 동시 sweep을 막는다. 동시 s
 
 ## 배포 직후 best-effort warm(기준정보 본문 준비·loopback export 확인, 2026-11-24)
 
-기준정보 본문(ADR-016 artifact)의 입력 revision에는 `RELEASE_SHA`가 들어가므로 배포마다 rail·ferry·bus·parking
-본문이 모두 무효가 된다. 5분 공항 수집의 준비 step은 code-server 냉기동·다음 tick·공항 수집 뒤에야 돌므로, 그
+기준정보 본문(ADR-016 artifact)의 입력 revision에는 2026-11-25부터 `RELEASE_SHA`가 아니라 **본문 코드 지문**
+(`/health`의 `reference_payload_fingerprint`)이 들어간다. 본문 코드·page schema·형제 라이브러리 버전이 그대로인 배포는
+본문을 재사용하고(준비 결과 `reused`), 바뀐 배포만 rail·ferry·bus·parking 본문이 모두 무효가 된다. 이 변경이 처음
+배포될 때는 지문 namespace가 한 번 바뀌므로 모든 본문을 **한 번** 다시 만든다(ADR-016 결정 갱신 2026-11-25). 그 첫
+배포에서 옛 code-server(v1 namespace, `RELEASE_SHA`)와 새 API(v2, 지문)가 잠깐 함께 돌면 두 쪽이 head를 짧게 주고받을 수
+있다 — 본문 정합성은 그대로이고 code-server도 새 이미지가 되면 멈춘다. 무효가 된
+배포에서 5분 공항 수집의 준비 step은 code-server 냉기동·다음 tick·공항 수집 뒤에야 돌므로, 그
 사이의 첫 Map 호출이 요청 안에서 전체를 구성한다(감사 WLH-03·MC-07·RT-03). 배포 검증도 `/health`와
 `release_sha`만 보므로 export 토큰·허용 peer·Map current 플래그 불일치는 Map 실패로만 드러난다(RT-11).
 [`scripts/post-deploy-warm.sh`](../../scripts/post-deploy-warm.sh)가 두 가지를 best-effort로 한다. 인수 오류(exit 2)를
@@ -272,7 +277,7 @@ compute-log 디렉터리의 배타 잠금이 동시 sweep을 막는다. 동시 s
    로드돼 있어야 한다.
 3. 배포한 이미지와 **같은 revision**의 승인된 source clone(`apply-core-candidate --source-clone`에 넘긴 디렉터리)에서
    실행한다. `git -C <clone> rev-parse HEAD`가 `curl -fsS http://127.0.0.1:12302/health`의 `release_sha`와 같은지 먼저
-   본다(스크립트 자체도 API와 code-server의 release를 대조한다).
+   본다(배포 확인용이다. 스크립트 자체는 release가 아니라 API와 code-server의 본문 코드 지문을 대조한다).
 
    ```sh
    cd <승인된 source clone>
@@ -283,14 +288,16 @@ Manager가 이 단계를 자동으로 부르는 것은 후속이다.
 
 ### 하는 일
 
-1. **본문 준비** — 먼저 backend `/health`의 `release_sha`와 code-server 컨테이너 env의 `RELEASE_SHA`를 비교한다.
-   다르거나(code-server만 롤백, `RELEASE_SHA` 없이 기동 등) API 값을 읽지 못하면 준비를 건너뛰고 경고한다 — API가
-   읽지 않을 revision의 본문을 만들고 head를 되돌리게 되기 때문이다. `compose build`(legacy `deploy-prod-remote.sh`
-   일반 모드)는 backend 이미지에 build arg로 `RELEASE_SHA`를 넣지 않는다. 그래서 code-server(이미지 ENV를 그대로 쓴다)는
-   `unknown`이고 이 단계는 항상 건너뛴다. 그 모드에서는 Dagster 준비 op도 `unsupported_revision`이다. Odroid의
-   prebuilt·Manager v2 이미지는 build 때 release를 넣는다. 같으면 code-server 안에서
-   `python -I -B -m app.deploy.prepare_references --timeout-seconds 180 --expect-release-sha <API 값>`을 실행한다.
-   모듈이 자기 설정의 release_sha를 다시 대조하고(다르면 exit 4), Map이 읽는 rail·ferry 본문만 같은
+1. **본문 준비** — 먼저 backend `/health`의 `reference_payload_fingerprint`(본문 코드 지문, 64자리 hex)를 읽는다.
+   읽지 못하면(API 다운, 지문 필드가 없는 옛 API) 준비를 건너뛰고 경고한다. 값이 `null`이면 API가 지문을 못 만들어
+   artifact 경로가 꺼진 성능 저하 상태(`/health`의 `reference_artifacts: "disabled"`)라 따로 경고한다. 읽으면
+   code-server 안에서
+   `python -I -B -m app.deploy.prepare_references --timeout-seconds 180 --expect-payload-fingerprint <API 값>`을 실행한다.
+   모듈이 자기 프로세스의 지문과 대조해 다르면(한쪽만 롤백 등 본문 코드가 다름) 준비하지 않는다(exit 4) — API가 읽지
+   않을 revision의 본문을 만들고 head를 되돌리게 되기 때문이다. `RELEASE_SHA`는 대조하지 않는다: `compose build`
+   (legacy `deploy-prod-remote.sh` 일반 모드)처럼 code-server의 `RELEASE_SHA`가 `unknown`이어도 코드가 같으면 같은
+   지문이라 준비한다(2026-11-24판까지는 이 모드에서 항상 건너뛰고 Dagster 준비 op도 `unsupported_revision`이었다).
+   일치하면 Map이 읽는 rail·ferry 본문만 같은
    `prepare_reference_exports`로 Dagster run 없이 직접 준비한다. 공용 run 큐·`reference` run_group 대기를 피하고,
    bus·parking/current는 5분 공항 수집의 준비가 맡는다. 전체 예산은 120초이고 준비 뒤 제한 정리도 한다. stdout은 종류별
    결과 JSON 한 줄(kind·status·duration_ms·error_type·sqlstate)이며 DSN·토큰은 없다.
@@ -308,12 +315,12 @@ Manager가 이 단계를 자동으로 부르는 것은 후속이다.
 | status | 뜻 | 대응 |
 | --- | --- | --- |
 | `prepared` | 새 revision 본문을 만들었다 | 없음 |
-| `reused` | 같은 revision 본문이 이미 있었다 | 없음 |
+| `reused` | 같은 revision 본문이 이미 있었다(본문 코드가 그대로인 배포의 정상 결과) | 없음 |
 | `busy` | 다른 준비(5분 공항 수집 등)가 같은 본문을 만드는 중이다 | 없음. 상대가 끝내면 재사용된다. 공항 run에서 같은 종류가 연속 3회면 실패로 올라온다 — 그때는 `pg_stat_activity`에서 오래된 `idle in transaction` 세션을 확인한다 |
 | `deferred` | 전체 예산(120초)을 다 써 시작하지 못했거나 예산 끝에서 멈췄다 | 다음 공항 수집 준비가 만든다. 반복되면 DB·CPU 부하를 본다 |
 | `failed` | 준비 실패(`error_type`·`sqlstate`·`reason`) | 다음 준비나 첫 Map 페이지가 다시 구성한다. 같은 종류가 반복되면 `reason`(membership 불일치·크기 상한)과 원천을 확인 |
 | `source_unavailable` | 원천이 아직 완결되지 않았다(head 없음·실패) | 해당 기준정보 수집 job 결과를 본다 |
-| `unsupported_revision` | release_sha가 없어 입력 revision을 만들 수 없다 | code-server `RELEASE_SHA` 설정 확인 |
+| `unsupported_revision` | 본문 코드 지문을 만들 수 없어(소스 없는 이미지 등) 입력 revision이 없다. `RELEASE_SHA`와는 무관하다. 이 배포 직후 단계에서는 그 전에 `fingerprint_unavailable`(exit 6)로 끝난다 — 이 status는 Dagster 준비 op에서 본다 | code-server 로그의 `reference payload code fingerprint unavailable` 경고와 이미지에 `app/services/*.py` 소스가 있는지 확인 |
 
 전체 `status`와 종료 코드(모듈 → wrapper):
 
@@ -324,7 +331,12 @@ Manager가 이 단계를 자동으로 부르는 것은 후속이다.
 | `success`(busy·deferred 있음)·`deferred`·`not_ready` | 5 | `WARN reference prepare incomplete` | 고장은 아니지만 본문이 다 준비되지 않았다 — 성공으로 보지 않는다. 다음 공항 수집 준비나 첫 Map 페이지가 만든다 |
 | `partial_success`·`failed` | 1 | `WARN reference prepare did not fully succeed` | 종류별 `error_type`·`reason`을 본다 |
 | `timeout`·`error` | 1 | 같음 | 모듈이 상한 안에 못 끝났거나 실행 오류(`error_type`) — code-server 상태·DB 연결 확인 |
-| `release_mismatch` | 4 | `WARN reference prepare skipped: ... release_sha differs` | code-server와 API의 release가 다르다 — 배포 상태 확인(준비하지 않았다) |
+| `fingerprint_mismatch` | 4 | `WARN reference prepare skipped: code-server payload fingerprint differs from the API` | code-server와 API의 본문 코드가 다르다(한쪽만 롤백 등) — 배포 상태 확인(준비하지 않았다). `RELEASE_SHA`만 다른 것은 불일치가 아니다 |
+| `fingerprint_unavailable` | 6 | `WARN reference prepare skipped: the code-server could not compute its payload fingerprint` | code-server가 지문을 못 만들었다(소스 없는 이미지) — 그 컨테이너의 artifact 경로가 꺼져 있다. 이미지 확인 |
+| (argparse) | 2 | `WARN reference prepare skipped: code-server image predates the payload fingerprint` | code-server 이미지가 `--expect-payload-fingerprint`를 모른다(옛 이미지) — API와 같은 이미지로 맞춘다 |
+| (wrapper만) | — | `WARN backend /health has no reference_payload_fingerprint` | API 이미지가 지문 이전 것이다. 준비를 건너뛰고 smoke만 한다 |
+| (wrapper만) | — | `WARN backend reference artifacts are DISABLED` | API `/health`의 지문이 `null`(`reference_artifacts: "disabled"`) — 매 Map 첫 페이지가 요청 안에서 완전 구성한다. 이미지에 소스가 있는지 확인 |
+| (wrapper만) | — | `WARN backend /health reference_payload_fingerprint is unavailable` | API가 다운이거나 값 형식이 이상하다. 준비를 건너뛰고 smoke만 한다 |
 
 smoke 종료 코드: 0 = 모두 2xx. 3 = 설정 불일치(토큰이 있는데 404, 또는 토큰이 32자 미만이라 export가 닫힘 — 토큰·
 `SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`·라우터 확인). 1 = rail·ferry 첫 페이지가 2xx가 아니거나 시간 초과·연결 실패(다음 Map

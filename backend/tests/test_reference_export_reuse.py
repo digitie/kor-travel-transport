@@ -18,7 +18,7 @@ def _prepare(client):
     if client.app.state.engine.dialect.name != "postgresql":
         pytest.skip("PostgreSQL 입력 지문·RR 통합 검증")
     client.app.state.settings.transport_map_current_enabled = True
-    client.app.state.settings.release_sha = "reference-reuse-test-v1"
+    client.app.state.settings.release_sha = "unknown"  # 본문 재사용은 RELEASE_SHA와 무관하다(ADR-016 코드 지문)
     _run(client, seed)
 
 

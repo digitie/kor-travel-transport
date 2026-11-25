@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import sys
 from dataclasses import dataclass
 from collections.abc import AsyncIterator, Callable
 from datetime import timedelta
@@ -29,7 +30,13 @@ from app.schemas import BusTerminalExportPage, FerryPortExportPage, RailStationE
 from app.services.bus_collection import TAGO_BUS_SOURCE
 from app.services.rail_maritime_collection import KRIC_FILE_SOURCE, MARITIME_SOURCE, PORT_GUIDELINE_SOURCE
 from app.services.general_rail_reference import KRIC_GENERAL_SOURCE, KRIC_GENERAL_SCOPE
+from app.core import time_utils as _time_utils_module
+from app.services import export_addresses as _export_addresses_module
+from app.services import rail_station_mapping as _rail_station_mapping_module
+from app.services import reference_artifacts as _reference_artifacts_module
+from app.services import reference_export_revision as _reference_export_revision_module
 from app.services.rail_station_mapping import persisted_mapping_context, persisted_station_links
+from app.services.reference_payload_fingerprint import FINGERPRINT_SCHEME, payload_code_fingerprint
 from app.services.parking_exports import parking_scope, parking_sources
 from app.services.export_addresses import export_admin_addresses
 from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SnapshotRace, budget_exceeded, build_started, cache_generation, _snapshot_transaction, expire_snapshots, gc_quietly, read_snapshot_with_retry, snapshot_expires_at
@@ -284,10 +291,10 @@ async def _artifact_snapshot(session, heads, spec, input_revision, started):
     return await session.get(ServiceExportSnapshot, snapshot_id), artifact
 
 
-async def _freeze_reference(session, heads, spec, *, payload_revision=None):
+async def _freeze_reference(session, heads, spec, *, code_fingerprint=None):
     # 요청 경로의 재시도는 첫 시도의 예산을 이어 쓴다(`read_snapshot_with_retry`).
     started = build_started()
-    input_revision = await reference_payload_revision(session, heads, spec.kind, payload_revision)
+    input_revision = await reference_payload_revision(session, heads, spec.kind, code_fingerprint)
     if input_revision is not None:
         return await _artifact_snapshot(session, heads, spec, input_revision, started)
     observe_fingerprint()
@@ -408,7 +415,8 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                 if problem is not None:
                     code, detail, retry_after = problem
                     raise unavailable(code, detail, retry_after=retry_after)
-                snapshot, artifact = await _freeze_reference(session, heads, spec, payload_revision=settings.release_sha)
+                snapshot, artifact = await _freeze_reference(session, heads, spec,
+                                                             code_fingerprint=REFERENCE_PAYLOAD_FINGERPRINT)
             stale = (not _valid_heads(heads, spec) or any(h.last_error is not None for h in heads)
                      or now_utc() - serialize_utc(snapshot.source_collected_at) > spec.max_age)
             if snapshot.artifact_id is not None:
@@ -422,7 +430,10 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
             else:
                 model, identity = ServiceExportSnapshotItem, ServiceExportSnapshotItem.snapshot_id == snapshot.id
             # 불변 본문의 digest와 페이지/상태/만료 metadata만으로 조건부 응답을 판정한다.
-            semantic = ["reference-page-v2", spec.kind, spec.scope, snapshot.content_digest,
+            # 조회 경로·envelope가 바뀐 배포에서 옛 응답을 304로 재사용하지 않게 본문 코드 지문(이 모듈 전체 포함)과
+            # 지문 구성 방식을 넣는다. 지문 입력 밖에서 envelope를 바꾸면 "reference-page-vN"을 올린다.
+            semantic = ["reference-page-v3", FINGERPRINT_SCHEME, REFERENCE_PAYLOAD_FINGERPRINT,
+                        spec.kind, spec.scope, snapshot.content_digest,
                         snapshot.id, serialize_utc(snapshot.expires_at).isoformat(),
                         serialize_utc(snapshot.source_collected_at).isoformat(), snapshot.item_count,
                         after, limit, "stale" if stale else "ok"]
@@ -459,3 +470,19 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
         router.add_api_route(spec.path, endpoint_for(spec), methods=["GET"], response_model=spec.page_model,
                              name=spec.path.strip("/").replace("-", "_"), responses={304: {}, 404: {}, 410: {}, 422: {}, 503: {}})
     return router
+
+
+#: 본문 코드 지문에 **전체 소스**가 들어가는 모듈(ADR-016). 함수 단위 허용 목록이 아니라 모듈 단위다 — 이 모듈
+#: (builder·spec 배선·조회 경로), 주소 DTO, 철도 매핑, 시각 직렬화(serialize_utc), artifact 저장, 입력 revision.
+#: builder에서 닿는 `app.*` 코드가 여기(또는 시험의 사유 있는 제외 목록)에 없으면
+#: `test_reference_payload_fingerprint.py`가 실패한다. 새 helper 모듈을 builder에서 부르면 여기에 넣는다.
+PAYLOAD_CODE = (sys.modules[__name__], _export_addresses_module, _rail_station_mapping_module, _time_utils_module,
+                _reference_artifacts_module, _reference_export_revision_module)
+PAYLOAD_PAGE_MODELS = (BusTerminalExportPage, FerryPortExportPage, RailStationExportPage, ParkingCurrentExportPage)
+
+#: 본문 코드 지문. import 때 한 번 계산한다 — 입력 revision namespace에 RELEASE_SHA 대신 들어간다. 이 모듈 전체가
+#: 들어가므로 조회 경로(ETag·cursor·envelope) 변경도 새 namespace·새 handle이 된다(더 무효화되는 쪽이 안전하다).
+#: None이면 artifact 경로가 꺼지고 `/health`의 `reference_artifacts`가 "disabled"다.
+REFERENCE_PAYLOAD_FINGERPRINT: str | None = payload_code_fingerprint(
+    code=PAYLOAD_CODE, constant_modules=(sys.modules[__name__],), page_models=PAYLOAD_PAGE_MODELS,
+)

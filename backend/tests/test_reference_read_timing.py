@@ -5,6 +5,7 @@ import re
 
 import pytest
 from app.core import read_timing
+from app.services import export_references
 from app.models import RailStationReference
 from sqlalchemy import update
 from starlette.responses import Response
@@ -47,10 +48,10 @@ def test_reference_counts_actual_build_and_fingerprint_but_not_304_etag(export_c
     assert _counts(changed)["fingerprint_calculations"] > 0
 
 
-def test_legacy_fallback_counts_payload_hash_even_when_result_is_304(export_client):
+def test_legacy_fallback_counts_payload_hash_even_when_result_is_304(export_client, monkeypatch):
     client = export_client
     _prepare(client)
-    client.app.state.settings.release_sha = "unknown"
+    monkeypatch.setattr(export_references, "REFERENCE_PAYLOAD_FINGERPRINT", None)
     first = _get(client)
     assert first.status_code == 200, first.text
     assert _counts(first) == {"page_builds": 1, "fingerprint_calculations": 1}

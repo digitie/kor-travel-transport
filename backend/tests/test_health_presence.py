@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.config import Settings
 from app.main import create_app
+from app.services import export_references
 
 
 def _health_app(tmp_path):
@@ -48,7 +49,10 @@ def test_health_seeded_checks_presence_without_count(tmp_path, rows):
             assert response.status_code == 200
             assert response.json() == {
                 "status": "ok", "database": "ready", "seeded": bool(rows), "release_sha": "health-test",
+                "reference_payload_fingerprint": export_references.REFERENCE_PAYLOAD_FINGERPRINT,
+                "reference_artifacts": "enabled",
             }
+            assert len(response.json()["reference_payload_fingerprint"]) == 64
             assert len(observed) == 1
             assert "exists" in observed[0].lower()
             assert "count(" not in observed[0].lower()

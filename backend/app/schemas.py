@@ -1437,6 +1437,11 @@ class HealthResponse(BaseModel):
     database: str
     seeded: bool
     release_sha: str
+    #: T3 기준정보 본문 코드 지문(ADR-016). 배포 직후 준비가 code-server와 API의 본문 namespace를 대조한다.
+    reference_payload_fingerprint: str | None = None
+    #: "enabled" = 기준정보 본문 artifact 재사용 경로가 켜져 있다. "disabled" = 지문을 만들 수 없어(소스 없는 이미지 등)
+    #: 매 첫 페이지가 본문을 요청 안에서 완전 구성한다(정확하지만 느린 성능 저하 상태).
+    reference_artifacts: Literal["enabled", "disabled"] = "disabled"
 
 
 class BackupFile(BaseModel):
