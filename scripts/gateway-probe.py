@@ -132,6 +132,8 @@ class Stub(BaseHTTPRequestHandler):
         # backend처럼 places 200에 실제로 받은(마지막) limit을 X-Limit-Applied로 돌려준다(main.py places route).
         if parts.path == "/v1/transport/features/places" and params.get("limit"):
             headers["X-Limit-Applied"] = params["limit"]
+            # backend CORS가 Expose를 보내게 바뀌어도 12307이 숨겨 한 줄만 나가는지 본다.
+            headers["Access-Control-Expose-Headers"] = "X-Upstream-Only"
         if parts.path.endswith("/backend-busy") or params.get("status") == "503":
             status, headers["Retry-After"] = 503, "60"
         elif params.get("status") == "429":
@@ -438,6 +440,9 @@ def probe_fuel(gw: Gateway) -> None:
     check("fuel: places 200 X-Limit-Applied=900 + CORS Expose-Headers에 x-limit-applied(다른 출처 화면이 읽음)",
           status == 200 and headers.get("x-limit-applied") == ["900"] and "x-limit-applied" in exposed
           and len(headers.get("access-control-expose-headers") or []) == 1, headers)
+    status, headers, _ = request(gw.port, places + "?limit=5000", origin, method="HEAD")
+    check("fuel: places HEAD도 X-Limit-Applied=900(proxy_method GET)",
+          status == 200 and headers.get("x-limit-applied") == ["900"], (status, headers))
 
     # 공개 UI 300곳(실측 약 0.40MB)과 상한 900곳(약 1.18MB) 크기 본문. 임시 파일 없이 전부 받아야 한다.
     for size in (420_000, 1_250_000):

@@ -1,7 +1,8 @@
 """장소 지도 200 응답의 `X-Limit-Applied`(실제로 적용한 limit) 계약.
 
 공개 gateway(12301·12307)는 limit을 생략·초과하면 900으로 바꿔 upstream query 끝에 붙인다. backend가 받은 값이
-곧 적용 값이므로 backend가 모든 200 응답(재사용 페이지·축척 요약·상세)에 같은 header를 붙인다.
+곧 적용 값이므로 backend가 목록 200 응답(재사용 페이지·상세)에 같은 header를 붙인다. 낮은 축척 요약(clustered=true)은
+limit을 쓰지 않으므로 붙이지 않는다.
 gateway 쪽 통과·CORS 노출은 scripts/gateway-probe.py와 test_fuel_public_gateway_contract.py가 본다.
 """
 import asyncio
@@ -39,14 +40,21 @@ def test_header_uses_the_last_repeated_limit_like_the_gateway_rewrite(client):
     assert applied(client.get(f"{PLACES}?limit=5000&limit=900")) == ["900"]
 
 
-def test_clustered_summary_response_carries_header(client):
-    # 낮은 축척은 지역·셀 요약(items=[])을 따로 만든다. 그 반환 경로에도 header가 있어야 한다.
+def test_clustered_summary_response_omits_header(client):
+    # 낮은 축척은 지역·셀 요약(items=[])을 따로 만들고 limit을 쓰지 않는다. 쓰지 않은 값을 "적용"이라 말하지 않는다.
     response = client.get(f"{PLACES}?kind=fuel_station&{BOUNDS}&zoom=5&limit=300")
-    assert applied(response) == ["300"]
+    assert applied(response) == []
     assert response.json()["clustered"] is True
 
 
+def test_detail_zoom_with_bounds_carries_header(client):
+    response = client.get(f"{PLACES}?kind=fuel_station&{BOUNDS}&zoom=12&limit=300")
+    assert applied(response) == ["300"]
+    assert response.json()["clustered"] is False
+
+
 def test_request_header_cannot_spoof_the_applied_limit(client):
+    # 회귀 방지용: 지금은 요청 header를 되돌려 주는 코드가 없다. 그런 코드가 생기면 실패한다.
     response = client.get(f"{PLACES}?limit=10", headers={"X-Limit-Applied": "5000"})
     assert applied(response) == ["10"]
 
@@ -64,6 +72,7 @@ def test_openapi_documents_header_on_places_200(client):
     header = responses["200"]["headers"]["X-Limit-Applied"]
     assert header["schema"] == {"type": "integer", "minimum": 1, "maximum": 5000}
     assert "900" in header["description"] and "truncated" in header["description"]
+    assert "clustered=true" in header["description"] and "/v1/transport/fuel/places" in header["description"]
     # 오류 응답에는 문서화하지 않는다(실제로도 붙이지 않는다).
     assert "X-Limit-Applied" not in responses["422"].get("headers", {})
 

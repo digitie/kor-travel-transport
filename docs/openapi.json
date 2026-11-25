@@ -15461,7 +15461,7 @@
             "description": "Successful Response",
             "headers": {
               "X-Limit-Applied": {
-                "description": "이 응답에 실제로 적용된 limit(합계 상한, 정수). 모든 200 응답에 있다. 공개 gateway(12301·12307)는 limit을 생략하면 900, 900을 넘으면 900으로 바꿔 전달하므로 요청한 값보다 작으면 상한에 묶인 것이다. 실제로 잘렸는지는 본문 truncated로 본다. fuel-api(12307)는 CORS Access-Control-Expose-Headers로 노출한다.",
+                "description": "이 응답의 장소 목록에 실제로 적용된 limit(합계 상한, 정수. 여러 종류면 종류마다 나눠 읽는다). 목록 응답(clustered=false)에만 있고 낮은 축척 요약(clustered=true)에는 없다. 공개 gateway는 limit을 900으로 바꿔 전달하므로(생략=기본, 900 초과=상한) 요청한 값보다 작으면 상한에 묶인 것이다. 생략하면 기본값(gateway 900, backend 직접 1000)이다. 실제로 잘렸는지는 본문 truncated·kind_totals로 본다. fuel-api(12307)의 /v1/transport/fuel/places도 같은 header를 주고 CORS Access-Control-Expose-Headers로 노출한다. transport-api(12301)에는 CORS가 없어 다른 출처 브라우저는 읽을 수 없다.",
                 "schema": {
                   "maximum": 5000,
                   "minimum": 1,

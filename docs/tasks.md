@@ -18,7 +18,8 @@
   peer 분포(`docker logs --since 24h <gateway> | awk '{print $2}' | sort | uniq -c`)가 `192.168.1.1`·`127.0.0.1`·n150뿐인지;
   ③ `192.168.1.1`에서 XFF 없이 오는 트래픽(NAT reflection 등)이 없는지(`tcpdump -A 'tcp dst port 12307'`로 XFF 존재 확인).
   셋 다 확인되면 `set_real_ip_from 192.168.1.1/32; real_ip_header X-Forwarded-For; real_ip_recursive off;`(HAProxy가 붙인 마지막 값)와
-  모바일 NAT를 감안한 넉넉한 IP별 `limit_conn`을 places location에만 두고 gateway-probe에 XFF 위조·다른 peer 시험을 더한다.
+  모바일 NAT를 감안한 넉넉한 IP별 `limit_conn`을 places location **안에만** 두고 gateway-probe에 XFF 위조·다른 peer 시험을 더한다.
+  server 단위에 두면 `$remote_addr`가 모든 location에서 바뀌어 `/mcp`(`192.168.1.1/32` 허용)·export allow-list가 깨진다.
   12307의 공개 지도 BFF 몫(127.0.0.1)은 fuel-web BFF가 브라우저 주소를 넘기지 않으므로 IP별로 나누려면 BFF도 바꿔야 한다.
   [journal](journal.md) 2026-11-25.
 

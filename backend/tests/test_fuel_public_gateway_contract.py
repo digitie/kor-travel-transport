@@ -81,6 +81,7 @@ def test_public_cors_is_exact_and_preflight_never_reaches_upstream():
     # 장소 지도 429·504의 Retry-After를 다른 출처 화면도 읽어 재조회 시각을 정한다.
     # X-Limit-Applied(places 200에 backend가 붙이는 적용 limit)도 다른 출처 화면이 읽는다.
     assert 'add_header Access-Control-Expose-Headers "ETag, Retry-After, X-Limit-Applied" always;' in text
+    assert "proxy_hide_header Access-Control-Expose-Headers;" in text
 
 
 def test_fuel_gateway_image_has_no_python_or_migration_role():

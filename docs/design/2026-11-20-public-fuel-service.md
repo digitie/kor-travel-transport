@@ -16,7 +16,8 @@ places는 기존 /v1/transport/features/places에 마지막 kind=fuel_station을
 기존 reader의 422 거절을 유지한다. bbox·zoom은 그대로 전달한다. limit은 공개 UI(300)와 관리 지도(900)
 범위 안으로 묶는다. 생략은 900, 900 초과 정수는 900, 1~900 정수가 아니면 422 problem+json이며 판정 값을 upstream query
 끝에 붙인다(2026-11-24, [요청 소요 시간 로그 읽기](../runbooks/request-timing-logs.md#공개-gateway-가드레일)).
-places 200 응답의 `X-Limit-Applied`가 실제 적용 limit을 알리고 CORS `Access-Control-Expose-Headers`로 노출한다(2026-11-25).
+places 목록 200 응답의 `X-Limit-Applied`가 실제 적용 limit을 알리고 CORS `Access-Control-Expose-Headers`로 노출한다
+(낮은 축척 요약에는 없다, 2026-11-25).
 places는 동시 처리 상한이 있다(2026-11-25). 같은 호스트의 공개 UI BFF(127.0.0.1) 16건, 그 밖의 직접 호출 8건을
 따로 세고, 넘으면 gateway가 `429` + `Retry-After: 2` problem+json(type·title·status·detail·instance, CORS header 포함)을
 준다. 이 `instance`는 gateway 경로 `/v1/transport/fuel/places`이고, backend가 내는 places 오류(입장 거절 429·시한 504·
