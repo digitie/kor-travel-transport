@@ -9,8 +9,9 @@
 - [ ] **MAP-CALL-FOLLOWUPS / P2** — 2026-11-25 처리: ADR-016 artifact identity를 본문 코드 지문으로(#294, code-server `RELEASE_SHA`
   빌드 전달 필요성 해소), CI에서 nginx `-t`·stub 시험과 12307 places 버퍼·동시 상한(#293), 이력 full rebuild 결과의 증분 기준 채택(#295).
   `X-Limit-Applied`(places 200에 backend가 적용 limit을 붙이고 12307 CORS로 노출)는 2026-11-25 처리.
-  **남은 것**: Manager v2가 `post-deploy-warm.sh` 자동 호출(Manager 저장소); Common `openapi-exceptions.yaml` airport M3 항목;
-  공개 places per-client 제한 — **운영 확인 선행(코드 보류)**. 2026-11-25 조사: HAProxy 설정은 버전 관리되지 않는다
+  Manager v2 `post-deploy-warm.sh` 자동 호출(kor-travel-docker-manager#651, 소유자 결정: 일정 복원 전 자동 실행 기본)과 Common
+  `openapi-exceptions.yaml` airport 항목 정정(kor-travel-common#92)도 2026-11-25 처리.
+  **남은 것**:   공개 places per-client 제한 — **운영 확인 선행(코드 보류)**. 2026-11-25 조사: HAProxy 설정은 버전 관리되지 않는다
   (OPNsense, Manager `prod-deployment.md` §9.4 "저장소 밖"). 근거는 관측 peer `192.168.1.1`(`fuel-mcp.md`)과 Manager 문서의
   "weather web은 HAProxy XFF strip+append 전제" 한 줄뿐이다. 운영자 확인(읽기 전용): ① OPNsense `/usr/local/etc/haproxy.conf`에서
   `transport-api.`·`fuel-api.` frontend/backend의 `mode http`, `option forwardfor`, XFF 제거(`http-request del-header X-Forwarded-For`
