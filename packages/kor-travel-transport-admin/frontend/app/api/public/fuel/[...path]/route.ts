@@ -19,7 +19,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
     const response = await fetch(target, { method: "GET", headers, cache: "no-store", credentials: "omit",
       redirect: "error", signal: AbortSignal.any([request.signal, AbortSignal.timeout(30_000)]) });
     const outputHeaders = new Headers(NO_STORE);
-    for (const name of ["content-type", "etag", "retry-after"]) {
+    // x-limit-applied: places 200에 backend가 붙인 적용 limit(gateway 상한 900에 묶였는지).
+    for (const name of ["content-type", "etag", "retry-after", "x-limit-applied"]) {
       const value = response.headers.get(name); if (value !== null) outputHeaders.set(name, value);
     }
     if (response.status === 304 || response.status === 204) {

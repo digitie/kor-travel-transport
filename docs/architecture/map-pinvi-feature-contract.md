@@ -72,6 +72,11 @@ provider 호출하고 저장하지 않는다.
 관리 지도는 현재 bbox의 선택 종류를 한 요청으로 읽는다. 종류당 최대 300곳, 요청 합계 최대 900곳
 (`transport-map.tsx`의 `perKindLimit = min(300, floor(900 / 종류 수))`, `limit = min(900, perKindLimit × 종류 수)`)을
 클러스터 입력으로 읽는다. 공개 gateway(12301·12307)도 places `limit`을 900 이하로 고정한다(생략 900, 900 초과는 900,
-정수가 아니면 422). backend 직접 상한은 5000이며 관리 목록 검색만 이 값을 쓴다. 같은 bbox·예산은 60초 동안 브라우저
+정수가 아니면 422). backend 직접 상한은 5000이며 관리 목록 검색만 이 값을 쓴다. places 목록 200 응답(`clustered=false`)에는
+`X-Limit-Applied: <정수>`(backend가 실제로 적용한 합계 limit, 여러 종류면 종류마다 나눠 읽는다)가 있다. 낮은 축척 요약
+(`clustered=true`)은 limit을 쓰지 않으므로 없다. 읽는 법: 요청한 `limit`보다 작으면 상한에 묶인 것이다. `limit`을 생략하면
+기본값(gateway 900, backend 직접 1000)이라 상한과 구별할 수 없다. 실제로 잘렸는지는 본문 `truncated`·`kind_totals`로 본다.
+브라우저에서 읽을 수 있는 곳은 fuel-api(12307, CORS `Access-Control-Expose-Headers`)와 같은 출처 BFF(공개 유가·관리)다.
+12301에는 CORS가 없다. 같은 bbox·예산은 60초 동안 브라우저
 메모리에서 재사용한다. 주유소 marker에는 유종과 최신 가격을 함께 표시하고, 공항·철도역·항구·휴게소는
 서로 다른 SVG 아이콘으로 구분한다.

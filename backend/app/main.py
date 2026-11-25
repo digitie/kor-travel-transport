@@ -250,6 +250,8 @@ from app.services.sample_data import seed_sample_database
 from app.services.transport_collection import CollectionScope, OPINET_SOURCE, TRANSPORT_TRIGGER_PREFIX, TransportCollectionService, fuel_read_model_freshness
 
 logger = logging.getLogger(__name__)
+# 장소 지도 200 응답에 실제로 적용한 limit을 알리는 header(공개 gateway 상한 900에 묶였는지 확인용).
+PLACES_LIMIT_APPLIED_HEADER = "X-Limit-Applied"
 
 
 class _RedactExceptionLogFilter(logging.Filter):
@@ -954,6 +956,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             "schema": {"type": "integer", "minimum": 1},
                             "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
                         }}
+        places_ok = schema.get("paths", {}).get("/v1/transport/features/places", {}).get("get", {}).get("responses", {}).get("200")
+        if places_ok is not None:
+            places_ok.setdefault("headers", {})[PLACES_LIMIT_APPLIED_HEADER] = {
+                "description": (
+                    "이 응답의 장소 목록에 실제로 적용된 limit(합계 상한, 정수. 여러 종류면 종류마다 나눠 읽는다). "
+                    "목록 응답(clustered=false)에만 있고 낮은 축척 요약(clustered=true)에는 없다. 공개 gateway는 limit을 "
+                    "900으로 바꿔 전달하므로(생략=기본, 900 초과=상한) 요청한 값보다 작으면 상한에 묶인 것이다. "
+                    "생략하면 기본값(gateway 900, backend 직접 1000)이다. 실제로 잘렸는지는 본문 truncated·kind_totals로 본다. "
+                    "fuel-api(12307)의 /v1/transport/fuel/places도 같은 header를 주고 CORS Access-Control-Expose-Headers로 "
+                    "노출한다. transport-api(12301)에는 CORS가 없어 다른 출처 브라우저는 읽을 수 없다."
+                ),
+                "schema": {"type": "integer", "minimum": 1, "maximum": 5000},
+            }
         document_history_retry_after(schema)
         app.openapi_schema = schema
         return schema
@@ -1495,6 +1510,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> TransportPlaceMapResponse:
         """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
         selected_kind = kind.strip() if kind else None
+        # 이 응답에 실제로 쓴 limit(합계 상한, 종류별로 나눠 읽는다). 공개 gateway가 생략·초과 값을 900으로 바꿔 query 끝에
+        # 붙이므로 backend가 받은 값이 곧 적용 값이다. 클라이언트는 요청한 값과 비교해 상한에 묶였는지 안다.
+        # 낮은 축척 요약(clustered=true)은 limit을 쓰지 않으므로 붙이지 않는다.
+        applied_limit_headers = {PLACES_LIMIT_APPLIED_HEADER: str(limit)}
         supported = {"fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident", "public_parking_lot"}
         def filter_values(single: str | None, multiple: str | None, maximum: int, length: int) -> list[str]:
             if multiple is None:
@@ -1547,7 +1566,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 cached = place_map_cache.get(page_key, read_at)
                 if cached is not None:
                     return Response(content=place_map_cache.response_bytes(cached, now_utc()),
-                                    media_type="application/json")
+                                    media_type="application/json", headers=applied_limit_headers)
         observe_page_build()
         fuel_statistics = []
         if include_fuel_statistics and "fuel_station" in requested_kinds and min_longitude is not None:
@@ -2023,7 +2042,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             place_map_cache.put(page_key, body, read_at, page_boundary,
                                 fuel_prices_last_refreshed_at, fuel_prices_stale)
         return Response(content=place_map_cache.response_bytes(body, result.generated_at),
-                        media_type="application/json")
+                        media_type="application/json", headers=applied_limit_headers)
 
     @router.get("/transport/rail/departures", response_model=RailDepartureSummaryResponse)
     async def transport_rail_departures(

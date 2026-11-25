@@ -25,7 +25,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
     // 브라우저가 이전 지도 조회를 취소하면(request.signal) upstream 요청·본문 스트림도 함께 끊는다. 30초 상한은 그대로다.
     const response = await fetchNoStore(target, { headers: { accept: request.headers.get("accept") ?? "application/json", "x-request-id": request.headers.get("x-request-id") ?? "", ...(laneProof ? { "x-transport-places-lane": laneProof } : {}) }, signal: request.signal });
     const retryAfter = response.headers.get("retry-after");
-    return new NextResponse(response.body, { status: response.status, headers: { "cache-control": "no-store, private", "content-type": response.headers.get("content-type") ?? "application/json", "retry-after": retryAfter ?? "", "x-request-id": response.headers.get("x-request-id") ?? "" } });
+    // 장소 지도 목록 200의 실제 적용 limit(backend가 붙인다). 없으면 넘기지 않는다.
+    const limitApplied = response.headers.get("x-limit-applied");
+    return new NextResponse(response.body, { status: response.status, headers: { "cache-control": "no-store, private", "content-type": response.headers.get("content-type") ?? "application/json", "retry-after": retryAfter ?? "", "x-request-id": response.headers.get("x-request-id") ?? "", ...(limitApplied ? { "x-limit-applied": limitApplied } : {}) } });
   } catch { return NextResponse.json({ detail: "transport API에 연결하지 못했습니다." }, { status: 502, headers: { "cache-control": "no-store, private" } }); }
 }
 

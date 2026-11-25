@@ -23,9 +23,11 @@ describe("GET /api/transport/[...path]", () => {
   it("장소 지도 조회에만 쓰기 토큰이 아닌 파생 증명을 붙이고, 짧은 토큰이면 아무것도 보내지 않는다", async () => {
     const token = "t".repeat(40);
     vi.stubEnv("TRANSPORT_ADMIN_WRITE_TOKEN", token);
-    const fetchMock = vi.fn().mockImplementation(async () => new Response("{}", { status: 200, headers: { "content-type": "application/json" } })); vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = vi.fn().mockImplementation(async (target: string | URL) => new Response("{}", { status: 200, headers: { "content-type": "application/json", ...(String(target).includes("features/places") ? { "x-limit-applied": "1000" } : {}) } })); vi.stubGlobal("fetch", fetchMock);
     const places = await GET(await protectedRequest("transport/features/places?kinds=rail_station"), { params: Promise.resolve({ path: ["transport", "features", "places"] }) });
-    await GET(await protectedRequest("transport/highways/traffic"), { params: Promise.resolve({ path: ["transport", "highways", "traffic"] }) });
+    const traffic = await GET(await protectedRequest("transport/highways/traffic"), { params: Promise.resolve({ path: ["transport", "highways", "traffic"] }) });
+    // 적용 limit header는 있으면 그대로 넘기고, 없는 경로에는 빈 값도 만들지 않는다.
+    expect(places.headers.get("x-limit-applied")).toBe("1000"); expect(traffic.headers.has("x-limit-applied")).toBe(false);
     const sent = fetchMock.mock.calls.map(call => new Headers((call[1] as RequestInit).headers));
     // backend admin_lane_proof와 같은 HMAC-SHA256(token, "places-admin-lane").
     const { createHmac } = await import("node:crypto");

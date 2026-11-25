@@ -20,7 +20,7 @@ describe("공개 유가 BFF", () => {
   });
   it("고정된 fuel gateway 경로·반복 query·ETag만 전달한다", async () => {
     vi.stubEnv("TRANSPORT_UI_MODE", "fuel"); vi.stubEnv("BACKEND_INTERNAL_URL", "http://127.0.0.1:12307");
-    const fetchMock = vi.fn().mockResolvedValue(new Response('{"items":[]}', { status: 200, headers: { "content-type": "application/json", etag: '"fuel-etag"', "set-cookie": "must-not-leak=1" } }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"items":[]}', { status: 200, headers: { "content-type": "application/json", etag: '"fuel-etag"', "x-limit-applied": "900", "set-cookie": "must-not-leak=1" } }));
     vi.stubGlobal("fetch", fetchMock);
     const result = await GET(request("places?product_codes=B027&product_codes=D047&zoom=10"), context("places"));
     const [target, init] = fetchMock.mock.calls[0];
@@ -28,6 +28,7 @@ describe("공개 유가 BFF", () => {
     expect([...init.headers]).toEqual([["accept", "application/json"], ["accept-encoding", "identity"], ["if-none-match", '"fuel-etag"']]);
     expect(init.credentials).toBe("omit"); expect(init.redirect).toBe("error");
     expect(result.headers.get("set-cookie")).toBeNull(); expect(result.headers.get("etag")).toBe('"fuel-etag"');
+    expect(result.headers.get("x-limit-applied")).toBe("900");
     expect(await result.json()).toEqual({ items: [] });
   });
   it("시군구 가격 분포는 고정 경로로만 전달한다", async () => {

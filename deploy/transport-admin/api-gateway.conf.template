@@ -60,6 +60,7 @@ server {
 
     # 공개 장소 조회는 limit 상한을 고정한다(위 map). 정확 일치 location이 아래 정규식의
     # features/places보다 먼저 선택된다. 다른 query·kind/kinds·bbox·zoom은 그대로 전달한다.
+    # 실제 적용 값은 backend가 200 응답 header X-Limit-Applied로 알린다(gateway는 통과만 시킨다).
     location = /v1/transport/features/places {
         limit_except GET { deny all; }
         default_type application/problem+json;

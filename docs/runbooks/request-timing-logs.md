@@ -154,6 +154,10 @@ location(Map)과 backend 직접(loopback 12302, 관리 BFF·측정 스크립트)
   (Starlette는 반복 query의 마지막 값을 쓴다).
   - 생략 → 900. backend 기본 1000이 상한을 넘으므로 gateway가 값을 정한다.
   - 1~900 → 그대로. 900 초과 정수 → 900(응답 `truncated`로 확인).
+  - 적용 값은 places 200 응답 header `X-Limit-Applied`로 알린다. backend가 받은(마지막) `limit`을 붙이고 gateway는
+    통과만 시킨다 — gateway가 location에 `add_header`를 두면 12307 server 단위 CORS `add_header` 상속이 끊기므로
+    gateway에서 만들지 않는다. 12307은 server 단위 `Access-Control-Expose-Headers`에 `X-Limit-Applied`를 넣고
+    upstream의 같은 header는 숨긴다(한 줄만). 낮은 축척 요약(`clustered=true`)과 오류 응답(422·429·504)에는 없다.
   - 그 밖(0·부호·앞자리 0·소수·인코딩 숫자·문자) → 422 problem+json. backend가 같은 종류의 query 검증 오류에 쓰는
     상태·다섯 항목(`type`·`title`·`status`·`detail`·`instance`, ADR-005)과 같고, `instance`는 클라이언트가 부른 경로다.
   - 관리 지도(최대 900)·공개 유가(300)는 영향이 없다. 관리 목록 검색(최대 5000)은 관리 BFF가 backend 12302를 직접
@@ -240,7 +244,10 @@ template에서 port 변수만 바꾼 문자열과 같은지 먼저 본다(다르
 12302 stub upstream으로 다음을 확인한다. 12307의 직접 호출은 source 주소 127.0.0.2로 만든다.
 
 - places `limit`: 생략·900 초과 → upstream 마지막 `limit=900`, 반복 query는 첫 값, 0·부호·앞자리 0·인코딩·소수 → 422
-  problem+json 다섯 항목(upstream 미호출).
+  problem+json 다섯 항목(upstream 미호출, `X-Limit-Applied` 없음).
+- `X-Limit-Applied`: stub이 backend처럼 받은 마지막 limit을 돌려주면 응답 header가 그 값 하나다(클라이언트가 같은 이름의
+  요청 header를 보내도). 12307은 places 200의 `Access-Control-Expose-Headers`에 `x-limit-applied`가 있고(stub이 자기
+  Expose header를 보내도 한 줄), HEAD에도 header가 있으며, gateway 429에는 `X-Limit-Applied`가 없다.
 - `X-Transport-Listener`: 클라이언트가 보내도(대소문자·중복 포함) upstream은 `public` 하나만 받는다(12301 places·공개
   조회, 12307 places·stations·statistics).
 - `Server-Timing`: 12301 `/health`·places·공개 조회·일반철도·MCP와 12307 전체에서 숨김, 12301 export에서는 유지.

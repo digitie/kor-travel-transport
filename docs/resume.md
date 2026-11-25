@@ -1,3 +1,10 @@
+## 현재 상태 — 2026-11-25 places `X-Limit-Applied`(MAP-CALL-FOLLOWUPS)
+
+- backend(places 200 header, OpenAPI) + fuel gateway template(CORS Expose-Headers) + transport-admin 공개 유가 BFF(header 전달). migration 없음.
+- 배포(Codex 담당): backend 이미지, fuel gateway 이미지 재빌드(12307), transport-admin(fuel web) 이미지. 순서 무관(header는 추가 정보).
+- 다음 한 작업: 배포 뒤 `curl -sI 'https://fuel-api.../v1/transport/fuel/places?limit=5000'`에 `x-limit-applied: 900`과
+  `access-control-expose-headers`의 `X-Limit-Applied` 확인. per-client 제한은 tasks.md의 HAProxy 운영 확인이 먼저다.
+
 ## 현재 상태 — 2026-11-24 Map 호출 속도·실패 방지 개선(MAP-CALL-REVIEW-20261124)
 
 - 머지: #273 #274 #275 #276 #277 #278 #279 #280 #281 #285 #289, 후속 #292 #293 #294 #295(2026-11-25). 정산 표는 [보고서 §8.0](reports/2026-11-24-map-call-performance-reliability.md).
