@@ -6,9 +6,10 @@
 - [ ] **MAP-CALL-OWNER / 소유자 결정** — 보고서 §9: 돌발 유예, T1 stale 200, 원본 보존 기한(디스크 고갈 P1), API 메모리 한도, Manager 협의
   (`cpu_shares`·`log_lock_waits`·디스크 경보), 유가 신선도 보호 재시도. 추가: 고속도로 창 busy를 partial로 둘지, drift 자동 경보 기준,
   이력 재구성 중 이전 캐시 30초 초과 제공.
-- [ ] **MAP-CALL-FOLLOWUPS / P2** — Manager v2가 `post-deploy-warm.sh` 자동 호출; ADR-016 artifact identity를 코드 지문으로; code-server `RELEASE_SHA`
-  빌드 전달; 공개 places per-client 제한(HAProxy 주소·XFF 확인 선행); `X-Limit-Applied`; CI에서 nginx `-t`·stub 시험; 12307 places
-  `proxy_temp` 기록; 이력 full rebuild 결과의 증분 기준 채택; Common `openapi-exceptions.yaml` airport M3 항목.
+- [ ] **MAP-CALL-FOLLOWUPS / P2** — 2026-11-25 처리: ADR-016 artifact identity를 본문 코드 지문으로(#294, code-server `RELEASE_SHA`
+  빌드 전달 필요성 해소), CI에서 nginx `-t`·stub 시험과 12307 places 버퍼·동시 상한(#293), 이력 full rebuild 결과의 증분 기준 채택(#295).
+  **남은 것**: Manager v2가 `post-deploy-warm.sh` 자동 호출(Manager 저장소); 공개 places per-client 제한(HAProxy 주소·XFF 확인 선행);
+  `X-Limit-Applied`; Common `openapi-exceptions.yaml` airport M3 항목. [journal](journal.md) 2026-11-25.
 
 ## 2026-11-24 — 수집 실패 감사 후속
 

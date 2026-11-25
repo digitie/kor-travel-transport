@@ -1,3 +1,15 @@
+## 2026-11-25 — Map 호출 개선 후속 정산(MAP-CALL-FOLLOWUPS)
+
+- #293 gateway: CI `gateway-probe` job 추가(`scripts/gateway-probe.py`, 고정 digest nginx로 12301·12307 렌더링 비교·`nginx -t`·stub 동작 시험).
+  12307 places location의 `proxy_temp` 기록을 버퍼 확대로 없애고 동시 상한을 걸었다.
+- #294 export: T3 기준정보 artifact 입력 revision을 `RELEASE_SHA` 대신 본문 코드 지문(builder·관련 모듈 소스, page schema, 의존 버전)으로 바꿨다.
+  관계없는 배포의 전체 무효화, API·code-server SHA 불일치로 head가 뒤집히던 문제, `unknown` SHA에서 경로가 꺼지던 문제를 없앴다.
+  `/health`에 `reference_payload_fingerprint`, 배포 직후 준비는 `--expect-payload-fingerprint`(불일치 exit 4). 첫 배포에서 본문을 한 번 다시 만든다.
+- #295 history: 원본이 바뀐 전체 재생성 결과를 버리지 않고 증분 기준으로 채택해 따라잡는다(update·delete·id 감소·늦은 commit이면 예전처럼 버림).
+- #292: #277 배포 보류 해제와 `test_parking_history_rebuild_cost.py` flaky 수정.
+- 각 PR은 적대적 리뷰(James·Popper)를 거쳤고 P0는 없었다. P1·P2 반영과 미룸 사유는 PR 본문에 있다.
+- 남은 후속: Manager v2 warm 자동 호출, 공개 places per-client 제한, `X-Limit-Applied`, Common openapi-exceptions 항목, odroid 기준선 측정.
+
 ## 2026-11-24 — Map 호출 속도·실패 방지 개선 정산(MAP-CALL-REVIEW-20261124)
 
 - 근거: [Map 호출 종합 검토](reports/2026-11-24-map-call-performance-reliability.md)(#272). 7개 영역 조사·반박 검증 뒤 개선 PR을 병렬 진행했다.

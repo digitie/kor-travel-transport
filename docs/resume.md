@@ -1,8 +1,10 @@
 ## 현재 상태 — 2026-11-24 Map 호출 속도·실패 방지 개선(MAP-CALL-REVIEW-20261124)
 
-- 머지: #273 #274 #275 #276 #277 #278 #279 #280 #281 #285 #289. 정산 표는 [보고서 §8.0](reports/2026-11-24-map-call-performance-reliability.md).
+- 머지: #273 #274 #275 #276 #277 #278 #279 #280 #281 #285 #289, 후속 #292 #293 #294 #295(2026-11-25). 정산 표는 [보고서 §8.0](reports/2026-11-24-map-call-performance-reliability.md).
 - 배포(Codex 담당): backend·Dagster code-server 이미지, transport-admin·fuel web 이미지, 두 gateway(fuel gateway는 이미지 재빌드).
   관리 웹은 backend와 함께 배포한다(#289 관리 몫). 배포 직후 `scripts/post-deploy-warm.sh`를 운영자가 실행한다(#276).
+- #294가 들어간 첫 배포는 T3 본문을 한 번 모두 다시 만든다. code-server와 API를 함께 배포한다(지문이 다르면 warm 스크립트 exit 4).
+  #293은 fuel gateway 이미지 재빌드가 필요하다.
 - #277의 export 500→503 변경 배포 보류는 2026-11-25 소유자가 해제했다(Map #1542 e2e7e66 머지). 배포 뒤 Map 상태 job의 503 code 분류를 확인한다.
 - 다음 한 작업: 배포 뒤 `export_request` 로그·Server-Timing으로 T1·T3 지연 기준선, `traffic_statistics_seconds`·`repair_drift_rows`,
   `places_deadline_exceeded`의 `proxy_margin_ms`, 이력 재구성 `peak_rss_kib`를 odroid에서 읽어 보고서 §4.4 기준선을 채운다.
