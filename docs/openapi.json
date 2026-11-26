@@ -5373,6 +5373,200 @@
         "title": "FuelStatisticsResponse",
         "type": "object"
       },
+      "FuelStatisticsTrendPoint": {
+        "description": "장기 추이의 한 점. day 버킷이면 day=first_day=last_day, day_count=1이다.",
+        "properties": {
+          "average_price": {
+            "description": "일별 평균의 단순 평균(날짜마다 같은 비중, 주유소 수 가중 아님)",
+            "title": "Average Price",
+            "type": "number"
+          },
+          "day": {
+            "description": "버킷 시작일(KST). week는 월요일, month는 1일",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "day_count": {
+            "description": "버킷 안 기록이 있는 날짜 수(빈 날짜는 만들지 않는다)",
+            "title": "Day Count",
+            "type": "integer"
+          },
+          "first_day": {
+            "description": "버킷 안 첫 기록일",
+            "format": "date",
+            "title": "First Day",
+            "type": "string"
+          },
+          "generated_at": {
+            "description": "last_day의 공개 세대 수집 시각",
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "last_day": {
+            "description": "버킷 안 마지막 기록일",
+            "format": "date",
+            "title": "Last Day",
+            "type": "string"
+          },
+          "maximum_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "일별 최고의 최고. 저장되지 않은 날짜만 있으면 null",
+            "title": "Maximum Price"
+          },
+          "minimum_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "일별 최저의 최저. 저장되지 않은 날짜만 있으면 null",
+            "title": "Minimum Price"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "station_count": {
+            "description": "일별 유효 주유소 수의 평균(반올림)",
+            "title": "Station Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product_code",
+          "day",
+          "first_day",
+          "last_day",
+          "day_count",
+          "generated_at",
+          "average_price",
+          "station_count"
+        ],
+        "title": "FuelStatisticsTrendPoint",
+        "type": "object"
+      },
+      "FuelStatisticsTrendResponse": {
+        "properties": {
+          "average_method": {
+            "description": "버킷 평균 정의. mean_of_daily_averages = 일별 평균의 단순 평균",
+            "title": "Average Method",
+            "type": "string"
+          },
+          "bucket": {
+            "description": "실제 적용한 버킷(day·week·month). auto 요청이면 고른 값",
+            "title": "Bucket",
+            "type": "string"
+          },
+          "from_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "실제 범위 시작(KST, 기록이 있으면 첫 기록일 이후)",
+            "title": "From Day"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "응답이 기준으로 삼은 공개 통계 세대",
+            "title": "Generated At"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "범위 안 마지막 기록일의 범주 이름",
+            "title": "Label"
+          },
+          "max_points": {
+            "description": "유종 하나의 최대 점 수",
+            "title": "Max Points",
+            "type": "integer"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/FuelStatisticsTrendPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "scope_key": {
+            "title": "Scope Key",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "to_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "실제 범위 끝(KST). 공개 세대 날짜보다 늦지 않다",
+            "title": "To Day"
+          },
+          "update_pending": {
+            "default": false,
+            "title": "Update Pending",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "scope",
+          "scope_key",
+          "product_code",
+          "source",
+          "bucket",
+          "average_method",
+          "max_points",
+          "points"
+        ],
+        "title": "FuelStatisticsTrendResponse",
+        "type": "object"
+      },
       "FuelViewportSigungu": {
         "properties": {
           "sido_name": {
@@ -16213,6 +16407,145 @@
           }
         },
         "summary": "Transport Fuel Statistics"
+      }
+    },
+    "/v1/transport/fuel/statistics/history": {
+      "get": {
+        "description": "수집 완료 시 저장한 일별 유가 요약의 장기 추이(평균·최저·최고·주유소 수).\n\n일별 기록은 영구 보존한다. 유종 하나의 점은 최대 400개(일 단위 약 13개월)이고, 지정한 bucket으로 그보다 많아지면\n422다. 주·월 버킷 평균은 그 버킷에 기록이 있는 날짜들의 일별 평균을 같은 비중으로 평균한 값이다(주유소 수 가중 아님).\n공개 통계 세대보다 새 날짜는 내지 않는다. 응답은 weak ETag와 `Cache-Control: private, no-cache`를 붙이고\nIf-None-Match가 같으면 304다(공개 유가·관리 BFF는 no-store로 다시 쓰므로 304는 gateway 직접 호출에만 해당한다).",
+        "operationId": "transport_fuel_statistics_history_v1_transport_fuel_statistics_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "nationwide",
+              "pattern": "^(nationwide|sido|sigungu|highways|highway|highway_direction)$",
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "description": "범주 키(통계 페이지의 items[].scope_key). nationwide·highways는 생략하면 all, 그 밖 범위는 필수",
+            "in": "query",
+            "name": "scope_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "범주 키(통계 페이지의 items[].scope_key). nationwide·highways는 생략하면 all, 그 밖 범위는 필수",
+              "title": "Scope Key"
+            }
+          },
+          {
+            "description": "유종 코드(대문자). ALL은 모든 유종",
+            "in": "query",
+            "name": "product_code",
+            "required": false,
+            "schema": {
+              "default": "B027",
+              "description": "유종 코드(대문자). ALL은 모든 유종",
+              "pattern": "^[A-Z][A-Z0-9]{0,19}$",
+              "title": "Product Code",
+              "type": "string"
+            }
+          },
+          {
+            "description": "KST 시작일(포함, 2000-01-01 이후). 생략하면 첫 기록일(끝에서 400개월 전까지)",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "KST 시작일(포함, 2000-01-01 이후). 생략하면 첫 기록일(끝에서 400개월 전까지)",
+              "title": "From"
+            }
+          },
+          {
+            "description": "KST 종료일(포함). 생략하거나 늦으면 공개 세대 날짜",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "KST 종료일(포함). 생략하거나 늦으면 공개 세대 날짜",
+              "title": "To"
+            }
+          },
+          {
+            "description": "점 단위. auto는 실제 기록 범위가 유종당 400점 안에 드는 가장 작은 단위(day→week→month)",
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "default": "auto",
+              "description": "점 단위. auto는 실제 기록 범위가 유종당 400점 안에 드는 가장 작은 단위(day→week→month)",
+              "pattern": "^(auto|day|week|month)$",
+              "title": "Bucket",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FuelStatisticsTrendResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "304": {
+            "description": "If-None-Match와 같은 ETag"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Fuel Statistics History"
       }
     },
     "/v1/transport/highways/incidents": {

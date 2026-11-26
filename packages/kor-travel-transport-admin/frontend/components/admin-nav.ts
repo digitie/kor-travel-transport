@@ -118,7 +118,7 @@ export const PAGE_HEADINGS = {
   "/highways": { title: "고속도로", description: "ITS 도로별 속도 지도와 저장된 도로 돌발·통제, 운전 지표를 확인합니다." },
   "/highways/statistics": { title: "고속도로 통계", description: "노선별 최근 구간 속도와 저속 구간 분포를 비교합니다." },
   "/fuel": { title: "유가 지도", description: "주유소별 최신 가격과 유종 정보를 지도에서 확인합니다." },
-  "/fuel/statistics": { title: "유가 통계", description: "수집 완료 시점의 지역·고속도로별 가격과 최근 30일 추이를 확인합니다." },
+  "/fuel/statistics": { title: "유가 통계", description: "수집 완료 시점의 지역·고속도로별 가격과 30일·90일·1년·전체 기간 추이를 확인합니다." },
   "/parking-lots": { title: "일반 주차장", description: "전국주차장정보 표준데이터의 저장된 총면수·요금·운영시간을 확인합니다. 실시간 잔여면은 제공하지 않습니다." },
   "/rail": { title: "철도", description: "지도에서 역을 선택하고 예정 시간표와 요금을 확인합니다." },
   "/rail/metro": { title: "도시철도", description: "노선과 가까운 역을 찾고 역 위치·연락처·예정 시간표를 확인합니다." },

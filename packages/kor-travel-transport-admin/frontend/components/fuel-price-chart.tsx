@@ -17,7 +17,10 @@ const amount = (value?: number | null) => value == null ? "미제공" : value.to
 const price = (value?: number | null) => value == null ? "미제공" : `${amount(value)}원/L`;
 type TooltipParam = { seriesId?: string; value?: unknown };
 
-export default function FuelPriceChart({ series, label, window, showExtremes = true, compact = false }: { showExtremes?: boolean; /** 낮은 차트: y축 눈금을 줄이고 여백을 좁힌다. */ compact?: boolean; series: FuelChartSeries[]; label: string; window?: { from_at: string; to_at: string } }) {
+export default function FuelPriceChart({ series, label, window, showExtremes = true, compact = false, maxGapDays = 1, longRange = false, rangeAsLines = false }: { showExtremes?: boolean; /** 낮은 차트: y축 눈금을 줄이고 여백을 좁힌다. */ compact?: boolean; series: FuelChartSeries[]; label: string; window?: { from_at: string; to_at: string };
+  /** 이웃 점 사이가 이 일수보다 멀면 선을 끊는다(주 7·월 31). */ maxGapDays?: number;
+  /** 몇 달 이상: x축 눈금을 연.월(26.10)로 쓴다. */ longRange?: boolean;
+  /** 점이 많을 때: 최저·최고를 세로선 대신 가는 점선으로 그리고 평균 점 표시를 끈다(수백 개 세로선이 면처럼 겹치지 않게). */ rangeAsLines?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const [palette, setPalette] = useState<string[]>([]);
   const [active, setActive] = useState<number | null>(null);
@@ -39,7 +42,7 @@ export default function FuelPriceChart({ series, label, window, showExtremes = t
   const options = useMemo(() => {
     const colorFor = (product: string, index: number) => palette[(FUEL_CHART_ORDER.indexOf(product) < 0 ? index : FUEL_CHART_ORDER.indexOf(product)) % tokens.length];
     const lookup = new Map<string, Map<number, FuelChartPoint>>();
-    const charts = series.flatMap((row, index) => {
+    const charts = series.flatMap((row, index): Record<string, unknown>[] => {
       const color = colorFor(row.product, index);
       lookup.set(`${row.product}:average`, new Map(row.points.map(point => [fuelInstant(point.time), point])));
       const renderItem: NonNullable<CustomSeriesOption["renderItem"]> = (_params, api) => {
@@ -48,8 +51,15 @@ export default function FuelPriceChart({ series, label, window, showExtremes = t
         const line = (x1: number, y1: number, x2: number, y2: number) => ({ type: "line" as const, shape: { x1, y1, x2, y2 }, style: { stroke: color, lineWidth: 1.4 } });
         return { type: "group", children: [line(low[0] + offset, low[1], high[0] + offset, high[1]), line(low[0] + offset - 3, low[1], low[0] + offset + 3, low[1]), line(high[0] + offset - 3, high[1], high[0] + offset + 3, high[1])] };
       };
+      const average = { id: `${row.product}:average`, name: fuelProductLabel(row.product), type: "line", data: fuelLineValues(row.points, maxGapDays), connectNulls: false, showSymbol: true, symbolSize: rangeAsLines ? 2 : 5, lineStyle: { color, width: 2 }, itemStyle: { color }, animation: false };
+      if (rangeAsLines) {
+        const bound = (name: "minimum" | "maximum", text: string) => ({ id: `${row.product}:${name}`, name: `${fuelProductLabel(row.product)} ${text}`, type: "line", silent: true, tooltip: { show: false },
+          data: fuelLineValues(row.points.flatMap(point => point[name] == null ? [] : [{ ...point, average: point[name]! }]), maxGapDays),
+          connectNulls: false, showSymbol: false, lineStyle: { color, width: 1, type: "dashed", opacity: .55 }, itemStyle: { color }, animation: false });
+        return [average, bound("minimum", "최저"), bound("maximum", "최고")];
+      }
       return [
-        { id: `${row.product}:average`, name: fuelProductLabel(row.product), type: "line", data: fuelLineValues(row.points), connectNulls: false, showSymbol: true, symbolSize: 5, lineStyle: { color, width: 2 }, itemStyle: { color }, animation: false },
+        average,
         { id: `${row.product}:range`, name: `${fuelProductLabel(row.product)} 최저·최고`, type: "custom", renderItem, silent: true, tooltip: { show: false }, data: row.points.filter(point => point.minimum != null && point.maximum != null && point.minimum <= point.maximum && Number.isFinite(fuelInstant(point.time))).map(point => [fuelInstant(point.time), point.minimum, point.maximum]), encode: { x: 0, y: [1, 2] }, animation: false },
       ];
     });
@@ -72,13 +82,13 @@ export default function FuelPriceChart({ series, label, window, showExtremes = t
     };
     return {
       animation: false,
-      xAxis: { type: "time", splitNumber: 5, minInterval: 86400000, min: window ? fuelInstant(window.from_at) : undefined, max: window ? fuelInstant(window.to_at) : undefined, axisLabel: { color: palette[4], hideOverlap: true, formatter: (value: number) => fuelChartTime(value).slice(5, 10) } },
+      xAxis: { type: "time", splitNumber: 5, minInterval: 86400000, min: window ? fuelInstant(window.from_at) : undefined, max: window ? fuelInstant(window.to_at) : undefined, axisLabel: { color: palette[4], hideOverlap: true, formatter: (value: number) => longRange ? fuelChartTime(value).slice(2, 7).replace("-", ".") : fuelChartTime(value).slice(5, 10) } },
       yAxis: { type: "value", scale: true, name: "원/L", splitNumber: compact ? 2 : undefined, axisLabel: { color: palette[4], hideOverlap: true }, nameTextStyle: { color: palette[4] } },
       grid: { left: 52, right: 18, top: compact ? 22 : 28, bottom: compact ? 24 : 28 },
       tooltip: { backgroundColor: palette[tokens.length], borderColor: palette[tokens.length + 2], textStyle: { color: palette[tokens.length + 1] }, show: true, trigger: "axis", triggerOn: "mousemove|click", enterable: true, confine: true, formatter },
       series: charts,
     };
-  }, [series, palette, window, showExtremes, compact]);
+  }, [series, palette, window, showExtremes, compact, maxGapDays, longRange, rangeAsLines]);
   const selected = active === null ? null : times[Math.min(active, times.length - 1)];
   return <div ref={host} className="fuel-echarts-block">
     <div className="fuel-echarts" role="group" aria-label={label}>

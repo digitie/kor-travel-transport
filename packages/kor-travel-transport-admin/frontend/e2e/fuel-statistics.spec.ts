@@ -45,6 +45,53 @@ for (const width of [390, 1440]) {
   });
 }
 
+for (const width of [390, 1440]) {
+  test(`${width}px 기간 선택(90일·1년·전체)은 장기 추이 API를 읽어 같은 차트로 보인다`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.route("**/api/transport/transport/fuel/statistics?*", route => route.fulfill({ json: {
+      generated_at: "2026-11-26T00:17:00Z", update_pending: false, history_scope_key: "all",
+      items: ["B027", "D047"].map(product_code => ({ ...metrics, product_code, scope_key: "all", label: "전국" })),
+      history: [{ product_code: "B027", day: "2026-11-26", generated_at: "2026-11-26T00:17:00Z", average_price: 1700, minimum_price: 1600, maximum_price: 1800, station_count: 12000 }] } }));
+    const requests: URLSearchParams[] = [];
+    await page.route("**/api/transport/transport/fuel/statistics/history?*", async route => {
+      const search = new URL(route.request().url()).searchParams; requests.push(search);
+      const bucket = search.get("bucket") === "auto" ? "week" : "day";
+      const step = bucket === "week" ? 7 : 1;
+      const count = bucket === "week" ? 60 : Number(search.get("from") === "2026-08-29" ? 90 : 365);
+      const start = Date.UTC(2026, 10, 26) - (count - 1) * step * 86_400_000;
+      const points = ["B027", "D047"].flatMap(product_code => Array.from({ length: count }, (_, i) => {
+        const day = new Date(start + i * step * 86_400_000).toISOString().slice(0, 10);
+        return { product_code, day, first_day: day, last_day: day, day_count: step, generated_at: `${day}T00:17:00Z`,
+          average_price: (product_code === "B027" ? 1700 : 1600) + Math.sin(i / 9) * 40, minimum_price: 1500, maximum_price: 1900, station_count: 12000 };
+      }));
+      await route.fulfill({ json: { scope: "nationwide", scope_key: "all", product_code: "ALL", source: "opinet_browser", label: "전국",
+        bucket, average_method: "mean_of_daily_averages", max_points: 400, from_day: points[0].day, to_day: "2026-11-26",
+        generated_at: "2026-11-26T00:17:00Z", update_pending: false, points } });
+    });
+    await page.goto("/fuel/statistics");
+    await expect(page.getByRole("heading", { name: "최근 30일 평균 유가 · 전국" })).toBeVisible();
+    const period = page.getByLabel("기간", { exact: true });
+    if (width >= 1024) {
+      // 데스크톱은 범위·유종·기간·추이 범주·새로고침이 한 줄이다(새로고침이 다음 줄로 밀리지 않는다).
+      const [select, refresh] = await Promise.all([period.boundingBox(), page.getByRole("button", { name: "새로고침", exact: true }).boundingBox()]);
+      expect(Math.abs((select!.y + select!.height / 2) - (refresh!.y + refresh!.height / 2))).toBeLessThan(8);
+    }
+    await period.selectOption("90");
+    await expect(page.getByRole("heading", { name: "최근 90일 평균 유가 · 전국" })).toBeVisible();
+    await expect(page.getByRole("group", { name: /최근 90일 유종별 평균·최저·최고 유가/ })).toBeVisible();
+    await period.selectOption("365");
+    await expect(page.getByRole("group", { name: /최근 1년 유종별 평균·최저·최고 유가/ })).toBeVisible();
+    await period.selectOption("all");
+    await expect(page.getByRole("heading", { name: "전체 기간 평균 유가 · 전국" })).toBeVisible();
+    await expect(page.getByText("주 단위(월요일 시작)", { exact: false })).toBeVisible();
+    await expect(page.getByRole("group", { name: /전체 기간 유종별 평균·최저·최고 유가/ }).locator("canvas")).toBeVisible();
+    expect(requests.map(search => [search.get("from"), search.get("to"), search.get("bucket")])).toEqual([
+      ["2026-08-29", "2026-11-26", "day"], ["2025-11-27", "2026-11-26", "day"], [null, "2026-11-26", "auto"]]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/fuel-statistics-period-${width}.png`, fullPage: false });
+  });
+}
+
 test("조회 실패와 재시도", async ({ page }) => {
   let fail = true;
   await page.route("**/api/transport/transport/fuel/statistics?*", async (route) => {

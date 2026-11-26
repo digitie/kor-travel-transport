@@ -93,6 +93,20 @@ KST 일별 범주/유종 집계 `fuel_statistics_daily`를 분리한다. 원본 
 조회 시에는 읽지 않는다. 지도 가격은 bbox 인덱스를 사용하며 일별 집계는 영구 보존한다. 조회 창만 마지막 공개일 포함 30일이다. 원천 잠금·savepoint로 원본 성공과 통계 발행 실패를 분리한다.
 지표·원천·초기 기록 기준은 [유가 통계](../fuel-statistics.md)를 따른다.
 
+### 장기 유가 추이 (`0049_fuel_statistics_history`, `0050_fuel_daily_current_index`, 2026-11-26)
+
+`fuel_statistics_history`는 `fuel_statistics_daily`와 같은 기본키 `(source, scope, scope_key, product_code, day)`에
+`generated_at`·`label`·`average_price`·`minimum_price`·`maximum_price`(nullable, `NUMERIC(10,2)`)·`station_count`만 typed 열로 둔
+좁은 일별 요약이다(CHECK `station_count > 0 AND average_price > 0`). 일별 행의 `metrics_json`(가격순 10곳 포함)을 읽지 않고
+몇 년치 추이를 읽기 위한 파생 표이며, 수집 공개가 일별 행·공개 state와 같은 transaction으로 그날 행을 교체하고 영구 보존한다.
+값은 같은 날짜 일별 지표와 같다(평균은 소수 둘째 자리 반올림). 0049가 기존 일별 행에서 31일 창씩 backfill한다.
+모든 값을 일별 표에서 다시 만들 수 있으므로 downgrade는 자료가 있어도 표를 지운다.
+
+`ix_fuel_statistics_daily_current (source, scope, day, product_code)`(0050, CONCURRENTLY)는 통계 페이지의 "공개 세대 날짜의
+모든 범주" 읽기용이다. 기본키는 scope_key가 day보다 앞이라 범주가 많은 시군구에서 모든 날짜의 색인 항목을 범주마다 다시
+찾았다(운영 2~3초의 추정 원인). `fuel_statistics_history`에도 그날 행 교체용 `ix_fuel_statistics_history_day (source, day)`가 있다.
+회당 지역 요약 `fuel_region_summaries`는 그대로 지도용이며 이력 API로 노출하지 않는다([유가 통계](../fuel-statistics.md#장기-추이)).
+
 ## 핵심 테이블
 
 ### 지도 좌표·돌발 최신 조회 인덱스 (`0026_transport_map_indexes`)

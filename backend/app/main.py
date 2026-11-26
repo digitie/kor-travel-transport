@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from app.services.fuel_regions import regional_fuel_prices
 
-from app.services.fuel_statistics import fuel_statistics_page, viewport_fuel_statistics, with_publication_status
+from app.services.fuel_statistics import (
+    FuelHistoryRequestError, fuel_statistics_history, fuel_statistics_page, viewport_fuel_statistics,
+    with_publication_status,
+)
 
 from app.schemas import AddressRefreshSummary
 
@@ -154,6 +157,7 @@ from app.schemas import (
     TransportPlaceMapCluster,
     TransportPlaceMapResponse,
     FuelStatisticsResponse,
+    FuelStatisticsTrendResponse,
     TransportStatisticsResponse,
     RailTimetableResponse,
     MetroStationCatalog,
@@ -1477,6 +1481,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: AsyncSession = Depends(get_db),
     ) -> dict:
         return await fuel_statistics_page(session, scope, product_code, scope_key)
+
+    @router.get("/transport/fuel/statistics/history", response_model=FuelStatisticsTrendResponse,
+                responses={304: {"description": "If-None-Match와 같은 ETag"}, 422: {}})
+    async def transport_fuel_statistics_history(
+        request: Request,
+        scope: str = Query(default="nationwide", pattern="^(nationwide|sido|sigungu|highways|highway|highway_direction)$"),
+        scope_key: str | None = Query(default=None, min_length=1, max_length=512, description=(
+            "범주 키(통계 페이지의 items[].scope_key). nationwide·highways는 생략하면 all, 그 밖 범위는 필수")),
+        product_code: str = Query(default="B027", pattern="^[A-Z][A-Z0-9]{0,19}$", description="유종 코드(대문자). ALL은 모든 유종"),
+        from_day: date | None = Query(default=None, alias="from", description=(
+            "KST 시작일(포함, 2000-01-01 이후). 생략하면 첫 기록일(끝에서 400개월 전까지)")),
+        to_day: date | None = Query(default=None, alias="to", description="KST 종료일(포함). 생략하거나 늦으면 공개 세대 날짜"),
+        bucket: str = Query(default="auto", pattern="^(auto|day|week|month)$", description=(
+            "점 단위. auto는 실제 기록 범위가 유종당 400점 안에 드는 가장 작은 단위(day→week→month)")),
+        session: AsyncSession = Depends(get_db),
+    ) -> Response:
+        """수집 완료 시 저장한 일별 유가 요약의 장기 추이(평균·최저·최고·주유소 수).
+
+        일별 기록은 영구 보존한다. 유종 하나의 점은 최대 400개(일 단위 약 13개월)이고, 지정한 bucket으로 그보다 많아지면
+        422다. 주·월 버킷 평균은 그 버킷에 기록이 있는 날짜들의 일별 평균을 같은 비중으로 평균한 값이다(주유소 수 가중 아님).
+        공개 통계 세대보다 새 날짜는 내지 않는다. 응답은 weak ETag와 `Cache-Control: private, no-cache`를 붙이고
+        If-None-Match가 같으면 304다(공개 유가·관리 BFF는 no-store로 다시 쓰므로 304는 gateway 직접 호출에만 해당한다).
+        """
+        try:
+            result = await fuel_statistics_history(session, scope, scope_key, product_code, from_day, to_day, bucket)
+        except FuelHistoryRequestError as exc:
+            raise HTTPException(422, str(exc)) from None
+        await session.rollback()
+        payload = FuelStatisticsTrendResponse.model_validate(result).model_dump(mode="json")
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
+        etag = f'W/"{hashlib.sha256(body).hexdigest()[:32]}"'
+        headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
+        candidates = request.headers.get("if-none-match", "").split(",")
+        if any(tag.strip() == "*" or tag.strip().removeprefix("W/") == etag[2:] for tag in candidates):
+            return Response(status_code=304, headers=headers)
+        return Response(body, media_type="application/json", headers=headers)
 
     @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
     @place_map_admission

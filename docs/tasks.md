@@ -1,3 +1,12 @@
+## 2026-11-26 — 유가 통계 장기 추이(FUEL-HISTORY-20261126)
+
+- [x] **FUEL-HISTORY / P1** — 수집 완료 시 일별 지역 통계를 좁은 표(`fuel_statistics_history`, 0049)에 같은 transaction으로 저장·영구 보존,
+  `GET /v1/transport/fuel/statistics/history`(일·주·월·auto, 유종당 400점, ETag), 관리 `/fuel/statistics` 기간 30일·90일·1년·전체.
+  시군구 통계 페이지 2~3초는 0050 인덱스로 공개일 항목만 읽게 했다([유가 통계](fuel-statistics.md#장기-추이)).
+- [ ] **FUEL-HISTORY-VERIFY / P1** — 배포(0049·0050) 뒤 공개 GET으로 확인: `/v1/transport/fuel/statistics?scope=sigungu&product_code=ZZZZ`가
+  0.3초 안팎(전: 2.6~3.0초), `.../statistics/history?scope=nationwide&bucket=auto`의 첫 날짜가 일별 기록 첫날과 같은지.
+- [ ] **FUEL-HISTORY-PUBLIC-UI / P3** — 공개 유가 웹(fuel web)에는 통계 화면이 없다. 경로는 열어 두었다. 필요하면 소유자 결정 뒤 화면 설계.
+
 ## 2026-11-24 — Map 호출 개선 후속(MAP-CALL-REVIEW-20261124)
 
 - [x] **MAP-CALL-DEPLOY-HOLD / P1** — 2026-11-25 소유자 해제. Map #1542(e2e7e66)가 #1549 분류·나이 기준 혼합 흡수. 남은 것: 배포 뒤 Map 상태 job의 503 code 분류 1~2주기 확인.

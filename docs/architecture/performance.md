@@ -700,3 +700,10 @@ ADR-016 결정 갱신. 입력 revision namespace의 배포 식별자가 `RELEASE
 - **안전장치·저하 표시** — 지문을 만들 수 없으면(소스 없는 이미지) artifact 없는 완전 구성 경로로 간다(정확하지만 느리다).
   `/health`의 `reference_artifacts: "disabled"`·`reference_payload_fingerprint: null`, 기동 WARNING 로그로 드러난다. 읽을
   때의 page model 재검증은 그대로다.
+
+## 유가 통계 시군구 페이지와 장기 추이(2026-11-26)
+
+`/v1/transport/fuel/statistics?scope=sigungu`는 운영 공개 GET에서 1.7~3.4초였다(응답 없는 유종도 2.6~3.0초). 현재 범주 읽기가 기본키
+skip scan으로 230개 범주마다 색인을 다시 찾는 것이 원인이라고 추정한다(운영 EXPLAIN 미확인, 배포 뒤 확인). 0050 인덱스 `(source, scope, day, product_code)` 뒤 400일 합성 데이터에서 Index Searches
+461→1, 공유 버퍼 3,494→361(B027). 장기 추이는 좁은 표 `fuel_statistics_history`만 읽는다(유종당 최대 400점, 로컬 16~29ms). 측정·원인·한계는
+[유가 통계](../fuel-statistics.md#통계-페이지-시군구-읽기-2026-11-26), 측정 스크립트 `backend/tests/benchmarks/fuel_statistics_page.py`.

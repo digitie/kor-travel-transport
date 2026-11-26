@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
-import { FuelPriceTrend, FuelStatisticsCard, FuelStatisticsPage, FuelViewportSummary, type FuelViewportStatistics } from "./fuel-statistics";
+import { FuelLongTrend, FuelPriceTrend, FuelStatisticsCard, FuelStatisticsPage, FuelViewportSummary, type FuelViewportStatistics } from "./fuel-statistics";
 import * as journey from "@/lib/journey";
 
 vi.mock("./fuel-price-chart-loader", async () => ({ default: (await import("./fuel-price-chart")).default }));
@@ -444,7 +444,8 @@ test("전체 유종은 단일 요청·가격순 10곳·주소 링크·동일 필
   try {
     await act(async () => root.render(<FuelStatisticsPage />));
     expect(get).toHaveBeenCalledTimes(1); expect(get.mock.calls[0][0]).toContain("product_code=ALL");
-    expect(container.querySelectorAll(".fuel-stat-filters label")).toHaveLength(3);
+    expect(container.querySelectorAll(".fuel-stat-filters label")).toHaveLength(4);
+    expect(container.querySelector<HTMLSelectElement>('select[aria-label="기간"]')?.value).toBe("30");
     expect(container.querySelector(".fuel-stat-filters")?.lastElementChild?.textContent).toBe("새로고침");
     expect(container.querySelectorAll(".fuel-stat-category option")).toHaveLength(1);
     expect(container.querySelectorAll(".fuel-stat-card")).toHaveLength(0);
@@ -492,4 +493,102 @@ test("이전 집계는 알려진 최저가 한 곳을 보존하고 10곳을 꾸�
     expect(tables.textContent).toContain("10곳 순위가 저장되지 않았습니다");
     expect(tables.textContent).toContain("이 유종의 통계가 없습니다");
   } finally { await act(async () => root.unmount()); get.mockRestore(); }
+});
+
+
+const page = { generated_at: "2026-11-26T00:17:00Z", update_pending: false, history_scope_key: "all",
+  items: [{ ...metrics, product_code: "B027", scope_key: "all", label: "전국" }], history: [historyRow("2026-11-26", 1700)] };
+const trendPoint = (day: string, average_price: number, extra: Record<string, unknown> = {}) => ({ product_code: "B027", day, first_day: day, last_day: day,
+  day_count: 1, generated_at: `${day}T00:17:00Z`, average_price, minimum_price: average_price - 100, maximum_price: average_price + 100, station_count: 1000, ...extra });
+async function choosePeriod(container: HTMLElement, value: string) {
+  const select = container.querySelector<HTMLSelectElement>('select[aria-label="기간"]')!;
+  await act(async () => { select.value = value; select.dispatchEvent(new Event("change", { bubbles: true })); });
+}
+
+test("90일은 공개 세대 날짜까지 일 단위 장기 추이를 따로 읽고 같은 차트·표로 보인다", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const trend = { bucket: "day", from_day: "2026-08-29", to_day: "2026-11-26", label: "전국", generated_at: page.generated_at,
+    points: [trendPoint("2026-11-24", 1690), trendPoint("2026-11-26", 1700)] };
+  const get = vi.spyOn(journey, "transportGet").mockImplementation(async (path: string) => path.startsWith("transport/fuel/statistics/history") ? trend : page);
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelStatisticsPage />));
+    expect(container.textContent).toContain("최근 30일 평균 유가 · 전국");
+    expect(get).toHaveBeenCalledTimes(1);
+    await choosePeriod(container, "90");
+    expect(get).toHaveBeenCalledTimes(2);
+    const url = new URL(`http://x/${get.mock.calls[1][0]}`);
+    expect(url.pathname).toBe("/transport/fuel/statistics/history");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ scope: "nationwide", scope_key: "all", product_code: "ALL",
+      to: "2026-11-26", bucket: "day", from: "2026-08-29" });
+    expect(container.textContent).toContain("최근 90일 평균 유가 · 전국");
+    expect(container.querySelector('[aria-label="최근 90일 유종별 평균·최저·최고 유가"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="최근 30일 유종별 평균·최저·최고 유가"]')).toBeNull();
+    const table = container.querySelector('[aria-label="최근 90일 유가 일별 관측값"]')!;
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(2);
+    expect(table.textContent).not.toContain("기록 일수");
+    expect(container.textContent).toContain("일 단위");
+    // 30일로 돌아오면 다시 요청하지 않고 페이지 응답의 30일 이력을 쓴다.
+    await choosePeriod(container, "30");
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('[aria-label="최근 30일 유종별 평균·최저·최고 유가"]')).not.toBeNull();
+    await choosePeriod(container, "365");
+    expect(new URL(`http://x/${get.mock.calls[2][0]}`).searchParams.get("from")).toBe("2025-11-27");
+  } finally { await act(async () => root.unmount()); container.remove(); get.mockRestore(); }
+});
+
+test("전체는 auto 버킷으로 읽고 주 단위 평균의 뜻·기록 일수를 표시한다", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const trend = { bucket: "week", from_day: "2025-01-02", to_day: "2026-11-26", label: "전국", generated_at: page.generated_at,
+    points: [trendPoint("2025-12-29", 1650, { first_day: "2025-12-29", last_day: "2026-01-04", day_count: 7, minimum_price: null }),
+      trendPoint("2026-01-05", 1660, { first_day: "2026-01-05", last_day: "2026-01-08", day_count: 4 })] };
+  const get = vi.spyOn(journey, "transportGet").mockImplementation(async (path: string) => path.startsWith("transport/fuel/statistics/history") ? trend : page);
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelStatisticsPage />));
+    await choosePeriod(container, "all");
+    const url = new URL(`http://x/${get.mock.calls[1][0]}`);
+    expect(url.searchParams.get("bucket")).toBe("auto");
+    expect(url.searchParams.has("from")).toBe(false);
+    expect(container.textContent).toContain("전체 기간 평균 유가 · 전국");
+    expect(container.textContent).toContain("주 단위(월요일 시작) · 평균은 그 주 일별 평균의 단순 평균");
+    expect(container.textContent).toContain("일부 기간의 최저·최고가는 미제공");
+    const table = container.querySelector('[aria-label="전체 기간 유가 주별 관측값"]')!;
+    expect(table.textContent).toContain("기록 일수");
+    expect(table.textContent).toContain("2025-12-29 → 2026-01-04");
+    expect(table.textContent).toContain("미제공");
+  } finally { await act(async () => root.unmount()); container.remove(); get.mockRestore(); }
+});
+
+test("장기 추이 실패는 30일 통계를 지우지 않고 그 자리에서 알린다", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const get = vi.spyOn(journey, "transportGet").mockImplementation(async (path: string) => {
+    if (path.startsWith("transport/fuel/statistics/history")) throw new Error("network");
+    return page;
+  });
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelStatisticsPage />));
+    await choosePeriod(container, "90");
+    expect(container.querySelector(".fuel-long-trend [role=alert]")?.textContent).toBe("장기 추이를 불러오지 못했습니다.");
+    expect(container.querySelector(".fuel-cheapest-tables")).not.toBeNull();
+  } finally { await act(async () => root.unmount()); container.remove(); get.mockRestore(); }
+});
+
+test("주·월 점 간격에서는 선을 끊지 않고 그보다 먼 빈 기간에서만 끊는다", async () => {
+  const { fuelLineValues } = await import("@/lib/fuel-chart-model");
+  const weekly = fuelLineValues([{ time: "2026-01-05", average: 1 }, { time: "2026-01-12", average: 2 }, { time: "2026-01-26", average: 3 }], 7);
+  expect(weekly.map(([, value]) => value)).toEqual([1, 2, null, 3]);
+  const monthly = fuelLineValues([{ time: "2026-01-01", average: 1 }, { time: "2026-02-01", average: 2 }, { time: "2026-03-01", average: 3 }, { time: "2026-05-01", average: 4 }], 31);
+  expect(monthly.map(([, value]) => value)).toEqual([1, 2, 3, null, 4]);
+  expect(fuelLineValues([{ time: "2026-01-01", average: 1 }, { time: "2026-01-03", average: 2 }]).map(([, value]) => value)).toEqual([1, null, 2]);
+});
+
+test("점이 많은 장기 추이는 최저·최고를 세로선 대신 점선으로 그린다고 알린다", () => {
+  const points = Array.from({ length: 90 }, (_, i) => trendPoint(new Date(Date.UTC(2026, 7, 29 + i)).toISOString().slice(0, 10), 1700 + i));
+  const many = renderToStaticMarkup(<FuelLongTrend period="90" trend={{ bucket: "day", from_day: "2026-08-29", to_day: "2026-11-26", label: "전국", generated_at: page.generated_at, points }} />);
+  expect(many).toContain("실선: 평균 · 같은 색 점선: 최저·최고");
+  const few = renderToStaticMarkup(<FuelLongTrend period="90" trend={{ bucket: "day", from_day: "2026-11-25", to_day: "2026-11-26", label: "전국", generated_at: page.generated_at, points: points.slice(0, 2) }} />);
+  expect(few).toContain("세로선 양 끝: 최저·최고");
+  expect(renderToStaticMarkup(<FuelLongTrend period="all" trend={{ bucket: "month", from_day: null, to_day: null, label: null, generated_at: null, points: [] }} />)).toContain("이 기간의 추이 데이터가 없습니다");
 });

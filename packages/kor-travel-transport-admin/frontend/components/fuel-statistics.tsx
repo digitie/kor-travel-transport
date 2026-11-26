@@ -32,6 +32,28 @@ export type FuelViewportStatistics = FuelMetrics & { product_code: string };
 type Group = FuelMetrics & { scope_key: string; label: string; product_code?: string };
 type History = { day: string; generated_at: string; average_price: number; station_count: number; product_code?: string; minimum_price?: number | null; maximum_price?: number | null; cheapest_station?: FuelChartStation | null };
 type Statistics = { generated_at: string | null; update_pending: boolean; history_scope_key: string | null; items: Group[]; history: History[] };
+/** `GET /v1/transport/fuel/statistics/history`의 점. 주·월 버킷 평균은 일별 평균의 단순 평균이다(주유소 수 가중 아님). */
+type TrendPoint = { product_code: string; day: string; first_day: string; last_day: string; day_count: number; generated_at: string; average_price: number; minimum_price: number | null; maximum_price: number | null; station_count: number };
+type TrendBucket = "day" | "week" | "month";
+type Trend = { bucket: TrendBucket; from_day: string | null; to_day: string | null; label: string | null; generated_at: string | null; points: TrendPoint[] };
+export type FuelStatisticsPeriod = "30" | "90" | "365" | "all";
+type Period = FuelStatisticsPeriod;
+const periods: [Period, string][] = [["30", "30일"], ["90", "90일"], ["365", "1년"], ["all", "전체"]];
+const periodHeading: Record<Period, string> = { "30": "최근 30일", "90": "최근 90일", "365": "최근 1년", all: "전체 기간" };
+const bucketNote: Record<TrendBucket, string> = {
+  day: "일 단위 · KST 하루의 마지막 정상 수집",
+  week: "주 단위(월요일 시작) · 평균은 그 주 일별 평균의 단순 평균, 최저·최고는 그 주의 최저·최고",
+  month: "월 단위 · 평균은 그 달 일별 평균의 단순 평균, 최저·최고는 그 달의 최저·최고",
+};
+const bucketGapDays: Record<TrendBucket, number> = { day: 1, week: 7, month: 31 };
+/** 공개 통계 세대 시각의 KST 날짜(통계 일자와 같은 기준). */
+function kstDay(value: string) {
+  const instant = Date.parse(value);
+  return Number.isFinite(instant) ? new Date(instant + 9 * 3600000).toISOString().slice(0, 10) : null;
+}
+function daysBefore(day: string, days: number) {
+  return new Date(Date.parse(`${day}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+}
 const money = (value: number) => value.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
 const priceTimeFormat = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Seoul", year: "2-digit", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 function priceTimestamp(value?: string | null) {
@@ -335,6 +357,38 @@ export function FuelPriceTrend({ rows }: { rows: History[] }) {
       { id: "station", header: "최저가 주유소", cell: ({ row: { original: row } }) => <StationAddress station={row.cheapest_station} /> },
     ]} /></details></>;
 }
+/** 30일보다 긴 기간: 장기 추이 API의 일·주·월 점. 30일 그래프와 같은 차트·표 모양을 쓴다. */
+export function FuelLongTrend({ trend, period }: { trend: Trend; period: Exclude<Period, "30"> }) {
+  if (!trend.points.length) return <p className="text-sm text-text-secondary">이 기간의 추이 데이터가 없습니다.</p>;
+  const products = [...new Set(trend.points.map(point => point.product_code))].sort((a, b) => productOrder(a) - productOrder(b) || a.localeCompare(b));
+  const daily = trend.bucket === "day";
+  const unit = daily ? "일별" : trend.bucket === "week" ? "주별" : "월별";
+  const span = trend.from_day && trend.to_day ? (Date.parse(trend.to_day) - Date.parse(trend.from_day)) / 86_400_000 : 0;
+  const columns: ColumnDef<TrendPoint, unknown>[] = [
+    { id: "period", header: daily ? "날짜(KST)" : "기간(KST)", cell: ({ row: { original: point } }) => daily ? point.day : `${point.first_day} → ${point.last_day}` },
+    { id: "product", header: "유종", cell: ({ row: { original: point } }) => fuelProductLabel(point.product_code) },
+    { id: "average", header: "평균(원/L)", cell: ({ row: { original: point } }) => money(point.average_price) },
+    { id: "minimum", header: "최저", cell: ({ row: { original: point } }) => point.minimum_price == null ? "미제공" : money(point.minimum_price) },
+    { id: "maximum", header: "최고", cell: ({ row: { original: point } }) => point.maximum_price == null ? "미제공" : money(point.maximum_price) },
+    { id: "stations", header: daily ? "주유소" : "주유소(일평균)", cell: ({ row: { original: point } }) => point.station_count.toLocaleString("ko-KR") },
+    ...(daily ? [] : [{ id: "days", header: "기록 일수", cell: ({ row: { original: point } }: { row: { original: TrendPoint } }) => point.day_count }]),
+  ];
+  // 점이 많으면 세로선이 면처럼 겹친다. 그때는 최저·최고를 점선으로 그린다.
+  const rangeAsLines = trend.points.length / products.length > 40;
+  return <><p className="fuel-stat-chart-key">{rangeAsLines ? "실선: 평균 · 같은 색 점선: 최저·최고 (원/L)" : "선: 평균 · 세로선 양 끝: 최저·최고 (원/L)"}</p>
+    <p className="fuel-stat-bucket-note text-xs text-text-secondary">{bucketNote[trend.bucket]}{trend.from_day && trend.to_day ? ` · ${trend.from_day} → ${trend.to_day}` : ""}. 기록이 없는 날짜는 채우지 않습니다.</p>
+    {trend.points.some(point => point.minimum_price == null || point.maximum_price == null) ? <p className="fuel-stat-extremes-note text-xs text-text-secondary">일부 기간의 최저·최고가는 미제공입니다. 평균가로 대신 채우지 않습니다.</p> : null}
+    <FuelPriceChart label={`${periodHeading[period]} 유종별 평균·최저·최고 유가`} maxGapDays={bucketGapDays[trend.bucket]} longRange={span > 120} rangeAsLines={rangeAsLines}
+      series={products.map(product => ({ product, points: trend.points.filter(point => point.product_code === product).map(point => ({ time: point.day, average: point.average_price, minimum: point.minimum_price, maximum: point.maximum_price, generated_at: point.generated_at })) }))} />
+    <details className="fuel-stat-table overflow-x-auto"><summary className="flex min-h-11 cursor-pointer items-center text-sm text-text-secondary">{unit} 가격 표</summary><VirtualTable ariaLabel={`${periodHeading[period]} 유가 ${unit} 관측값`} data={trend.points} getRowId={point => `${point.product_code}:${point.day}`} virtualized={false} columns={columns} /></details></>;
+}
+/** 장기 추이 영역의 조회 중·실패·결과. 30일 통계(순위 표 등)와 따로 알린다. */
+function FuelLongTrendSection({ period, trend }: { period: Exclude<Period, "30">; trend: TrendState }) {
+  const body = trend.pending ? <p role="status" className="text-sm text-text-secondary">추이 조회 중…</p>
+    : trend.error ? <p role="alert" className="text-sm text-destructive">{trend.error}</p>
+    : trend.data ? <FuelLongTrend trend={trend.data} period={period} /> : null;
+  return <div className="fuel-long-trend" aria-busy={trend.pending}>{body}</div>;
+}
 const productOrder = (code: string) => FUEL_CHART_ORDER.includes(code) ? FUEL_CHART_ORDER.indexOf(code) : FUEL_CHART_ORDER.length;
 function StationAddress({ station }: { station?: FuelChartStation | null }) {
   const href = fuelStationHref(station);
@@ -360,15 +414,16 @@ function FuelCheapestTables({ items, allProducts = false }: { items: Group[]; al
 }
 
 export function FuelStatisticsPage() {
-  const { pending, scope, setScope, setScopeKey, product, setProduct, setReload, shownData, categoryKey, error, selected, comparisonRows } = useFuelStatistics();
+  const { pending, scope, setScope, setScopeKey, product, setProduct, period, setPeriod, trend, setReload, shownData, categoryKey, error, selected, comparisonRows } = useFuelStatistics();
   return <section className="fuel-stat-section flex flex-col gap-6" aria-label="유가 통계" aria-busy={pending}>
     <div className="fuel-stat-filters">
       <label>범위<select aria-label="범위" value={scope} onChange={(event) => { setScope(event.target.value); setScopeKey(""); }} >{scopes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>유종<select aria-label="유종" value={product} onChange={(event) => { setProduct(event.target.value); setScopeKey(""); }}>{["ALL", ...FUEL_CHART_ORDER].map((code) => <option key={code} value={code}>{code === "ALL" ? "전체" : fuelProductLabel(code)}</option>)}</select></label>
+      <label>기간<select aria-label="기간" value={period} onChange={(event) => setPeriod(event.target.value as Period)}>{periods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       {shownData?.items.length ? <label className="fuel-stat-category">추이 범주<select aria-label="추이 범주" value={categoryKey} onChange={event => setScopeKey(event.target.value)}>{[...new Map(shownData.items.map(row => [row.scope_key, row])).values()].map(row => <option key={row.scope_key} value={row.scope_key}>{row.label}</option>)}</select></label> : null}
       <Button className="fuel-stat-refresh" type="button" variant="outline" size="sm" onClick={() => setReload((value) => value + 1)}>새로고침</Button>
     </div>
-    <FuelStatisticsResult pending={pending} error={error} shownData={shownData} selected={selected} product={product} comparisonRows={comparisonRows} />
+    <FuelStatisticsResult pending={pending} error={error} shownData={shownData} selected={selected} product={product} comparisonRows={comparisonRows} period={period} trend={trend} />
     {shownData?.items.length ? <div className="fuel-stat-table overflow-x-auto"><FuelCategoryTable shownData={shownData} setScopeKey={setScopeKey} /></div> : null}
     {!pending && !error && selected ? <details className="fuel-driving-details"><summary>차량 운영비 비교 · {fuelProductLabel(selected.product_code ?? "B027")}</summary><FuelDriverStatistics metrics={selected} /></details> : null}
   </section>;
@@ -380,9 +435,12 @@ function useFuelStatistics() {
   const [scope, setScope] = useState("nationwide");
   const [product, setProduct] = useState("ALL");
   const [scopeKey, setScopeKey] = useState("");
+  const [period, setPeriod] = useState<Period>("30");
   const [reload, setReload] = useState(0);
   const [dataContext, setDataContext] = useState("");
   const [data, setData] = useState<Statistics | null>(null);
+  // 페이지 응답이 새로 올 때마다 올린다. 장기 추이는 이 값으로 다시 읽는다(새로고침 직후 옛 응답으로 한 번 더 읽지 않는다).
+  const [dataVersion, setDataVersion] = useState(0);
   const [error, setError] = useState(false);
   const [pending, setPending] = useState(true);
   useEffect(() => {
@@ -391,7 +449,7 @@ function useFuelStatistics() {
     const search = new URLSearchParams({ scope, product_code: product });
     if (scopeKey) search.set("scope_key", scopeKey);
     transportGet<Statistics>(`transport/fuel/statistics?${search}`, controller.signal).then((value) => {
-      if (!controller.signal.aborted) { setData(value); setDataContext(`${scope}/${product}`); setPending(false); }
+      if (!controller.signal.aborted) { setData(value); setDataVersion(version => version + 1); setDataContext(`${scope}/${product}`); setPending(false); }
     }).catch(() => { if (!controller.signal.aborted) { setError(true); setPending(false); } });
     return () => controller.abort();
   }, [scope, product, scopeKey, reload]);
@@ -404,9 +462,33 @@ function useFuelStatistics() {
     { day: comparison.periodStart!, row: comparison.start },
   ] : [];
   const categoryKey = shownData?.items.some((row) => row.scope_key === scopeKey) ? scopeKey : selected?.scope_key ?? "";
-  return { pending, scope, setScope, setScopeKey, product, setProduct, setReload, shownData, categoryKey, error, selected, comparisonRows };
+  const trend = useFuelLongTrend(period, scope, product, pending ? null : shownData, dataVersion);
+  return { pending, scope, setScope, setScopeKey, product, setProduct, period, setPeriod, trend, setReload, shownData, categoryKey, error, selected, comparisonRows };
 }
 
+
+type TrendState = { pending: boolean; error: string | null; data: Trend | null };
+/** 30일보다 긴 기간의 장기 추이. 통계 페이지가 고른 범주·공개 세대 날짜에 맞춰 읽는다(그 날짜보다 새 날짜는 묻지 않는다). */
+function useFuelLongTrend(period: Period, scope: string, product: string, shownData: Statistics | null, dataVersion: number): TrendState {
+  const [state, setState] = useState<TrendState & { context: string }>({ pending: false, error: null, data: null, context: "" });
+  const key = shownData?.history_scope_key ?? null;
+  const to = shownData?.generated_at ? kstDay(shownData.generated_at) : null;
+  const context = period === "30" || !key || !to ? "" : `${period}/${scope}/${product}/${key}/${to}/${dataVersion}`;
+  useEffect(() => {
+    if (!context || !key || !to) return;
+    const controller = new AbortController();
+    const search = new URLSearchParams({ scope, scope_key: key, product_code: product, to, bucket: period === "all" ? "auto" : "day" });
+    if (period !== "all") search.set("from", daysBefore(to, Number(period) - 1));
+    transportGet<Trend>(`transport/fuel/statistics/history?${search}`, controller.signal).then(data => {
+      if (!controller.signal.aborted) setState({ pending: false, error: null, data, context });
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setState({ pending: false, error: error instanceof Error && /[가-힣]/.test(error.message) ? error.message : "장기 추이를 불러오지 못했습니다.", data: null, context });
+    });
+    return () => controller.abort();
+  }, [context, key, to, scope, product, period]);
+  // 다른 범주·기간·새로고침의 이전 응답은 보이지 않는다. 아직 응답이 없으면 조회 중이다.
+  return state.context === context ? state : { pending: Boolean(context), error: null, data: null };
+}
 
 // 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
 function useFuelViewportSummary({ items, detailOpen = false, detailExpanded }: { items: FuelViewportStatistics[]; pending: boolean; failed?: boolean; pricesStale?: boolean; pricesLastRefreshedAt?: string | null; detailOpen?: boolean; detailExpanded?: boolean; onDetailExpandedChange?: (expanded: boolean) => void }) {
@@ -445,9 +527,10 @@ function FuelViewportValues({ bodyId, expanded, pending, failed, detailOpen, pri
 }
 
 
-function FuelHistoryContext({ selected, comparisonRows }: Pick<ReturnType<typeof useFuelStatistics>, "selected" | "comparisonRows">) {
-  return (<div className="section-title-row flex flex-wrap items-center gap-2"><h2 className="text-base font-semibold text-text-primary">최근 30일 평균 유가 · {selected?.label}</h2><InfoButton label="유가 집계 기준">
+function FuelHistoryContext({ selected, comparisonRows, period }: Pick<ReturnType<typeof useFuelStatistics>, "selected" | "comparisonRows" | "period">) {
+  return (<div className="section-title-row flex flex-wrap items-center gap-2"><h2 className="text-base font-semibold text-text-primary">{periodHeading[period]} 평균 유가 · {selected?.label}</h2><InfoButton label="유가 집계 기준">
           <p>KST 일별 마지막 정상 수집 기준이며 수집 기록이 있는 날짜만 표시합니다. 전국·지역은 오피넷, 고속도로는 한국도로공사 기준입니다. 유효 가격을 주유소별 동일 비중으로 집계합니다. 절감액은 범주 평균과 최저가의 차이입니다.</p>
+          <p>일별 기록은 기간 제한 없이 보존합니다. 90일·1년은 일 단위, 전체는 기록 기간에 따라 일·주·월 단위로 보여 주며, 주·월 평균은 그 기간 일별 평균의 단순 평균입니다(주유소 수로 가중하지 않음). 날짜별 최저가 주유소는 30일 보기에서만 제공합니다.</p>
           <p>아래 비교 관측은 {fuelProductLabel(selected?.product_code ?? "B027")} 기준입니다. 평균 차이는 마지막 집계일과 정확한 전일·6일 전을 비교합니다. 날짜별 대상 주유소가 달라질 수 있습니다. 비교 관측이 없으면 가까운 날짜나 0으로 대체하지 않습니다.</p>
           {comparisonRows.map(({ day, row }) => <p key={day}>{day} · {row ? <>평균 {money(row.average_price)}원/L · 유효 {row.station_count.toLocaleString("ko-KR")}개 · 수집 <time dateTime={row.generated_at}>{dateTime(row.generated_at)} KST</time></> : "비교 관측 없음"}</p>)}
           {selected ? <p>선택 범주 가격 차이 {money(selected.price_spread)}원/L · 표준편차 {money(selected.standard_deviation)}원/L</p> : null}
@@ -482,14 +565,15 @@ function FuelPriceComparison({ metrics, history }: Pick<Parameters<typeof FuelSt
   </>;
 }
 
-function FuelStatisticsResult({ pending, error, shownData, selected, product, comparisonRows }: Pick<ReturnType<typeof useFuelStatistics>, "pending" | "error" | "shownData" | "selected" | "product" | "comparisonRows">) {
+function FuelStatisticsResult({ pending, error, shownData, selected, product, comparisonRows, period, trend }: Pick<ReturnType<typeof useFuelStatistics>, "pending" | "error" | "shownData" | "selected" | "product" | "comparisonRows" | "period" | "trend">) {
   if (pending) return <p role="status" className="text-sm text-text-secondary">통계 조회 중…</p>;
   if (error) return <p role="alert" className="text-sm text-destructive">통계를 불러오지 못했습니다. 새로고침해 주세요.</p>;
   if (!shownData) return null;
   return <>
       <p className="fuel-collection-basis">{shownData.generated_at ? `수집 기준 ${dateTime(shownData.generated_at)}` : "첫 수집 완료 후 통계가 생성됩니다."}{shownData.update_pending ? " · 최신 수집 통계 반영 대기" : ""}</p>
       {shownData.items.length ? <>
-        <FuelHistoryContext selected={selected} comparisonRows={comparisonRows} /><FuelPriceTrend rows={shownData.history} />
+        <FuelHistoryContext selected={selected} comparisonRows={comparisonRows} period={period} />
+        {period === "30" ? <FuelPriceTrend rows={shownData.history} /> : <FuelLongTrendSection period={period} trend={trend} />}
         <FuelCheapestTables allProducts={product === "ALL"} items={shownData.items.filter(row => row.scope_key === shownData.history_scope_key)} />
 
       </> : <p className="text-sm text-text-secondary">{product === "ALL" ? "선택한 범위의 전체 유종 통계가 없습니다." : "선택한 유종의 통계가 없습니다."}</p>}

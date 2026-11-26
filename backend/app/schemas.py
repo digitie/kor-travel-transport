@@ -492,6 +492,37 @@ class FuelStatisticsResponse(BaseModel):
     history: list[FuelStatisticsHistory]
 
 
+class FuelStatisticsTrendPoint(BaseModel):
+    """장기 추이의 한 점. day 버킷이면 day=first_day=last_day, day_count=1이다."""
+
+    product_code: str
+    day: date = Field(description="버킷 시작일(KST). week는 월요일, month는 1일")
+    first_day: date = Field(description="버킷 안 첫 기록일")
+    last_day: date = Field(description="버킷 안 마지막 기록일")
+    day_count: int = Field(description="버킷 안 기록이 있는 날짜 수(빈 날짜는 만들지 않는다)")
+    generated_at: datetime = Field(description="last_day의 공개 세대 수집 시각")
+    average_price: float = Field(description="일별 평균의 단순 평균(날짜마다 같은 비중, 주유소 수 가중 아님)")
+    minimum_price: float | None = Field(default=None, description="일별 최저의 최저. 저장되지 않은 날짜만 있으면 null")
+    maximum_price: float | None = Field(default=None, description="일별 최고의 최고. 저장되지 않은 날짜만 있으면 null")
+    station_count: int = Field(description="일별 유효 주유소 수의 평균(반올림)")
+
+
+class FuelStatisticsTrendResponse(BaseModel):
+    scope: str
+    scope_key: str
+    product_code: str
+    source: str
+    label: str | None = Field(default=None, description="범위 안 마지막 기록일의 범주 이름")
+    bucket: str = Field(description="실제 적용한 버킷(day·week·month). auto 요청이면 고른 값")
+    average_method: str = Field(description="버킷 평균 정의. mean_of_daily_averages = 일별 평균의 단순 평균")
+    max_points: int = Field(description="유종 하나의 최대 점 수")
+    from_day: date | None = Field(default=None, description="실제 범위 시작(KST, 기록이 있으면 첫 기록일 이후)")
+    to_day: date | None = Field(default=None, description="실제 범위 끝(KST). 공개 세대 날짜보다 늦지 않다")
+    generated_at: datetime | None = Field(default=None, description="응답이 기준으로 삼은 공개 통계 세대")
+    update_pending: bool = False
+    points: list[FuelStatisticsTrendPoint]
+
+
 class FuelRegionSummary(BaseModel):
     scope: str
     region_key: str
