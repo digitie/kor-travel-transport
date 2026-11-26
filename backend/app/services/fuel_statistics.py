@@ -9,7 +9,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import Float, String, and_, cast, delete, exists, func, insert, literal, or_, select, text, tuple_, union_all
@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import serialize_utc
 from app.models import (
-    FuelLatestPrice, FuelStation, FuelStatisticsDaily, FuelStatisticsPoint,
+    FuelLatestPrice, FuelStation, FuelStatisticsDaily, FuelStatisticsHistory, FuelStatisticsPoint,
     FuelStatisticsState, FuelRegionSummary, RestAreaFuelPrice, TransportCollectionState,
 )
 from app.services.flight_status import sanitize_upstream_error
@@ -209,6 +209,7 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
     rows = [{"source": source, "scope": scope, "scope_key": key, "product_code": product,
              "day": day, "generated_at": stamp, "label": group.label, "metrics_json": group.metrics()}
             for (scope, key, product), group in groups.items()]
+    history_rows = [_history_row(row) for row in rows]
     # 원본 조회·정규화·point insert 중에는 이 잠금을 보유하지 않는다.
     await lock_fuel_statistics(session, source)
     # 다른 게시자가 먼저 끝났을 수 있다. identity map의 오래된 state를 재사용하지 않는다.
@@ -249,11 +250,46 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
     ))
     for offset in range(0, len(rows), 250):
         await session.execute(insert(FuelStatisticsDaily), rows[offset:offset + 250])
+    # 장기 추이 표도 같은 transaction으로 그날 값을 교체한다. 일별 행과 늘 같은 세대·같은 값이다.
+    await session.execute(delete(FuelStatisticsHistory).where(
+        FuelStatisticsHistory.source == source, FuelStatisticsHistory.day == day,
+    ))
+    for offset in range(0, len(history_rows), 500):
+        await session.execute(insert(FuelStatisticsHistory), history_rows[offset:offset + 500])
+    if state is not None and state.day < day:
+        # 하루의 첫 공개에서 직전 공개 날짜를 일별 행에 다시 맞춘다. 0049 배포 중 옛 이미지가 migration 뒤에
+        # 공개한 날(일별 행만 바뀐다)을 남기지 않는다. 이미 같으면 아무 행도 쓰지 않는다.
+        await _sync_history_day(session, source, state.day)
     if state is None:
         session.add(FuelStatisticsState(source=source, generated_at=stamp, day=day))
     else:
         state.generated_at, state.day = stamp, day
     await session.flush()
+
+
+def _history_row(row: dict) -> dict:
+    metrics = row["metrics_json"]
+    return {key: row[key] for key in ("source", "scope", "scope_key", "product_code", "day", "generated_at", "label")} | {
+        "average_price": metrics["average_price"], "minimum_price": metrics.get("minimum_price"),
+        "maximum_price": metrics.get("maximum_price"), "station_count": metrics["station_count"]}
+
+
+async def _sync_history_day(session: AsyncSession, source: str, day: date) -> None:
+    """그날 장기 추이 행을 일별 행(정본)과 같게 한다. 세대가 다른 행만 지우고 빠진 행만 일별 JSON에서 채운다."""
+    d, h = FuelStatisticsDaily, FuelStatisticsHistory
+    same_key = and_(d.source == h.source, d.scope == h.scope, d.scope_key == h.scope_key,
+                    d.product_code == h.product_code, d.day == h.day)
+    await session.execute(delete(h).where(
+        h.source == source, h.day == day, ~exists().where(same_key, d.generated_at == h.generated_at),
+    ).execution_options(synchronize_session=False))
+    average, count = d.metrics_json["average_price"].as_float(), d.metrics_json["station_count"].as_integer()
+    await session.execute(insert(h).from_select(
+        ["source", "scope", "scope_key", "product_code", "day", "generated_at", "label",
+         "average_price", "minimum_price", "maximum_price", "station_count"],
+        select(d.source, d.scope, d.scope_key, d.product_code, d.day, d.generated_at, d.label, average,
+               d.metrics_json["minimum_price"].as_float(), d.metrics_json["maximum_price"].as_float(), count)
+        .where(d.source == source, d.day == day, average > 0, count > 0, ~exists().where(same_key)),
+    ))
 
 
 def _deferred_cause(exc: BaseException) -> str:
@@ -450,6 +486,131 @@ async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: 
                        "ranking_complete": bool(row.scope_key == selected_key and (
                            row.metrics_json.get("ranking_complete") or row.product_code in legacy_rankings))}
                       for row in current], "history": history}
+
+
+#: 장기 추이 한 유종의 최대 점 수. 일 단위 약 13개월, 주 단위 약 7.7년, 월 단위 약 33년이다.
+HISTORY_MAX_POINTS = 400
+HISTORY_BUCKETS = ("day", "week", "month")
+#: 버킷 평균의 정의(응답 ``average_method``). 주유소 수로 가중하지 않는다.
+HISTORY_AVERAGE_METHOD = "mean_of_daily_averages"
+#: 화면과 같은 유종 순서(휘발유→경유→고급유→LPG→등유). 그 밖은 코드 순으로 뒤에 둔다.
+_PRODUCT_ORDER = {code: index for index, code in enumerate(("B027", "D047", "B034", "K015", "C004"))}
+
+
+class FuelHistoryRequestError(ValueError):
+    """장기 추이 요청이 계약 밖이다(HTTP 422)."""
+
+
+def _bucket_start(day: date, bucket: str) -> date:
+    if bucket == "week":
+        return day - timedelta(days=day.weekday())  # ISO 주: 월요일 시작
+    if bucket == "month":
+        return day.replace(day=1)
+    return day
+
+
+def _bucket_count(start: date, end: date, bucket: str) -> int:
+    if bucket == "month":
+        return (end.year - start.year) * 12 + end.month - start.month + 1
+    if bucket == "week":
+        return (_bucket_start(end, "week") - _bucket_start(start, "week")).days // 7 + 1
+    return (end - start).days + 1
+
+
+def _months_before(day: date, months: int) -> date:
+    index = day.year * 12 + day.month - 1 - months
+    return date(index // 12, index % 12 + 1, 1)
+
+
+async def fuel_statistics_history(session: AsyncSession, scope: str, scope_key: str | None, product_code: str,
+                                  from_day: date | None, to_day: date | None, bucket: str = "auto") -> dict:
+    """공개 세대까지의 장기 일별 요약을 일·주·월 점으로 돌려준다. 순위 JSON은 읽지 않는다.
+
+    - 공개 state와 추이 행을 한 SQL snapshot에서 읽고, 공개 세대 날짜·시각보다 새 행은 내지 않는다(``to``는 공개 날짜로 낮춘다).
+    - ``from``이 없으면 저장된 첫 날짜부터다(``to`` 기준 ``HISTORY_MAX_POINTS``개월 전까지만 읽는다).
+    - 버킷 평균은 그 버킷에 기록이 있는 날짜들의 일별 평균을 같은 비중으로 평균한다(주유소 수 가중 아님). 최저·최고는
+      일별 최저의 최저·일별 최고의 최고, 주유소 수는 일별 주유소 수 평균(반올림), ``generated_at``은 버킷 마지막 날의 세대다.
+    - ``auto``는 실제 기록 범위가 ``HISTORY_MAX_POINTS``점 안에 드는 가장 작은 버킷(일→주→월)을 고른다. 버킷을 지정했는데
+      한 유종의 점이 그보다 많아지는 범위면 ``FuelHistoryRequestError``다.
+    """
+    source = OPINET if scope in {"nationwide", "sido", "sigungu"} else HIGHWAY
+    if scope_key is None:
+        if scope not in {"nationwide", "highways"}:
+            raise FuelHistoryRequestError("이 범위는 scope_key가 필요합니다(통계 페이지의 history_scope_key·items[].scope_key).")
+        scope_key = "all"
+    if from_day is not None and to_day is not None:
+        if from_day > to_day:
+            raise FuelHistoryRequestError("from은 to보다 늦을 수 없습니다.")
+        if _bucket_count(from_day, to_day, "month") > HISTORY_MAX_POINTS:
+            raise FuelHistoryRequestError(f"조회 기간은 {HISTORY_MAX_POINTS}개월 이하여야 합니다.")
+    h, state = FuelStatisticsHistory, FuelStatisticsState
+    # 공개 날짜보다 새 날짜·세대는 읽지 않는다. 같은 문장이 state를 읽으므로 공개 전환과 섞이지 않는다.
+    conditions = [h.source == state.source, h.scope == scope, h.scope_key == scope_key,
+                  h.day <= state.day, h.generated_at <= state.generated_at]
+    if product_code != "ALL":
+        conditions.append(h.product_code == product_code)
+    if to_day is not None:
+        conditions.append(h.day <= to_day)
+    if from_day is not None:
+        conditions.append(h.day >= from_day)
+    else:
+        # from이 없어도 읽는 양은 월 단위 최대 점 수(약 33년)로 묶는다. 정확한 달 경계는 아래에서 자른다.
+        span = HISTORY_MAX_POINTS * 31
+        if to_day is not None:
+            conditions.append(h.day >= to_day - timedelta(days=span))
+        elif session.bind.dialect.name == "sqlite":
+            conditions.append(h.day >= func.date(state.day, f"-{span} days"))
+        else:
+            conditions.append(h.day >= state.day - span)
+    rows = (await session.execute(select(
+        state.generated_at.label("state_generated_at"), state.day.label("state_day"),
+        h.product_code, h.day, h.generated_at, h.label, h.average_price, h.minimum_price, h.maximum_price,
+        h.station_count,
+    ).select_from(state).outerjoin(h, and_(*conditions)).where(state.source == source)
+        .order_by(h.product_code, h.day))).all()
+    generated_at = rows[0].state_generated_at if rows else None
+    state_day = rows[0].state_day if rows else None
+    end = to_day if state_day is None else min(to_day, state_day) if to_day is not None else state_day
+    points = [row for row in rows if row.day is not None]
+    if from_day is None and end is not None:
+        floor = _months_before(end, HISTORY_MAX_POINTS - 1)
+        points = [row for row in points if row.day >= floor]
+    if points:
+        first = min(row.day for row in points)
+        start = max(first, from_day) if from_day is not None else first
+    else:
+        start = from_day if from_day is not None and (end is None or from_day <= end) else end
+    chosen = "day" if bucket == "auto" else bucket
+    if points and bucket == "auto":
+        chosen = next((name for name in HISTORY_BUCKETS if _bucket_count(start, end, name) <= HISTORY_MAX_POINTS), "month")
+    elif points and _bucket_count(start, end, bucket) > HISTORY_MAX_POINTS:
+        raise FuelHistoryRequestError(
+            f"{bucket} 단위 점이 {HISTORY_MAX_POINTS}개를 넘습니다. from을 늦추거나 bucket=week·month·auto를 쓰세요.")
+    grouped: dict[tuple[str, date], list] = {}
+    for row in points:
+        grouped.setdefault((row.product_code, _bucket_start(row.day, chosen)), []).append(row)
+    result = []
+    for (product, bucket_day), members in sorted(grouped.items(), key=lambda item: (
+            _PRODUCT_ORDER.get(item[0][0], len(_PRODUCT_ORDER)), item[0][0], item[0][1])):
+        last = members[-1]
+        minimums = [float(row.minimum_price) for row in members if row.minimum_price is not None]
+        maximums = [float(row.maximum_price) for row in members if row.maximum_price is not None]
+        result.append({
+            "product_code": product, "day": bucket_day, "first_day": members[0].day, "last_day": last.day,
+            "day_count": len(members), "generated_at": last.generated_at,
+            "average_price": round(sum(float(row.average_price) for row in members) / len(members), 2),
+            "minimum_price": min(minimums) if minimums else None,
+            "maximum_price": max(maximums) if maximums else None,
+            "station_count": round(sum(row.station_count for row in members) / len(members)),
+        })
+    collection = await session.scalar(select(TransportCollectionState).where(TransportCollectionState.source == source))
+    pending = bool(collection and collection.last_success_at and (
+        generated_at is None or serialize_utc(collection.last_success_at) > serialize_utc(generated_at)))
+    return {"scope": scope, "scope_key": scope_key, "product_code": product_code, "source": source,
+            "label": max(points, key=lambda row: row.day).label if points else None,
+            "bucket": chosen, "average_method": HISTORY_AVERAGE_METHOD, "max_points": HISTORY_MAX_POINTS,
+            "from_day": start, "to_day": end, "generated_at": generated_at, "update_pending": pending,
+            "points": result}
 
 
 def with_publication_status(items: list[dict], last_success_at: datetime | None) -> list[dict]:

@@ -41,6 +41,17 @@ describe("공개 유가 BFF", () => {
       expect((await GET(request(path), context(path))).status).toBe(404);
     }
   });
+  it("장기 유가 추이는 고정 경로로만 전달한다", async () => {
+    vi.stubEnv("TRANSPORT_UI_MODE", "fuel"); vi.stubEnv("BACKEND_INTERNAL_URL", "http://127.0.0.1:12307");
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200, headers: { "content-type": "application/json", etag: 'W/"trend"' } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await GET(request("statistics/history?scope=nationwide&bucket=auto"), context("statistics/history"));
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:12307/v1/transport/fuel/statistics/history?scope=nationwide&bucket=auto");
+    expect(result.headers.get("etag")).toBe('W/"trend"');
+    for (const path of ["statistics/history/x", "statistics/histories", "statistics/"]) {
+      expect((await GET(request(path), context(path))).status).toBe(404);
+    }
+  });
   it("304는 본문 없이, upstream 실패·재시도 안내는 원래 상태로 돌려준다", async () => {
     vi.stubEnv("TRANSPORT_UI_MODE", "fuel");
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 304, headers: { etag: '"fuel-etag"' } }))

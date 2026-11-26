@@ -23,6 +23,67 @@
 
 현재 범주 목록과 선택 범주의 이력은 한 SQL snapshot에서 읽어 동시 발행 시에도 세대가 일치한다. 지도 응답의 각 유종 `update_pending`은 현재 원본 수집이 통계보다 앞선 경우 true이며 캐시와 별도로 매 요청 계산한다. 같은 범위/유종의 추이 범주 변경은 선택 UI와 비교표를 유지해 키보드 포커스를 보존한다. 결측 날짜는 실제 날짜 간격을 유지하며 차트 선을 연결하지 않는다. 운영 브라우저 검증에 `E2E_FUEL_MAP_CAMERA=true`를 추가하면 실제 VWorld 지도 확대2회·키보드 이동에 따른 bbox 재조회까지 검증한다.
 
+## 장기 추이
+
+상태 갱신(2026-11-26, 소유자 요청 "지역 평균 등 통계는 수집 완료 시 저장, 긴 기간 가격 추이"): 일별 기록은 처음부터 영구 보존했지만
+읽는 길이 30일 페이지뿐이었고, 그 행의 `metrics_json`은 가격순 10곳까지 담아(시군구 230곳·유종 4~5개면 하루 약 1MB) 몇 달·몇 년을
+그대로 읽기에 무거웠다.
+
+- **저장**: `fuel_statistics_history`(0049)는 일별 행과 같은 키에 평균·최저·최고·주유소 수·세대 시각·이름만 typed 열로 둔다.
+  `publish_fuel_statistics`가 일별 행·지역 요약·공개 state와 **같은 transaction**에서 그날 행을 지우고 다시 넣는다(같은 날 재수집은
+  그날 마지막 성공본으로 교체, 지난 날짜는 영구 보존). 하루의 첫 공개는 직전 공개 날짜를 일별 행(정본)에 다시 맞춘다 — 0049 배포 중
+  옛 이미지가 migration 뒤에 공개한 날은 일별 행만 바뀌기 때문이다(이미 같으면 쓰지 않는다). 한 해 약 58만 행·약 180MB(행+기본키,
+  하루 약 1,600행 기준; 일별 표는 같은 기간 약 0.7GB)다.
+- **기존 자료**: 0049가 기존 일별 행의 `metrics_json`에서 31일 창씩 옮긴다. 평균·주유소 수가 숫자가 아니거나 0 이하인 행은 옮기지 않고,
+  최저·최고가 없던 옛 행은 null로 둔다(채우지 않는다).
+- **회당(하루 안) 지역 요약은 노출하지 않는다**: `fuel_region_summaries`는 성공 세대마다 시도·시군구 값을 영구 보존하지만 이력 API를
+  두지 않았다. 오피넷 공개는 하루 3회(8시간 cron)뿐이라 하루 안 변화가 장기 추이에서 거의 보이지 않고, 같은 날 여러 세대를 섞으면
+  "그날 마지막 정상 수집"이라는 일별 정의가 깨진다. 고속도로는 같은 표에 행이 없다. 필요해지면 그 표를 읽는 별도 API로 더한다.
+
+`GET /v1/transport/fuel/statistics/history?scope=&scope_key=&product_code=&from=&to=&bucket=`:
+
+- `scope`는 통계 페이지와 같다. `scope_key`는 페이지의 `items[].scope_key`(nationwide·highways는 생략하면 `all`, 그 밖은 필수 — 없으면 422).
+  `product_code`는 유종 또는 `ALL`(유종별 점, 휘발유→경유→고급유→LPG→등유 순).
+- `from`·`to`는 KST 날짜(포함). `to`가 없거나 공개 세대 날짜보다 늦으면 공개 세대 날짜로 낮춘다. `from`이 없으면 첫 기록일부터다.
+  공개 state와 추이 행을 **한 SELECT**로 읽고 `day ≤ state.day`·`generated_at ≤ state.generated_at`인 행만 낸다(공개 전환과 섞이지 않고,
+  아직 공개되지 않은 날짜는 보이지 않는다).
+- `bucket`: `day`·`week`(ISO 주, 월요일 시작)·`month`·`auto`(기본). 유종 하나의 점은 최대 400개(일 약 13개월·주 약 7.7년·월 약 33년).
+  점 수는 실제 기록 범위(첫 기록일 이후)로 센다. 지정한 bucket으로 400개를 넘으면 422(problem+json), `auto`는 400개 안에 드는 가장 작은
+  단위를 고르고 응답 `bucket`에 적는다. `from`~`to`가 400개월을 넘거나 `from > to`도 422다.
+- **버킷 값의 뜻(`average_method: mean_of_daily_averages`)**: 평균은 그 버킷에 기록이 있는 날짜들의 일별 평균을 **같은 비중**으로
+  평균한다(주유소 수 가중 아님 — 날마다 모집단 크기가 달라도 하루 값이 같은 무게다). 최저·최고는 일별 최저의 최저·일별 최고의 최고(없던
+  날은 빼고, 모두 없으면 null), `station_count`는 일별 주유소 수 평균(반올림), `generated_at`은 버킷 마지막 기록일의 세대, `first_day`·
+  `last_day`·`day_count`는 실제 기록일이다. 빈 날짜·버킷은 만들지 않는다.
+- 응답에는 weak ETag와 `Cache-Control: private, no-cache`가 붙고 `If-None-Match`가 같으면 304다. 공개 gateway(12301·12307)와 공개 유가
+  BFF(`/api/public/fuel/statistics/history`), 관리 BFF 허용 목록에 이 경로 하나만 더했다.
+
+관리 UI `/fuel/statistics`는 범위·유종 옆에 **기간**(30일·90일·1년·전체)을 둔다. 30일은 예전 그대로 페이지 응답의 이력(날짜별 최저가
+주유소 포함)을 쓴다. 90일·1년은 페이지가 고른 범주(`history_scope_key`)와 공개 세대 KST 날짜(`to`)로 `bucket=day`, 전체는
+`bucket=auto`를 읽어 같은 ECharts 차트·표로 보인다. 주·월 점은 점 간격(7일·31일)보다 먼 빈 기간에서만 선을 끊고, 넉 달 넘는 범위는
+x축을 연.월로 쓴다. 장기 추이 실패는 그 자리에서만 알리고 현재 범주·순위 표는 그대로 둔다. 공개 유가 웹에는 통계 화면이 없어 이번에
+더하지 않았다(gateway·BFF 경로는 열어 두었다).
+
+## 통계 페이지 시군구 읽기 (2026-11-26)
+
+**증상(운영 공개 GET, 2026-11-26)**: `/v1/transport/fuel/statistics?scope=sigungu`가 유종과 무관하게 1.7~3.4초였다. 응답이 없는 유종
+(`product_code=ZZZZ`, 158바이트)도 2.6~3.0초라 응답 크기·Python이 아니라 SQL이다. 같은 요청의 시도는 0.15~0.27초, 고속도로·방향은
+0.12~0.38초였다.
+
+**원인**: 현재 범주 읽기(`fuel_current_keys` CTE와 본 SELECT의 현재 세대 가지)가 `(source, scope, day=공개일, product_code)`로 찾는데
+기본키는 `(source, scope, scope_key, product_code, day)`라 day가 scope_key 뒤에 있다. PostgreSQL 18은 이를 기본키 skip scan으로 풀고
+범주마다 색인을 다시 내려간다. 시군구는 범주가 230개이고 표의 약 90%라, 400일 합성 데이터(39만 행, PostgreSQL 18)에서 한 번에 Index
+Searches 461·공유 버퍼 3,494(B027), 921·8,421(ALL), 응답 없는 유종도 231·1,765였다. 버퍼 하나하나가 작은 공유 캐시의 ARM에서는
+무작위 읽기라 운영 시간이 여기서 난다고 본다(운영 EXPLAIN은 이 작업 권한 밖이라 직접 확인하지 못했다 — 배포 뒤 같은 공개 GET으로 확인).
+시도(16범주)·고속도로는 같은 계획이라도 찾기 횟수가 적다. 기록이 쌓일수록 기본키 앞부분이 길어져 계속 나빠지는 구조다.
+
+**수정(0050)**: `ix_fuel_statistics_daily_current (source, scope, day, product_code)`. 같은 문장(응답 바이트까지 동일, 회귀
+`tests/test_fuel_statistics.py`)이 공개일 항목만 한 번 찾는다. 같은 400일 데이터에서 Index Searches 1, 공유 버퍼 361(B027)·916(ALL)·14(없는
+유종), 계획 비용 2,042→21(없는 유종). 로컬 x86 서비스 시간은 sigungu B027 42.9→36.4ms, ALL 86.6→70.4ms(대부분 응답 조립). 회귀
+`tests/test_fuel_statistics_history.py::test_postgres_page_reads_only_the_published_day_for_many_categories`가 PostgreSQL 계획에 이
+인덱스와 "Index Searches ≤ 2"를 확인한다(인덱스를 지우면 실패). 측정 스크립트 `backend/tests/benchmarks/fuel_statistics_page.py`
+(`--hold-snapshot`은 오래된 snapshot으로 죽은 행 정리를 막아 운영의 재공개 잔여 버전도 흉내 낸다 — 36일·하루 3회·죽은 행 2배에서도 예전
+계획은 로컬 22ms라 죽은 행만으로는 운영 시간을 설명하지 못했다).
+
 ## 원본 가격의 품질
 
 집계는 양수인 원본 가격을 보존하며 임의의 정상 가격 구간으로 잘라내지 않는다. 2026-10-21 운영 대조에서 EX `B00067` 사천(부산)주유소의 휘발유 가격은 저장값184, `raw_item_json.gasolinePrice`도 `184원`이었다(관측03:32:56 UTC). 공급자 이상값은 최저가·가격 차이·50L 절감액에 영향을 준다. 이를 집계나 provider 파서의 오류로 단정하거나1840원으로 자동 보정하지 않는다. 원천 정정 추적은 별도 백로그에 남긴다.

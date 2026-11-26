@@ -154,7 +154,7 @@ server {
         return 429 '{"type":"about:blank","title":"Too Many Requests","status":429,"detail":"장소 지도 조회가 혼잡합니다. 잠시 후 다시 시도하세요.","instance":"/v1/transport/fuel/places"}';
     }
 
-    location ~ ^/v1/transport/fuel/(stations|statistics|price-distribution|area-catalog|stations/[1-9][0-9]*/price-history)$ {
+    location ~ ^/v1/transport/fuel/(stations|statistics|statistics/history|price-distribution|area-catalog|stations/[1-9][0-9]*/price-history)$ {
         if ($fuel_preflight = 2) { return 403; }
         if ($fuel_preflight = 1) { return 204; }
         proxy_pass http://127.0.0.1:12302;

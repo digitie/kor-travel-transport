@@ -1,3 +1,18 @@
+## 2026-11-26 — 유가 통계 장기 추이와 시군구 통계 읽기(FUEL-HISTORY-20261126)
+
+- 소유자 요청: 지역 평균 등 통계를 수집 완료 시 저장해 빨리 보이고, 오래 보존해 긴 기간 가격 추이를 본다. 일별 통계(`fuel_statistics_daily`)는
+  이미 영구 보존이었지만 30일 페이지만 읽었고 행마다 가격순 10곳 JSON이 있어 장기 읽기에 무거웠다.
+- `fuel_statistics_history`(0049): 같은 키·typed 평균/최저/최고/주유소 수. 공개 transaction에서 그날 행 교체, 하루 첫 공개가 직전 공개일을
+  일별 행에 다시 맞춘다(배포 중 옛 이미지 공개 대비). 기존 일별 행 31일 창 backfill(로컬 PG18 36일·3.6만 행·죽은 행 2배 표에서 0049+0050 4.7초).
+  회당 지역 요약(`fuel_region_summaries`)은 노출하지 않았다(하루 3회 공개, 일별 정의와 충돌).
+- API `/v1/transport/fuel/statistics/history`: 공개 state와 한 SELECT, 공개일보다 새 날짜 없음, 주·월 평균 = 일별 평균의 단순 평균,
+  유종당 400점, 지정 bucket 초과·from>to·400개월 초과·scope_key 누락은 422 problem+json, weak ETag + `private, no-cache`.
+  12301·12307 gateway, 공개 유가 BFF, 관리 BFF 허용 목록에 경로 하나 추가.
+- 시군구 통계 2~3초(운영 공개 GET, 응답 없는 유종도 2.6~3.0초 → SQL): 현재 범주 읽기가 기본키 skip scan으로 범주마다 색인을 다시 내려간다
+  (400일 합성: Index Searches 461·버퍼 3,494). 0050 `(source, scope, day, product_code)`로 1회·361버퍼. 응답은 동일. 운영 EXPLAIN은 권한 밖이라
+  배포 뒤 공개 GET으로 확인한다(FUEL-HISTORY-VERIFY).
+- UI: 관리 `/fuel/statistics` 기간 선택, 점이 많으면 최저·최고를 점선으로. vitest·격리 e2e(390·1440px).
+
 ## 2026-11-26 — 분석 사전집계 세대 시각 테스트 flaky 수정
 
 - CI run 45627130633(1차, PR #298 문서 변경)에서 `test_refresh_generation_stays_before_first_snapshot_read`가 한 번 실패했다.

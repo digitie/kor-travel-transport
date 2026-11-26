@@ -537,6 +537,11 @@ class FuelStatisticsDaily(Base):
     """KST 하루의 마지막 정상 수집 기준 집계. 기간 제한 없이 보존한다."""
 
     __tablename__ = "fuel_statistics_daily"
+    __table_args__ = (
+        # 통계 페이지의 "공개 세대 하루의 모든 범주" 읽기. 기본키는 scope_key가 day보다 앞서서, 시군구처럼 범주가 많은
+        # scope는 모든 날짜·유종의 색인 항목(과 그 죽은 행)을 훑었다(운영 시군구 2~3초, 0050).
+        Index("ix_fuel_statistics_daily_current", "source", "scope", "day", "product_code"),
+    )
     source: Mapped[str] = mapped_column(String(40), primary_key=True)
     scope: Mapped[str] = mapped_column(String(24), primary_key=True)
     scope_key: Mapped[str] = mapped_column(String(512), primary_key=True)
@@ -545,6 +550,30 @@ class FuelStatisticsDaily(Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     label: Mapped[str] = mapped_column(String(300))
     metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class FuelStatisticsHistory(Base):
+    """장기 가격 추이용 일별 요약. ``fuel_statistics_daily``와 같은 키·같은 공개 transaction으로 쓰고 영구 보존한다.
+
+    일별 행의 ``metrics_json``(10곳 순위 포함, 시군구 하루 약 1MB)을 읽지 않고 몇 년치 평균·최저·최고·주유소 수를
+    읽기 위한 좁은 표다. 값은 같은 날짜 일별 행의 지표와 같다(평균은 소수 둘째 자리 반올림 값).
+    """
+
+    __tablename__ = "fuel_statistics_history"
+    __table_args__ = (
+        CheckConstraint("station_count > 0 AND average_price > 0", name="ck_fuel_statistics_history_values"),
+    )
+    source: Mapped[str] = mapped_column(String(40), primary_key=True)
+    scope: Mapped[str] = mapped_column(String(24), primary_key=True)
+    scope_key: Mapped[str] = mapped_column(String(512), primary_key=True)
+    product_code: Mapped[str] = mapped_column(String(20), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    label: Mapped[str] = mapped_column(String(300))
+    average_price: Mapped[float] = mapped_column(Numeric(10, 2))
+    minimum_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    maximum_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    station_count: Mapped[int] = mapped_column(Integer)
 
 
 class FuelRegionSummary(Base):
