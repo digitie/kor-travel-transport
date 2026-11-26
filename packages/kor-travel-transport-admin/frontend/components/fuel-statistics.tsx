@@ -382,6 +382,13 @@ export function FuelLongTrend({ trend, period }: { trend: Trend; period: Exclude
       series={products.map(product => ({ product, points: trend.points.filter(point => point.product_code === product).map(point => ({ time: point.day, average: point.average_price, minimum: point.minimum_price, maximum: point.maximum_price, generated_at: point.generated_at })) }))} />
     <details className="fuel-stat-table overflow-x-auto"><summary className="flex min-h-11 cursor-pointer items-center text-sm text-text-secondary">{unit} 가격 표</summary><VirtualTable ariaLabel={`${periodHeading[period]} 유가 ${unit} 관측값`} data={trend.points} getRowId={point => `${point.product_code}:${point.day}`} virtualized={false} columns={columns} /></details></>;
 }
+/** 장기 추이 영역의 조회 중·실패·결과. 30일 통계(순위 표 등)와 따로 알린다. */
+function FuelLongTrendSection({ period, trend }: { period: Exclude<Period, "30">; trend: TrendState }) {
+  const body = trend.pending ? <p role="status" className="text-sm text-text-secondary">추이 조회 중…</p>
+    : trend.error ? <p role="alert" className="text-sm text-destructive">{trend.error}</p>
+    : trend.data ? <FuelLongTrend trend={trend.data} period={period} /> : null;
+  return <div className="fuel-long-trend" aria-busy={trend.pending}>{body}</div>;
+}
 const productOrder = (code: string) => FUEL_CHART_ORDER.includes(code) ? FUEL_CHART_ORDER.indexOf(code) : FUEL_CHART_ORDER.length;
 function StationAddress({ station }: { station?: FuelChartStation | null }) {
   const href = fuelStationHref(station);
@@ -432,6 +439,8 @@ function useFuelStatistics() {
   const [reload, setReload] = useState(0);
   const [dataContext, setDataContext] = useState("");
   const [data, setData] = useState<Statistics | null>(null);
+  // 페이지 응답이 새로 올 때마다 올린다. 장기 추이는 이 값으로 다시 읽는다(새로고침 직후 옛 응답으로 한 번 더 읽지 않는다).
+  const [dataVersion, setDataVersion] = useState(0);
   const [error, setError] = useState(false);
   const [pending, setPending] = useState(true);
   useEffect(() => {
@@ -440,7 +449,7 @@ function useFuelStatistics() {
     const search = new URLSearchParams({ scope, product_code: product });
     if (scopeKey) search.set("scope_key", scopeKey);
     transportGet<Statistics>(`transport/fuel/statistics?${search}`, controller.signal).then((value) => {
-      if (!controller.signal.aborted) { setData(value); setDataContext(`${scope}/${product}`); setPending(false); }
+      if (!controller.signal.aborted) { setData(value); setDataVersion(version => version + 1); setDataContext(`${scope}/${product}`); setPending(false); }
     }).catch(() => { if (!controller.signal.aborted) { setError(true); setPending(false); } });
     return () => controller.abort();
   }, [scope, product, scopeKey, reload]);
@@ -453,18 +462,18 @@ function useFuelStatistics() {
     { day: comparison.periodStart!, row: comparison.start },
   ] : [];
   const categoryKey = shownData?.items.some((row) => row.scope_key === scopeKey) ? scopeKey : selected?.scope_key ?? "";
-  const trend = useFuelLongTrend(period, scope, product, pending ? null : shownData, reload);
+  const trend = useFuelLongTrend(period, scope, product, pending ? null : shownData, dataVersion);
   return { pending, scope, setScope, setScopeKey, product, setProduct, period, setPeriod, trend, setReload, shownData, categoryKey, error, selected, comparisonRows };
 }
 
 
 type TrendState = { pending: boolean; error: string | null; data: Trend | null };
 /** 30일보다 긴 기간의 장기 추이. 통계 페이지가 고른 범주·공개 세대 날짜에 맞춰 읽는다(그 날짜보다 새 날짜는 묻지 않는다). */
-function useFuelLongTrend(period: Period, scope: string, product: string, shownData: Statistics | null, reload: number): TrendState {
+function useFuelLongTrend(period: Period, scope: string, product: string, shownData: Statistics | null, dataVersion: number): TrendState {
   const [state, setState] = useState<TrendState & { context: string }>({ pending: false, error: null, data: null, context: "" });
   const key = shownData?.history_scope_key ?? null;
   const to = shownData?.generated_at ? kstDay(shownData.generated_at) : null;
-  const context = period === "30" || !key || !to ? "" : `${period}/${scope}/${product}/${key}/${to}/${reload}`;
+  const context = period === "30" || !key || !to ? "" : `${period}/${scope}/${product}/${key}/${to}/${dataVersion}`;
   useEffect(() => {
     if (!context || !key || !to) return;
     const controller = new AbortController();
@@ -564,10 +573,7 @@ function FuelStatisticsResult({ pending, error, shownData, selected, product, co
       <p className="fuel-collection-basis">{shownData.generated_at ? `수집 기준 ${dateTime(shownData.generated_at)}` : "첫 수집 완료 후 통계가 생성됩니다."}{shownData.update_pending ? " · 최신 수집 통계 반영 대기" : ""}</p>
       {shownData.items.length ? <>
         <FuelHistoryContext selected={selected} comparisonRows={comparisonRows} period={period} />
-        {period === "30" ? <FuelPriceTrend rows={shownData.history} />
-          : <div className="fuel-long-trend" aria-busy={trend.pending}>{trend.pending ? <p role="status" className="text-sm text-text-secondary">추이 조회 중…</p>
-            : trend.error ? <p role="alert" className="text-sm text-destructive">{trend.error}</p>
-            : trend.data ? <FuelLongTrend trend={trend.data} period={period} /> : null}</div>}
+        {period === "30" ? <FuelPriceTrend rows={shownData.history} /> : <FuelLongTrendSection period={period} trend={trend} />}
         <FuelCheapestTables allProducts={product === "ALL"} items={shownData.items.filter(row => row.scope_key === shownData.history_scope_key)} />
 
       </> : <p className="text-sm text-text-secondary">{product === "ALL" ? "선택한 범위의 전체 유종 통계가 없습니다." : "선택한 유종의 통계가 없습니다."}</p>}

@@ -104,7 +104,8 @@ KST 일별 범주/유종 집계 `fuel_statistics_daily`를 분리한다. 원본 
 
 `ix_fuel_statistics_daily_current (source, scope, day, product_code)`(0050, CONCURRENTLY)는 통계 페이지의 "공개 세대 날짜의
 모든 범주" 읽기용이다. 기본키는 scope_key가 day보다 앞이라 범주가 많은 시군구에서 모든 날짜의 색인 항목을 범주마다 다시
-찾았다. 회당 지역 요약 `fuel_region_summaries`는 그대로 지도용이며 이력 API로 노출하지 않는다([유가 통계](../fuel-statistics.md#장기-추이)).
+찾았다(운영 2~3초의 추정 원인). `fuel_statistics_history`에도 그날 행 교체용 `ix_fuel_statistics_history_day (source, day)`가 있다.
+회당 지역 요약 `fuel_region_summaries`는 그대로 지도용이며 이력 API로 노출하지 않는다([유가 통계](../fuel-statistics.md#장기-추이)).
 
 ## 핵심 테이블
 

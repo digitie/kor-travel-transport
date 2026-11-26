@@ -9,8 +9,24 @@ import sqlalchemy as sa
 from sqlalchemy import delete, func, select, update
 
 from app.models import FuelLatestPrice, FuelStatisticsDaily, FuelStatisticsHistory, FuelStatisticsState
+from app.models import FuelPriceSnapshot, FuelStation
 from app.services.fuel_statistics import OPINET, fuel_statistics_history, fuel_statistics_page, publish_fuel_statistics
-from tests.test_fuel_statistics import seed
+from app.services.transport_collection import upsert_latest_fuel_prices
+
+
+async def seed(session, stamp):
+    """test_fuel_statistics.seed와 같은 세 주유소(서울 종로, 휘발유 1600·1800·1600)."""
+    for index, (price, longitude) in enumerate(((1600, 127), (1800, 127.01), (1600, 128))):
+        station = FuelStation(id=(2, 3, 10)[index], source=OPINET, identity_key=str(index), name=f"주유소{index}",
+            address=f"서울 도로{index}", query_level="sigungu", source_kinds=[],
+            sido_value="11", sido_name="서울", sigungu_value="110", sigungu_name="종로",
+            longitude=longitude, latitude=37.5, first_seen_at=stamp, last_seen_at=stamp)
+        session.add(station)
+        await session.flush()
+        session.add(FuelPriceSnapshot(fuel_station_id=station.id, source=OPINET,
+            product_code="B027", price=price, observed_at=stamp, collected_at=stamp))
+    await session.flush()
+    await upsert_latest_fuel_prices(session, collected_at=stamp)
 
 START = datetime(2026, 10, 1, 3, tzinfo=timezone.utc)  # KST 2026-10-01 12:00
 
@@ -185,6 +201,33 @@ def test_first_publish_of_a_day_repairs_previous_day_written_only_to_daily(clien
     asyncio.run(old_image_publish_then_next_day())
 
 
+def test_old_image_publishing_across_midnight_is_repaired_by_the_next_publish(client):
+    """옛 이미지가 migration 뒤 D와 D+1을 모두 공개해 state가 이미 D+1이어도, 새 이미지의 D+1 공개가 D를 맞춘다."""
+    last = _publish_days(client, 2)
+
+    async def run():
+        async with client.app.state.session_factory() as session:
+            day = (last + timedelta(hours=9)).date()
+            # 옛 이미지: D(어제)를 다시 공개해 일별만 바뀌고, 자정 넘어 D+1을 공개해 state도 D+1이다(새 표는 모른다).
+            await session.execute(update(FuelStatisticsDaily).where(FuelStatisticsDaily.day == day).values(
+                generated_at=last + timedelta(hours=1)))
+            following = last + timedelta(days=1)
+            await session.execute(update(FuelLatestPrice).values(collected_at=following))
+            await publish_fuel_statistics(session, OPINET, following)
+            await session.execute(delete(FuelStatisticsHistory).where(FuelStatisticsHistory.day == following.date()))
+            await session.execute(update(FuelStatisticsHistory).where(FuelStatisticsHistory.day == day).values(
+                generated_at=last))
+            await session.commit()
+            later = following + timedelta(hours=3)
+            await session.execute(update(FuelLatestPrice).values(collected_at=later))
+            await publish_fuel_statistics(session, OPINET, later)
+            await session.commit()
+            daily = {(row.scope, row.day): row.generated_at for row in await session.scalars(select(FuelStatisticsDaily))}
+            slim = {(row.scope, row.day): row.generated_at for row in await session.scalars(select(FuelStatisticsHistory))}
+            assert slim == daily
+    asyncio.run(run())
+
+
 def test_thirty_day_page_is_unchanged_by_history_table(client):
     _publish_days(client, 3)
 
@@ -313,7 +356,45 @@ def test_postgres_page_reads_only_the_published_day_for_many_categories(client):
         async with engine.connect() as connection:
             raw = (await connection.get_raw_connection()).driver_connection
             plan = "\n".join(row[0] for row in await raw.fetch("EXPLAIN (ANALYZE, BUFFERS) " + statement, *parameters))
+            version = int(await raw.fetchval("SHOW server_version_num"))
         assert "ix_fuel_statistics_daily_current" in plan, plan
         searches = [int(line.split(":")[1]) for line in plan.splitlines() if "Index Searches:" in line]
-        assert all(count <= 2 for count in searches), plan
+        if version >= 180000:  # "Index Searches"는 PostgreSQL 18 EXPLAIN부터 나온다.
+            assert searches and all(count <= 2 for count in searches), plan
     asyncio.run(run())
+
+
+def test_far_future_or_out_of_range_to_and_from_after_published_day(client, monkeypatch):
+    _publish_days(client, 3)
+    far = _history(client, to="9999-12-31").json()
+    assert [point["day"] for point in far["points"]] == ["2026-10-01", "2026-10-02", "2026-10-03"]
+    assert far["to_day"] == "2026-10-03"
+    for params in ({"to": "0030-01-01"}, {"from": "1999-12-31"}, {"product_code": "all"}):
+        response = _history(client, **params)
+        assert response.status_code == 422, params
+        assert response.headers["content-type"].startswith("application/problem+json")
+    later = _history(client, **{"from": "2026-12-01", "to": "2026-12-31"}).json()
+    assert later["points"] == [] and later["from_day"] is None and later["to_day"] == "2026-10-03"
+    # to 없이 from만 줘도 개월 상한을 지킨다(상한을 줄여 확인).
+    from app.services import fuel_statistics as module
+    monkeypatch.setattr(module, "HISTORY_MAX_POINTS", 3)
+    assert _history(client, **{"from": "2026-07-01"}).status_code == 422
+    assert _history(client, **{"from": "2026-08-01"}).status_code == 200
+
+
+def test_bucket_average_is_not_station_weighted(client):
+    """하루는 주유소 3곳, 다음 날은 1곳이어도 두 날의 평균을 같은 비중으로 평균한다."""
+    async def run():
+        async with client.app.state.session_factory() as session:
+            for offset, (average, count) in enumerate(((1000, 3), (2000, 1))):
+                stamp = datetime(2026, 10, 5 + offset, 3, tzinfo=timezone.utc)  # 월·화
+                session.add(FuelStatisticsHistory(source=OPINET, scope="nationwide", scope_key="all", product_code="B027",
+                    day=stamp.date(), generated_at=stamp, label="전국", average_price=average, minimum_price=average,
+                    maximum_price=average, station_count=count))
+            session.add(FuelStatisticsState(source=OPINET, generated_at=datetime(2026, 10, 6, 3, tzinfo=timezone.utc),
+                                            day=date(2026, 10, 6)))
+            await session.commit()
+    asyncio.run(run())
+    point = _history(client, bucket="week").json()["points"][0]
+    assert point["average_price"] == 1500  # 가중이면 1250
+    assert point["station_count"] == 2 and point["day_count"] == 2

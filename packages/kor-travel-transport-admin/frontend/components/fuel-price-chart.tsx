@@ -51,7 +51,7 @@ export default function FuelPriceChart({ series, label, window, showExtremes = t
         const line = (x1: number, y1: number, x2: number, y2: number) => ({ type: "line" as const, shape: { x1, y1, x2, y2 }, style: { stroke: color, lineWidth: 1.4 } });
         return { type: "group", children: [line(low[0] + offset, low[1], high[0] + offset, high[1]), line(low[0] + offset - 3, low[1], low[0] + offset + 3, low[1]), line(high[0] + offset - 3, high[1], high[0] + offset + 3, high[1])] };
       };
-      const average = { id: `${row.product}:average`, name: fuelProductLabel(row.product), type: "line", data: fuelLineValues(row.points, maxGapDays), connectNulls: false, showSymbol: !rangeAsLines, symbolSize: 5, lineStyle: { color, width: 2 }, itemStyle: { color }, animation: false };
+      const average = { id: `${row.product}:average`, name: fuelProductLabel(row.product), type: "line", data: fuelLineValues(row.points, maxGapDays), connectNulls: false, showSymbol: true, symbolSize: rangeAsLines ? 2 : 5, lineStyle: { color, width: 2 }, itemStyle: { color }, animation: false };
       if (rangeAsLines) {
         const bound = (name: "minimum" | "maximum", text: string) => ({ id: `${row.product}:${name}`, name: `${fuelProductLabel(row.product)} ${text}`, type: "line", silent: true, tooltip: { show: false },
           data: fuelLineValues(row.points.flatMap(point => point[name] == null ? [] : [{ ...point, average: point[name]! }]), maxGapDays),

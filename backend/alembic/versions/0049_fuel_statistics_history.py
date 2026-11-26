@@ -34,15 +34,24 @@ _PG_BACKFILL = """
       (source, scope, scope_key, product_code, day, generated_at, label,
        average_price, minimum_price, maximum_price, station_count)
     SELECT source, scope, scope_key, product_code, day, generated_at, label,
-      round((metrics_json->>'average_price')::numeric, 2),
-      (metrics_json->>'minimum_price')::numeric, (metrics_json->>'maximum_price')::numeric,
-      (metrics_json->>'station_count')::integer
-    FROM fuel_statistics_daily
-    WHERE day >= :start AND day < :end
-      AND jsonb_typeof(metrics_json->'average_price') = 'number'
-      AND jsonb_typeof(metrics_json->'station_count') = 'number'
-      AND (metrics_json->>'average_price')::numeric > 0
-      AND (metrics_json->>'station_count')::integer > 0
+      round(average, 2), minimum, maximum, station_count
+    FROM (
+      -- PostgreSQL은 AND 평가 순서를 보장하지 않는다. 형 검사를 CASE 안에 두어 숫자가 아닌 값은 NULL이 되게 한다.
+      SELECT source, scope, scope_key, product_code, day, generated_at, label,
+        CASE WHEN jsonb_typeof(metrics_json->'average_price') = 'number'
+             THEN (metrics_json->>'average_price')::numeric END AS average,
+        CASE WHEN jsonb_typeof(metrics_json->'minimum_price') = 'number'
+             THEN (metrics_json->>'minimum_price')::numeric END AS minimum,
+        CASE WHEN jsonb_typeof(metrics_json->'maximum_price') = 'number'
+             THEN (metrics_json->>'maximum_price')::numeric END AS maximum,
+        CASE WHEN jsonb_typeof(metrics_json->'station_count') = 'number'
+              AND (metrics_json->>'station_count') ~ '^[0-9]{1,9}$'
+             THEN (metrics_json->>'station_count')::integer END AS station_count
+      FROM fuel_statistics_daily
+      WHERE day >= :start AND day < :end
+    ) AS daily
+    WHERE average > 0 AND average < 1e8 AND station_count > 0
+      AND (minimum IS NULL OR abs(minimum) < 1e8) AND (maximum IS NULL OR abs(maximum) < 1e8)
     ON CONFLICT DO NOTHING
 """
 
@@ -82,10 +91,12 @@ def upgrade() -> None:
         sa.Column("station_count", sa.Integer(), nullable=False),
         sa.CheckConstraint("station_count > 0 AND average_price > 0", name="ck_fuel_statistics_history_values"),
     )
+    # 공개마다 "그날 행 교체"(source, day)를 찾는 인덱스. 새 표라 일반 CREATE INDEX로 같은 transaction에서 만든다.
+    op.create_index("ix_fuel_statistics_history_day", "fuel_statistics_history", ["source", "day"])
     if op.get_context().as_sql:
         # 오프라인 SQL에는 날짜 범위를 알 수 없다. 한 문장으로 전체를 옮긴다.
         op.execute(sa.text((_PG_BACKFILL if postgresql else _SQLITE_BACKFILL)
-                           .replace("day >= :start AND day < :end", "TRUE" if postgresql else "1")))
+                           .replace("WHERE day >= :start AND day < :end", "")))
         return
     first, last = bind.execute(sa.text("SELECT min(day), max(day) FROM fuel_statistics_daily")).one()
     if first is None:

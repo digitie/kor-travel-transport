@@ -16411,7 +16411,7 @@
     },
     "/v1/transport/fuel/statistics/history": {
       "get": {
-        "description": "수집 완료 시 저장한 일별 유가 요약의 장기 추이(평균·최저·최고·주유소 수).\n\n일별 기록은 영구 보존한다. 유종 하나의 점은 최대 400개(일 단위 약 13개월)이고, 지정한 bucket으로 그보다 많아지면\n422다. 주·월 버킷 평균은 그 버킷에 기록이 있는 날짜들의 일별 평균을 같은 비중으로 평균한 값이다(주유소 수 가중 아님).\n공개 통계 세대보다 새 날짜는 내지 않는다. 응답은 weak ETag와 `Cache-Control: private, no-cache`를 붙이고\nIf-None-Match가 같으면 304다.",
+        "description": "수집 완료 시 저장한 일별 유가 요약의 장기 추이(평균·최저·최고·주유소 수).\n\n일별 기록은 영구 보존한다. 유종 하나의 점은 최대 400개(일 단위 약 13개월)이고, 지정한 bucket으로 그보다 많아지면\n422다. 주·월 버킷 평균은 그 버킷에 기록이 있는 날짜들의 일별 평균을 같은 비중으로 평균한 값이다(주유소 수 가중 아님).\n공개 통계 세대보다 새 날짜는 내지 않는다. 응답은 weak ETag와 `Cache-Control: private, no-cache`를 붙이고\nIf-None-Match가 같으면 304다(공개 유가·관리 BFF는 no-store로 다시 쓰므로 304는 gateway 직접 호출에만 해당한다).",
         "operationId": "transport_fuel_statistics_history_v1_transport_fuel_statistics_history_get",
         "parameters": [
           {
@@ -16446,21 +16446,20 @@
             }
           },
           {
-            "description": "유종 코드. ALL은 모든 유종",
+            "description": "유종 코드(대문자). ALL은 모든 유종",
             "in": "query",
             "name": "product_code",
             "required": false,
             "schema": {
               "default": "B027",
-              "description": "유종 코드. ALL은 모든 유종",
-              "maxLength": 20,
-              "minLength": 1,
+              "description": "유종 코드(대문자). ALL은 모든 유종",
+              "pattern": "^[A-Z][A-Z0-9]{0,19}$",
               "title": "Product Code",
               "type": "string"
             }
           },
           {
-            "description": "KST 시작일(포함). 생략하면 첫 기록일",
+            "description": "KST 시작일(포함, 2000-01-01 이후). 생략하면 첫 기록일(끝에서 400개월 전까지)",
             "in": "query",
             "name": "from",
             "required": false,
@@ -16474,7 +16473,7 @@
                   "type": "null"
                 }
               ],
-              "description": "KST 시작일(포함). 생략하면 첫 기록일",
+              "description": "KST 시작일(포함, 2000-01-01 이후). 생략하면 첫 기록일(끝에서 400개월 전까지)",
               "title": "From"
             }
           },

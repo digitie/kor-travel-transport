@@ -71,6 +71,11 @@ for (const width of [390, 1440]) {
     await page.goto("/fuel/statistics");
     await expect(page.getByRole("heading", { name: "최근 30일 평균 유가 · 전국" })).toBeVisible();
     const period = page.getByLabel("기간", { exact: true });
+    if (width >= 1024) {
+      // 데스크톱은 범위·유종·기간·추이 범주·새로고침이 한 줄이다(새로고침이 다음 줄로 밀리지 않는다).
+      const [select, refresh] = await Promise.all([period.boundingBox(), page.getByRole("button", { name: "새로고침", exact: true }).boundingBox()]);
+      expect(Math.abs((select!.y + select!.height / 2) - (refresh!.y + refresh!.height / 2))).toBeLessThan(8);
+    }
     await period.selectOption("90");
     await expect(page.getByRole("heading", { name: "최근 90일 평균 유가 · 전국" })).toBeVisible();
     await expect(page.getByRole("group", { name: /최근 90일 유종별 평균·최저·최고 유가/ })).toBeVisible();

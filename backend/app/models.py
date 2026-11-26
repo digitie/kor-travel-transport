@@ -562,6 +562,8 @@ class FuelStatisticsHistory(Base):
     __tablename__ = "fuel_statistics_history"
     __table_args__ = (
         CheckConstraint("station_count > 0 AND average_price > 0", name="ck_fuel_statistics_history_values"),
+        # 공개 transaction의 "그날 행 교체"(source, day). 기본키는 day가 마지막이라 표가 자랄수록 범주마다 다시 찾는다.
+        Index("ix_fuel_statistics_history_day", "source", "day"),
     )
     source: Mapped[str] = mapped_column(String(40), primary_key=True)
     scope: Mapped[str] = mapped_column(String(24), primary_key=True)

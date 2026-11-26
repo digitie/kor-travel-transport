@@ -3,8 +3,10 @@
 - backend(0049 `fuel_statistics_history` 표+backfill, 0050 `ix_fuel_statistics_daily_current` CONCURRENTLY, 공개 transaction 쓰기, 새 API,
   OpenAPI) + 두 gateway template(경로 추가) + transport-admin(관리 `/fuel/statistics` 기간 선택, 공개 유가 BFF 경로).
 - 배포(Codex 담당): migrate(0049는 일반 transaction·`lock_timeout 5s`, 0050은 CONCURRENTLY) → backend·Dagster code-server 이미지(공개 쓰기),
-  transport-admin·fuel web 이미지, fuel gateway 이미지 재빌드(12307), 12301 gateway 설정. 옛 code-server가 migration 뒤 한 번 공개해도
-  새 이미지의 다음 날 첫 공개가 그날을 맞춘다.
+  transport-admin·fuel web 이미지, fuel gateway 이미지 재빌드(12307), 12301 gateway 설정. 옛 code-server가 migration 뒤 공개해도
+  새 이미지의 다음 공개가 직전 공개일·전날을 맞춘다.
+- 주의: 0049는 commit된 뒤 0050(CONCURRENTLY, statement_timeout 없음 — 오래된 snapshot을 기다린다)이 실패·취소되면 DB가 0049에 남고
+  옛·새 이미지 모두 head 불일치로 기동하지 않는다. 그때는 migrate를 다시 돌린다(0050은 invalid 인덱스를 지우고 다시 만든다).
 - 다음 한 작업: FUEL-HISTORY-VERIFY(tasks.md) — 시군구 통계 공개 GET 시간과 장기 추이 첫 날짜 확인.
 
 ## 현재 상태 — 2026-11-25 places `X-Limit-Applied`(MAP-CALL-FOLLOWUPS)

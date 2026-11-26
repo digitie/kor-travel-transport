@@ -2,8 +2,8 @@
 
 `GET /v1/transport/fuel/statistics`는 "공개 세대 날짜의 그 scope 모든 범주"를 읽는다. 기본키는
 `(source, scope, scope_key, product_code, day)`라 day가 scope_key 뒤에 있다. 범주가 230개인 시군구는 이 읽기가
-`(source, 'sigungu')` 앞부분의 모든 날짜·유종 색인 항목(약 90%가 시군구다)을 훑고, 공개마다 그날 행을 지우고 다시 넣어
-생긴 죽은 행 버전까지 heap에서 확인했다. 운영에서 응답 없는 유종(product_code=ZZZZ, 158바이트)도 2.6~3.0초였고 같은
+PostgreSQL 18 skip scan으로 범주마다 기본키를 다시 내려간다(400일 합성 데이터: Index Searches 461·공유 버퍼 3,494).
+운영 2~3초가 이 때문이라는 것은 가설이다(운영 EXPLAIN 미확인, 로컬 재현은 수십 ms). 운영에서 응답 없는 유종(product_code=ZZZZ, 158바이트)도 2.6~3.0초였고 같은
 요청의 시도·고속도로는 0.15~0.4초였다(2026-11-26 공개 GET 측정). `(source, scope, day, product_code)` 인덱스로 그날 행만 읽는다.
 
 운영 중 수집 공개의 일별 delete/insert가 기다리지 않게 CREATE INDEX CONCURRENTLY로 만든다(0047과 같은 방식). 실패로 남은

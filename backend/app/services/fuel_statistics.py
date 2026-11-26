@@ -256,10 +256,11 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
     ))
     for offset in range(0, len(history_rows), 500):
         await session.execute(insert(FuelStatisticsHistory), history_rows[offset:offset + 500])
-    if state is not None and state.day < day:
-        # 하루의 첫 공개에서 직전 공개 날짜를 일별 행에 다시 맞춘다. 0049 배포 중 옛 이미지가 migration 뒤에
-        # 공개한 날(일별 행만 바뀐다)을 남기지 않는다. 이미 같으면 아무 행도 쓰지 않는다.
-        await _sync_history_day(session, source, state.day)
+    # 직전 공개 날짜와 전날을 일별 행(정본)에 다시 맞춘다. 0049 배포 중 옛 이미지가 migration 뒤에 공개한 날(일별 행만
+    # 바뀐다)을 남기지 않는다 — 옛 이미지가 자정을 넘겨 두 날을 공개해도 새 이미지의 첫 공개가 둘 다 본다. 이미 같으면
+    # 키만 비교하고(JSON을 읽지 않는다) 아무 행도 쓰지 않는다.
+    for previous in sorted({day - timedelta(days=1), *([state.day] if state is not None and state.day < day else [])}):
+        await _sync_history_day(session, source, previous)
     if state is None:
         session.add(FuelStatisticsState(source=source, generated_at=stamp, day=day))
     else:
@@ -282,6 +283,9 @@ async def _sync_history_day(session: AsyncSession, source: str, day: date) -> No
     await session.execute(delete(h).where(
         h.source == source, h.day == day, ~exists().where(same_key, d.generated_at == h.generated_at),
     ).execution_options(synchronize_session=False))
+    # 빠진 키가 있을 때만 일별 JSON을 읽는다(평소에는 기본키 비교만 한다).
+    if not await session.scalar(select(exists().where(d.source == source, d.day == day, ~exists().where(same_key)))):
+        return
     average, count = d.metrics_json["average_price"].as_float(), d.metrics_json["station_count"].as_integer()
     await session.execute(insert(h).from_select(
         ["source", "scope", "scope_key", "product_code", "day", "generated_at", "label",
@@ -491,6 +495,8 @@ async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: 
 #: 장기 추이 한 유종의 최대 점 수. 일 단위 약 13개월, 주 단위 약 7.7년, 월 단위 약 33년이다.
 HISTORY_MAX_POINTS = 400
 HISTORY_BUCKETS = ("day", "week", "month")
+HISTORY_MIN_DAY = date(2000, 1, 1)
+HISTORY_MAX_DAY = date(9999, 12, 31)
 #: 버킷 평균의 정의(응답 ``average_method``). 주유소 수로 가중하지 않는다.
 HISTORY_AVERAGE_METHOD = "mean_of_daily_averages"
 #: 화면과 같은 유종 순서(휘발유→경유→고급유→LPG→등유). 그 밖은 코드 순으로 뒤에 둔다.
@@ -538,6 +544,9 @@ async def fuel_statistics_history(session: AsyncSession, scope: str, scope_key: 
         if scope not in {"nationwide", "highways"}:
             raise FuelHistoryRequestError("이 범위는 scope_key가 필요합니다(통계 페이지의 history_scope_key·items[].scope_key).")
         scope_key = "all"
+    for value in (from_day, to_day):
+        if value is not None and not HISTORY_MIN_DAY <= value <= HISTORY_MAX_DAY:
+            raise FuelHistoryRequestError(f"날짜는 {HISTORY_MIN_DAY}~{HISTORY_MAX_DAY} 사이여야 합니다.")
     if from_day is not None and to_day is not None:
         if from_day > to_day:
             raise FuelHistoryRequestError("from은 to보다 늦을 수 없습니다.")
@@ -553,15 +562,15 @@ async def fuel_statistics_history(session: AsyncSession, scope: str, scope_key: 
         conditions.append(h.day <= to_day)
     if from_day is not None:
         conditions.append(h.day >= from_day)
+    # 읽는 양은 실제 끝(min(to, 공개 날짜)) 기준 월 단위 최대 점 수(약 33년)로 묶는다. 정확한 달 경계는 아래에서 자른다.
+    # to가 공개 날짜보다 한참 늦어도(9999-12-31 같은 "끝 없음") 하한이 공개 날짜 기준이라 빈 응답이 되지 않는다.
+    span = HISTORY_MAX_POINTS * 31
+    if session.bind.dialect.name == "sqlite":
+        bound = state.day if to_day is None else func.min(state.day, to_day.isoformat())
+        conditions.append(h.day >= func.date(bound, f"-{span} days"))
     else:
-        # from이 없어도 읽는 양은 월 단위 최대 점 수(약 33년)로 묶는다. 정확한 달 경계는 아래에서 자른다.
-        span = HISTORY_MAX_POINTS * 31
-        if to_day is not None:
-            conditions.append(h.day >= to_day - timedelta(days=span))
-        elif session.bind.dialect.name == "sqlite":
-            conditions.append(h.day >= func.date(state.day, f"-{span} days"))
-        else:
-            conditions.append(h.day >= state.day - span)
+        bound = state.day if to_day is None else func.least(state.day, to_day)
+        conditions.append(h.day >= bound - span)
     rows = (await session.execute(select(
         state.generated_at.label("state_generated_at"), state.day.label("state_day"),
         h.product_code, h.day, h.generated_at, h.label, h.average_price, h.minimum_price, h.maximum_price,
@@ -572,14 +581,18 @@ async def fuel_statistics_history(session: AsyncSession, scope: str, scope_key: 
     state_day = rows[0].state_day if rows else None
     end = to_day if state_day is None else min(to_day, state_day) if to_day is not None else state_day
     points = [row for row in rows if row.day is not None]
-    if from_day is None and end is not None:
+    if end is not None and from_day is not None and from_day <= end             and _bucket_count(from_day, end, "month") > HISTORY_MAX_POINTS:
+        raise FuelHistoryRequestError(f"조회 기간은 {HISTORY_MAX_POINTS}개월 이하여야 합니다.")
+    if end is not None:
         floor = _months_before(end, HISTORY_MAX_POINTS - 1)
         points = [row for row in points if row.day >= floor]
     if points:
         first = min(row.day for row in points)
         start = max(first, from_day) if from_day is not None else first
     else:
-        start = from_day if from_day is not None and (end is None or from_day <= end) else end
+        # 공개 날짜보다 늦은 from은 아직 기록이 없는 범위다. 요청하지 않은 하루 범위를 지어내지 않는다.
+        start = from_day if from_day is not None and (end is None or from_day <= end) else (
+            None if from_day is not None else end)
     chosen = "day" if bucket == "auto" else bucket
     if points and bucket == "auto":
         chosen = next((name for name in HISTORY_BUCKETS if _bucket_count(start, end, name) <= HISTORY_MAX_POINTS), "month")

@@ -745,10 +745,10 @@
 .mobile-topbar { display: none; }
 .transport-menu-backdrop { position: fixed; inset: 0; z-index: var(--kt-z-overlay); background: var(--kt-overlay); }
 .fuel-stat-section { container-type: inline-size; min-width: 0; }
-.fuel-stat-filters { display: grid; grid-template-columns: minmax(8rem, 10rem) minmax(8rem, 10rem) minmax(12rem, 24rem) minmax(max-content, 1fr); align-items: center; gap: .5rem; }
+.fuel-stat-filters { display: grid; grid-template-columns: minmax(8rem, 10rem) minmax(8rem, 10rem) minmax(7rem, 9rem) minmax(12rem, 24rem) minmax(max-content, 1fr); align-items: center; gap: .5rem; }
 .fuel-stat-filters label { display: flex; align-items: center; white-space: nowrap; min-width: 0; gap: .5rem; font-size: .8125rem; }
 .fuel-stat-filters select { flex: 1; width: 100%; min-height: 36px; padding: .375rem .5rem; font-size: .8125rem; }
-.fuel-stat-filters .fuel-stat-refresh { grid-column: 4; justify-self: end; min-height: 36px; padding: .375rem .75rem; font-size: .8125rem; white-space: nowrap; }
+.fuel-stat-filters .fuel-stat-refresh { grid-column: 5; justify-self: end; min-height: 36px; padding: .375rem .75rem; font-size: .8125rem; white-space: nowrap; }
 .fuel-stat-filters .fuel-stat-category { margin: 0; }
 .fuel-stat-chart-key { color: var(--text-secondary); font-size: .75rem; margin: .5rem 0; }
 .fuel-stat-extremes-note { margin: .25rem 0; }
