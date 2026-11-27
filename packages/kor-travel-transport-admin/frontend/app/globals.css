@@ -805,6 +805,7 @@
 .parking-admin .kt-map-filter-field select, .parking-admin .kt-map-filter-bar button, .parking-admin .input, .parking-admin .button, .parking-admin .daily-date-toggle, .parking-admin .toggle-check, .parking-admin [data-slot="tabs-trigger"] { min-height: 44px; }
 .parking-admin [data-slot="tabs-list"] { height: auto; }
 .fuel-stat-filters select, .fuel-stat-filters .fuel-stat-refresh { min-height: 44px; }
+.fuel-stat-table [data-slot="pager"] button { min-height: 44px; }
 }
 @media (max-width: 48rem) {
 .parking-admin .fee-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -9,7 +9,7 @@ import { Button } from "./ui/button";
 import { normalizeColor } from "./evilcharts/ui/echarts-chart";
 import { escapeTooltipHtml as escapeHtml } from "./evilcharts/ui/echarts-tooltip";
 import { fuelProductLabel } from "@/lib/transport-presentation";
-import { FUEL_CHART_ORDER, fuelChartTime, fuelInstant, fuelLineValues, fuelStationHref, type FuelChartPoint, type FuelChartSeries } from "@/lib/fuel-chart-model";
+import { FUEL_CHART_ORDER, fuelChartTime, fuelInstant, fuelLineValues, fuelSpanText, fuelStationHref, type FuelChartPoint, type FuelChartSeries } from "@/lib/fuel-chart-model";
 
 echarts.use([CustomChart]);
 const tokens = ["--brand", "--success", "--warning", "--danger", "--text-secondary"];
@@ -73,10 +73,18 @@ export default function FuelPriceChart({ series, label, window, showExtremes = t
       const first = rows[0]?.point;
       const commonTime = first && rows.every(({ point }) => point.time === first.time) ? first.time : null;
       const commonGeneration = first?.generated_at && rows.every(({ point }) => point.generated_at === first.generated_at) ? first.generated_at : null;
-      const header = `<header>${commonTime ? `<strong>${escapeHtml(fuelChartTime(commonTime))} KST</strong> · ` : ""}원/L${commonGeneration ? `<br/>수집 ${escapeHtml(fuelChartTime(commonGeneration))} KST` : ""}</header>`;
+      // 주·월 버킷 점은 시작일 하루가 아니라 실제 기록 범위·일수를 보인다. 유종마다 범위가 다르면 행마다 적는다.
+      const firstSpan = fuelSpanText(first?.span);
+      const commonSpan = firstSpan && rows.every(({ point }) => fuelSpanText(point.span) === firstSpan) ? firstSpan : null;
+      const when = (time: string) => `${escapeHtml(fuelChartTime(time))} KST`;
+      const headTime = commonSpan ? escapeHtml(commonSpan) : commonTime && rows.every(({ point }) => !point.span) ? when(commonTime) : null;
+      const collected = (time: string, span: boolean) => `${span ? "마지막 기록일 수집" : "수집"} ${when(time)}`;
+      const header = `<header>${headTime ? `<strong>${headTime}</strong> · ` : ""}원/L${commonGeneration ? `<br/>${collected(commonGeneration, Boolean(firstSpan))}` : ""}</header>`;
       const values = rows.map(({ point, product }) => {
         const href = fuelStationHref(point.cheapest);
-        return `<div class="fuel-chart-tooltip-row"><strong>${escapeHtml(fuelProductLabel(product))}</strong> · ${showExtremes ? "평균" : "가격"} ${escapeHtml(amount(point.average))}${commonTime ? "" : `<br/>${escapeHtml(fuelChartTime(point.time))} KST`}${showExtremes ? `<br/>최저 ${escapeHtml(amount(point.minimum))} · 최고 ${escapeHtml(amount(point.maximum))}` : ""}${point.generated_at && !commonGeneration ? `<br/>수집 ${escapeHtml(fuelChartTime(point.generated_at))} KST` : ""}${point.cheapest ? `<br/>${href ? `<a class="inline-link" href="${escapeHtml(href)}">${escapeHtml(point.cheapest.name)} · 지도</a>` : escapeHtml(point.cheapest.name)}` : ""}</div>`;
+        const span = fuelSpanText(point.span);
+        const rowTime = headTime ? "" : `<br/>${span ? escapeHtml(span) : when(point.time)}`;
+        return `<div class="fuel-chart-tooltip-row"><strong>${escapeHtml(fuelProductLabel(product))}</strong> · ${showExtremes ? "평균" : "가격"} ${escapeHtml(amount(point.average))}${rowTime}${showExtremes ? `<br/>최저 ${escapeHtml(amount(point.minimum))} · 최고 ${escapeHtml(amount(point.maximum))}` : ""}${point.generated_at && !commonGeneration ? `<br/>${collected(point.generated_at, Boolean(span))}` : ""}${point.cheapest ? `<br/>${href ? `<a class="inline-link" href="${escapeHtml(href)}">${escapeHtml(point.cheapest.name)} · 지도</a>` : escapeHtml(point.cheapest.name)}` : ""}</div>`;
       });
       return `<div class="fuel-chart-tooltip">${header}${values.join("")}</div>`;
     };
@@ -104,6 +112,6 @@ export default function FuelPriceChart({ series, label, window, showExtremes = t
     }}>날짜별 가격 확인 · 좌우 방향키 / Home / End</Button>
     <p className="sr-only">터치 또는 마우스로 날짜와 최저·최고·평균을 확인합니다. 좌우 방향키로 날짜를 선택할 수 있습니다.</p>
     <div className="fuel-chart-legend">{series.map((row, index) => <span key={row.product} style={{ borderLeft: `3px solid var(${tokens[(FUEL_CHART_ORDER.indexOf(row.product) < 0 ? index : FUEL_CHART_ORDER.indexOf(row.product)) % tokens.length]})`, paddingInlineStart: ".35rem" }}>{fuelProductLabel(row.product)}</span>)}</div>
-    {selected !== null ? <div role="status">{series.flatMap(row => row.points.filter(point => fuelInstant(point.time) === selected).map(point => <p key={row.product}>{fuelProductLabel(row.product)} · {fuelChartTime(point.time)} · {showExtremes ? "평균" : "가격"} {price(point.average)}{showExtremes ? <> · 최저 {price(point.minimum)} · 최고 {price(point.maximum)}</> : null} {fuelStationHref(point.cheapest) ? <Link className="inline-link" href={fuelStationHref(point.cheapest)!}>{point.cheapest!.name} · 지도</Link> : point.cheapest?.name}</p>))}</div> : null}
+    {selected !== null ? <div role="status">{series.flatMap(row => row.points.filter(point => fuelInstant(point.time) === selected).map(point => <p key={row.product}>{fuelProductLabel(row.product)} · {fuelSpanText(point.span) ?? fuelChartTime(point.time)} · {showExtremes ? "평균" : "가격"} {price(point.average)}{showExtremes ? <> · 최저 {price(point.minimum)} · 최고 {price(point.maximum)}</> : null} {fuelStationHref(point.cheapest) ? <Link className="inline-link" href={fuelStationHref(point.cheapest)!}>{point.cheapest!.name} · 지도</Link> : point.cheapest?.name}</p>))}</div> : null}
   </div>;
 }

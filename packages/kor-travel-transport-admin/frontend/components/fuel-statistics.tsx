@@ -21,6 +21,7 @@ import type { PublicFuelFilters } from "@/lib/public-fuel-filters";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { OffsetPager } from "./pagination-bar";
 
 export type FuelMetrics = {
   cheapest_stations?: (FuelChartStation & { station_key: string; price: number })[]; ranking_complete?: boolean;
@@ -46,6 +47,8 @@ const bucketNote: Record<TrendBucket, string> = {
   month: "월 단위 · 평균은 그 달 일별 평균의 단순 평균, 최저·최고는 그 달의 최저·최고",
 };
 const bucketGapDays: Record<TrendBucket, number> = { day: 1, week: 7, month: 31 };
+/** 장기 추이 표 한 쪽의 행 수. 1년·모든 유종(약 1,825행)을 한 번에 그리지 않는다. 차트는 모든 점을 그린다. */
+export const TREND_TABLE_PAGE_SIZE = 60;
 /** 공개 통계 세대 시각의 KST 날짜(통계 일자와 같은 기준). */
 function kstDay(value: string) {
   const instant = Date.parse(value);
@@ -379,8 +382,26 @@ export function FuelLongTrend({ trend, period }: { trend: Trend; period: Exclude
     <p className="fuel-stat-bucket-note text-xs text-text-secondary">{bucketNote[trend.bucket]}{trend.from_day && trend.to_day ? ` · ${trend.from_day} → ${trend.to_day}` : ""}. 기록이 없는 날짜는 채우지 않습니다.</p>
     {trend.points.some(point => point.minimum_price == null || point.maximum_price == null) ? <p className="fuel-stat-extremes-note text-xs text-text-secondary">일부 기간의 최저·최고가는 미제공입니다. 평균가로 대신 채우지 않습니다.</p> : null}
     <FuelPriceChart label={`${periodHeading[period]} 유종별 평균·최저·최고 유가`} maxGapDays={bucketGapDays[trend.bucket]} longRange={span > 120} rangeAsLines={rangeAsLines}
-      series={products.map(product => ({ product, points: trend.points.filter(point => point.product_code === product).map(point => ({ time: point.day, average: point.average_price, minimum: point.minimum_price, maximum: point.maximum_price, generated_at: point.generated_at })) }))} />
-    <details className="fuel-stat-table overflow-x-auto"><summary className="flex min-h-11 cursor-pointer items-center text-sm text-text-secondary">{unit} 가격 표</summary><VirtualTable ariaLabel={`${periodHeading[period]} 유가 ${unit} 관측값`} data={trend.points} getRowId={point => `${point.product_code}:${point.day}`} virtualized={false} columns={columns} /></details></>;
+      series={products.map(product => ({ product, points: trend.points.filter(point => point.product_code === product).map(point => ({ time: point.day, average: point.average_price, minimum: point.minimum_price, maximum: point.maximum_price, generated_at: point.generated_at,
+        span: daily ? null : { first_day: point.first_day, last_day: point.last_day, day_count: point.day_count } })) }))} />
+    {/* 응답이 바뀌면(기간·범주·유종·새로고침) 첫 쪽부터 다시 본다. */}
+    <FuelTrendTable key={`${trend.bucket}:${trend.from_day}:${trend.to_day}:${trend.generated_at}:${trend.points.length}`} unit={unit} label={`${periodHeading[period]} 유가 ${unit} 관측값`} points={trend.points} columns={columns} /></>;
+}
+/** 장기 추이 표: 60행씩 쪽으로 나눈다(semantic table 유지, 표준 OffsetPager). 한 쪽이면 pager를 두지 않는다. */
+function FuelTrendTable({ unit, label, points, columns }: { unit: string; label: string; points: TrendPoint[]; columns: ColumnDef<TrendPoint, unknown>[] }) {
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(points.length / TREND_TABLE_PAGE_SIZE));
+  const current = Math.min(page, pages);
+  const start = (current - 1) * TREND_TABLE_PAGE_SIZE;
+  const shown = points.slice(start, start + TREND_TABLE_PAGE_SIZE);
+  const range = `${(start + 1).toLocaleString("ko-KR")}–${(start + shown.length).toLocaleString("ko-KR")}행`;
+  return <details className="fuel-stat-table overflow-x-auto"><summary className="flex min-h-11 cursor-pointer items-center text-sm text-text-secondary">{unit} 가격 표{pages > 1 ? ` · ${points.length.toLocaleString("ko-KR")}행` : ""}</summary>
+    <VirtualTable ariaLabel={pages > 1 ? `${label} ${current}/${pages}쪽` : label} data={shown} getRowId={point => `${point.product_code}:${point.day}`} virtualized={false} columns={columns} />
+    {pages > 1 ? <>
+      <p className="fuel-trend-table-range sr-only" role="status">{`${unit} 가격 표 ${current}/${pages}쪽 · 전체 ${points.length.toLocaleString("ko-KR")}행 중 ${range}`}</p>
+      <OffsetPager ariaPrefix={`${unit} 가격 표`} page={current} totalPages={pages} totalCount={points.length} currentCount={shown.length} onPageChange={next => setPage(Math.max(1, Math.min(pages, next)))} />
+    </> : null}
+  </details>;
 }
 /** 장기 추이 영역의 조회 중·실패·결과. 30일 통계(순위 표 등)와 따로 알린다. */
 function FuelLongTrendSection({ period, trend }: { period: Exclude<Period, "30">; trend: TrendState }) {

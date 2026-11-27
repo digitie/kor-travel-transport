@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
-import { FuelLongTrend, FuelPriceTrend, FuelStatisticsCard, FuelStatisticsPage, FuelViewportSummary, type FuelViewportStatistics } from "./fuel-statistics";
+import { FuelLongTrend, FuelPriceTrend, FuelStatisticsCard, FuelStatisticsPage, FuelViewportSummary, TREND_TABLE_PAGE_SIZE, type FuelViewportStatistics } from "./fuel-statistics";
 import * as journey from "@/lib/journey";
 
 vi.mock("./fuel-price-chart-loader", async () => ({ default: (await import("./fuel-price-chart")).default }));
@@ -591,4 +591,39 @@ test("점이 많은 장기 추이는 최저·최고를 세로선 대신 점선�
   const few = renderToStaticMarkup(<FuelLongTrend period="90" trend={{ bucket: "day", from_day: "2026-11-25", to_day: "2026-11-26", label: "전국", generated_at: page.generated_at, points: points.slice(0, 2) }} />);
   expect(few).toContain("세로선 양 끝: 최저·최고");
   expect(renderToStaticMarkup(<FuelLongTrend period="all" trend={{ bucket: "month", from_day: null, to_day: null, label: null, generated_at: null, points: [] }} />)).toContain("이 기간의 추이 데이터가 없습니다");
+});
+
+test("1년·모든 유종 추이 표는 60행씩 쪽으로 나누고 표준 pager·쪽 안내로 이동한다(차트는 모든 점)", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const products = ["B027", "D047", "B034", "K015", "C004"];
+  const days = Array.from({ length: 365 }, (_, i) => new Date(Date.UTC(2025, 10, 27 + i)).toISOString().slice(0, 10));
+  const points = days.flatMap(day => products.map(product_code => trendPoint(day, 1700, { product_code })));
+  const trend = { bucket: "day" as const, from_day: days[0], to_day: days.at(-1)!, label: "전국", generated_at: page.generated_at, points };
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelLongTrend period="365" trend={trend} />));
+    const pages = Math.ceil(points.length / TREND_TABLE_PAGE_SIZE);
+    expect(points).toHaveLength(1825);
+    const table = () => container.querySelector('table[aria-label^="최근 1년 유가 일별 관측값"]')!;
+    expect(table().getAttribute("aria-label")).toBe(`최근 1년 유가 일별 관측값 1/${pages}쪽`);
+    expect(table().querySelectorAll("tbody tr")).toHaveLength(TREND_TABLE_PAGE_SIZE);
+    expect(container.querySelector("summary")?.textContent).toBe("일별 가격 표 · 1,825행");
+    const nav = container.querySelector('nav[aria-label="일별 가격 표 pagination"]')!;
+    expect(nav.textContent).toContain(`페이지 1 / ${pages}`);
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="일별 가격 표 이전 페이지"]')!.disabled).toBe(true);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="일별 가격 표 다음 페이지"]')!.click());
+    expect(table().getAttribute("aria-label")).toBe(`최근 1년 유가 일별 관측값 2/${pages}쪽`);
+    expect(container.querySelector(".fuel-trend-table-range")?.textContent).toBe(`일별 가격 표 2/${pages}쪽 · 전체 1,825행 중 61–120행`);
+    expect(table().textContent).toContain(points[TREND_TABLE_PAGE_SIZE].day);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="일별 가격 표 마지막 페이지"]')!.click());
+    expect(table().querySelectorAll("tbody tr")).toHaveLength(points.length - (pages - 1) * TREND_TABLE_PAGE_SIZE);
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="일별 가격 표 다음 페이지"]')!.disabled).toBe(true);
+    // 새 응답(다른 기간·새로고침)은 첫 쪽부터 본다.
+    await act(async () => root.render(<FuelLongTrend period="365" trend={{ ...trend, generated_at: "2026-11-27T00:17:00Z" }} />));
+    expect(table().getAttribute("aria-label")).toBe(`최근 1년 유가 일별 관측값 1/${pages}쪽`);
+    // 60행 이하는 pager 없이 한 표다.
+    await act(async () => root.render(<FuelLongTrend period="90" trend={{ ...trend, points: points.slice(0, TREND_TABLE_PAGE_SIZE) }} />));
+    expect(container.querySelector("nav[aria-label$=pagination]")).toBeNull();
+    expect(container.querySelector('table[aria-label="최근 90일 유가 일별 관측값"]')).not.toBeNull();
+  } finally { await act(async () => root.unmount()); container.remove(); }
 });
