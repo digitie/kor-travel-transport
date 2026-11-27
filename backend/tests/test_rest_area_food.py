@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date, timedelta
 from types import SimpleNamespace
 
@@ -103,12 +104,24 @@ def test_food_export_is_hidden_until_collected_then_serves_codes_with_menus(expo
     assert [menu["name"] for menu in orphan["menus"]] == ["함양 국밥"]
 
     # 다음 수집에서 빠진 메뉴는 바로 사라진다(3일 여유 없음). 가격 변경은 덮어쓴다.
-    fake.menus = [_menu("000001", "1", "메뉴1", 1500), _menu("000003", "7", "호두과자", 5000)]
+    fake.menus = [
+        _menu("000001", "1", "메뉴1", 1500),
+        *[_menu("000001", str(seq), f"메뉴{seq}", 1000 * seq) for seq in range(2, 100)],
+        _menu("000003", "7", "호두과자", 5000),
+        _menu("000161", "1", "함양 국밥", 9000, rest_name="함양(대전)휴게소"),
+    ]
     _run(export_client, _service(export_client, fake).collect_food)
     items = {item["std_rest_code"]: item for item in export_client.get(PATH, headers=HEADERS).json()["items"]}
-    assert [(menu["seq"], menu["price"]) for menu in items["000001"]["menus"]] == [("1", 1500)]
-    assert "000161" not in items  # 이번 수집이 보지 않은 메뉴 전용 코드
+    seqs = [(menu["seq"], menu["price"]) for menu in items["000001"]["menus"]]
+    assert seqs[0] == ("1", 1500)
+    assert len(seqs) == 99
+    assert "100" not in {seq for seq, _ in seqs}
     assert [menu["name"] for menu in items["000003"]["menus"]] == ["호두과자"]
+
+    # 메뉴 전용 코드도 다음 수집이 보지 않으면 빠진다.
+    fake.menus = fake.menus[:-1]
+    _run(export_client, _service(export_client, fake).collect_food)
+    assert "000161" not in {item["std_rest_code"] for item in export_client.get(PATH, headers=HEADERS).json()["items"]}
 
 
 @pytest.mark.parametrize("codes, menus", [
@@ -135,3 +148,89 @@ def test_food_job_is_scheduled_daily() -> None:
     assert schedule.cron_schedule == "50 3 * * *"
     assert schedule.execution_timezone == "Asia/Seoul"
     assert schedule.default_status.name == "RUNNING"
+
+
+# -- 페이지 수집·축소·버린 행 (리뷰 반영) ------------------------------------------------------------------------
+
+
+def _page(rows, *, total, raw_len=None, size=99):
+    raw = {"list": [{}] * (len(rows) if raw_len is None else raw_len)}
+    return SimpleNamespace(items=tuple(rows), total_count=total, num_of_rows=size, raw=raw)
+
+
+def test_food_pages_stop_at_count_on_a_multiple_of_99_without_an_extra_call() -> None:
+    from app.services.rest_area_collection import _collect_food_pages
+
+    calls: list[int] = []
+
+    async def fetch(page_no: int):
+        calls.append(page_no)
+        return _page([page_no] * 99, total=198)
+
+    items, invalid = asyncio.run(_collect_food_pages(fetch, "menus", max_pages=300))
+    assert (len(items), invalid, calls) == (198, 0, [1, 2])
+
+
+def test_food_pages_fail_on_a_changing_count_or_an_early_end() -> None:
+    from app.services.rest_area_collection import _collect_food_pages
+
+    async def changing(page_no: int):
+        return _page([1] * 99, total=200 + page_no)
+
+    with pytest.raises(RuntimeError, match="changed total_count"):
+        asyncio.run(_collect_food_pages(changing, "menus", max_pages=300))
+
+    async def short(page_no: int):
+        return _page([1] * 99 if page_no == 1 else [], total=200)
+
+    with pytest.raises(RuntimeError, match="ended early"):
+        asyncio.run(_collect_food_pages(short, "menus", max_pages=300))
+
+
+def test_0615_is_read_once_even_if_the_count_is_off() -> None:
+    """0615는 페이지 인자를 무시한다 — 같은 583행을 다시 부르지 않고 한 번에 판정한다."""
+    from app.services.rest_area_collection import _collect_food_pages
+
+    calls: list[int] = []
+
+    async def fetch(page_no: int):
+        calls.append(page_no)
+        return _page([1] * 3, total=4)
+
+    with pytest.raises(RuntimeError, match="safety limit"):
+        asyncio.run(_collect_food_pages(fetch, "codes", max_pages=1))
+    assert calls == [1]
+
+
+def test_a_few_unparseable_rows_are_dropped_but_many_fail() -> None:
+    from app.services.rest_area_collection import InvalidRestAreaFoodRowsError, _collect_food_pages
+
+    async def one_bad(page_no: int):
+        return _page([1] * 98, total=99, raw_len=99, size=99) if page_no == 1 else _page([], total=99)
+
+    # 99행 중 1행(1.01%)은 상한(1%) 위다. 200행 중 1행은 아래다.
+    with pytest.raises(InvalidRestAreaFoodRowsError):
+        asyncio.run(_collect_food_pages(one_bad, "menus", max_pages=300))
+
+    async def rare_bad(page_no: int):
+        return _page([1] * 99, total=200, raw_len=100, size=100) if page_no <= 2 else _page([], total=200)
+
+    items, invalid = asyncio.run(_collect_food_pages(rare_bad, "menus", max_pages=300))
+    assert (len(items), invalid) == (198, 2)
+
+
+def test_a_shrunk_food_set_fails_and_keeps_the_last_set(export_client: TestClient) -> None:
+    from app.services.rest_area_collection import ShrunkRestAreaFoodCollectionError
+
+    menus = [_menu("000001", str(seq), f"메뉴{seq}", 1000) for seq in range(1, 61)]
+    fake = FakeKrex([_code("000001", "서울만남(부산)휴게소")], menus)
+    service = _service(export_client, fake)
+    _run(export_client, service.collect_food)
+    fake.menus = menus[:47]  # 78% < 80%
+    with pytest.raises(ShrunkRestAreaFoodCollectionError):
+        _run(export_client, service.collect_food)
+    served = export_client.get(PATH, headers=HEADERS).json()
+    assert len(served["items"][0]["menus"]) == 60
+    fake.menus = menus[:48]  # 80%는 받는다
+    _run(export_client, service.collect_food)
+    assert len(export_client.get(PATH, headers=HEADERS).json()["items"][0]["menus"]) == 48

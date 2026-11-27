@@ -21,6 +21,7 @@ def origin(name):
 
 @pytest.mark.parametrize("name", [
     "airport_collection_job", "highway_collection_job", "rest_area_reference_collection_job",
+    "rest_area_food_collection_job",
 ])
 @pytest.mark.parametrize("case", ["crash", "provider", "mixed", "missing"])
 def test_transport_retry_requires_proven_child_crash_and_keeps_one_retry(name, case, monkeypatch):

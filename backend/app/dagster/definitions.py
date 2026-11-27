@@ -101,7 +101,8 @@ JOB_PRIORITIES = {
     "parking_statistics_archive_job": 0,
 }
 #: 인프라 재시도(프로세스·launcher 장애)를 허용하는 멱등 job.
-IDEMPOTENT_JOBS = frozenset({"airport_collection_job", "highway_collection_job", "rest_area_reference_collection_job"})
+IDEMPOTENT_JOBS = frozenset({"airport_collection_job", "highway_collection_job", "rest_area_reference_collection_job",
+                             "rest_area_food_collection_job"})
 
 #: 관리자 "재시도"(admin console `retry`)가 새 run에 다는 태그. 값은 재시도한 원래 run ID다.
 ADMIN_RETRY_TAG = "kortravel/admin-retry-of"
@@ -1863,7 +1864,8 @@ definitions = Definitions(
             # 재시도 run의 태그는 이 정책이 덮는다(common `infrastructure_retry_sensor`). job과 같은 상한을 쓴다.
             policy=_recovery_policy(retry_job.name),
         )
-        for retry_job in (airport_collection_job, highway_collection_job, rest_area_reference_collection_job)
+        for retry_job in (airport_collection_job, highway_collection_job, rest_area_reference_collection_job,
+                          rest_area_food_collection_job)
     ]],
     jobs=[
         public_parking_reference_job,

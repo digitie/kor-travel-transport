@@ -1673,7 +1673,7 @@ class ExportRestAreaFoodMenu(BaseModel):
     is_premium: bool | None = Field(default=None, description="프리미엄 `premiumyn`")
     is_recommended: bool | None = Field(default=None, description="추천 `recommendyn`")
     season: Literal["all_year", "summer", "winter"] | None = Field(
-        default=None, description="`seasonMenu` 4/S/W. 모르는 값은 null")
+        default=None, description="`seasonMenu` 4/S/W(원천 소문자 포함). 값이 없으면 null. 모르는 값이 든 행은 수집에서 빠진다")
     app_listed: bool | None = Field(default=None, description="원천 `app`(의미 미확인 — 걸러 쓰지 않는다)")
     menu_updated_on: date | None = Field(default=None, description="원천 메뉴 수정일 `lastDtime`")
 

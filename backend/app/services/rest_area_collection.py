@@ -25,7 +25,7 @@ from typing import Any
 
 from krex import KrexClient, RestArea, RestAreaCode as KrexRestAreaCode, RestAreaFoodMenu as KrexRestAreaFoodMenu
 from krex import RestAreaFuelPrice as KrexRestAreaFuelPrice
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -54,6 +54,15 @@ REST_AREA_FOOD_SOURCE = "krex_rest_area_food"
 REST_AREA_FOOD_TRIGGER = "dagster_rest_area_food"
 #: 0502는 서버가 한 페이지를 99행으로 자른다(2026-11-27 실측 7,291행 = 74페이지).
 FOOD_MENU_PAGE_SIZE = 99
+#: 0502 페이지 상한(약 29,700행). 공용 KREX 상한(100페이지 = 9,900행)은 지금 행 수의 1.36배뿐이라 따로 둔다.
+FOOD_MENU_MAX_PAGES = 300
+#: 엄격 파서(krex)가 버린 행 비율의 상한. 넘으면 계약이 바뀐 것으로 보고 수집을 실패시킨다. 그 아래면 행만 빼고
+#: 건수를 경고로 남긴다 — 모르는 값 한 행이 매일 수집 전체를 막지 않게 한다.
+FOOD_MAX_INVALID_RATIO = 0.01
+#: 직전 성공 집합 대비 이보다 줄면 실패(상류가 일부만 준 날 Map이 메뉴를 대량 삭제로 읽지 않게).
+FOOD_MIN_KEEP_RATIO = {"codes": 0.9, "menus": 0.8}
+#: 직전 집합이 이보다 작으면 비율 하한을 보지 않는다(운영은 코드 약 585·메뉴 약 7,300행).
+FOOD_KEEP_RATIO_BASELINE = 50
 _FACILITY_CLASSES = {"0": "rest_area", "1": "gas_station"}
 _DIRECTIONS = {"0": "up", "1": "down"}
 _SEASONS = {"4": "all_year", "S": "summer", "W": "winter"}
@@ -71,6 +80,57 @@ class EmptyRestAreaCollectionError(RuntimeError):
     3일 창이 지난 뒤 export가 빈 200을 내고 소비자(Map)가 전량 삭제로 읽는다. 실패로 남겨 export가
     503이 되게 한다(ADR-013).
     """
+
+
+class ShrunkRestAreaFoodCollectionError(EmptyRestAreaCollectionError):
+    """휴게소 먹거리 집합이 직전 성공보다 크게 줄었다(상류 일부 응답 의심). 직전 집합을 유지한다."""
+
+
+class InvalidRestAreaFoodRowsError(RuntimeError):
+    """0502/0615 응답에서 파싱하지 못한 행이 상한을 넘었다(계약 변화 의심)."""
+
+
+async def _collect_food_pages(
+    fetch: Callable[[int], Awaitable[Any]], endpoint: str, *, max_pages: int,
+) -> tuple[tuple[Any, ...], int]:
+    """전 페이지를 읽어 (파싱된 행, 버린 행 수)를 돌려준다. 원문 행 합계는 `count`와 같아야 한다.
+
+    공용 `_collect_krex_pages`는 파싱된 행 수를 `count`와 맞춰 한 행만 못 읽어도 실패한다. 여기서는 원문 행
+    수(`raw.list`)로 완결을 확인하고, 버린 행은 :data:`FOOD_MAX_INVALID_RATIO` 안에서만 받아들인다.
+    """
+    items: list[Any] = []
+    received = 0
+    expected: int | None = None
+    for page_no in range(1, max_pages + 1):
+        page = await fetch(page_no)
+        raw = getattr(page, "raw", None)
+        raw_rows = raw.get("list") if isinstance(raw, dict) else None
+        page_received = len(raw_rows) if isinstance(raw_rows, list) else len(page.items)
+        if page.total_count is not None:
+            if expected is None:
+                expected = page.total_count
+            elif page.total_count != expected:
+                raise RuntimeError(f"{endpoint} changed total_count while paging")
+        items.extend(page.items)
+        received += page_received
+        if expected is not None and received > expected:
+            raise RuntimeError(f"{endpoint} returned more rows than total_count")
+        if expected is not None and received >= expected:
+            break
+        if page_received == 0:
+            if expected is None:
+                break
+            raise RuntimeError(f"{endpoint} pagination ended early: expected {expected}, received {received}")
+        if expected is None and page_received < (page.num_of_rows or FOOD_MENU_PAGE_SIZE):
+            break
+    else:
+        raise RuntimeError(f"{endpoint} exceeded the {max_pages}-page safety limit")
+    invalid = received - len(items)
+    if invalid > max(received, 1) * FOOD_MAX_INVALID_RATIO:
+        raise InvalidRestAreaFoodRowsError(f"{endpoint}: {invalid}/{received} rows failed to parse")
+    if invalid:
+        logger.warning("rest_area_food_invalid_rows endpoint=%s invalid=%d received=%d", endpoint, invalid, received)
+    return tuple(items), invalid
 
 
 class RestAreaCollectionService:
@@ -116,14 +176,16 @@ class RestAreaCollectionService:
             return {"status": "skipped", "reason": "KEX_EX_API_KEY is required"}
 
         async def fetch(client: KrexClient) -> tuple[Any, ...]:
-            codes = await _collect_krex_pages(
+            # 0615는 페이지 인자를 무시하고 전체를 한 번에 준다.
+            codes, invalid_codes = await _collect_food_pages(
                 lambda page_no: client.restarea.service_area_codes(),
-                "python-krex-api:restarea.service_area_codes",
+                "python-krex-api:restarea.service_area_codes", max_pages=1,
             )
-            menus = await _collect_krex_pages(
+            menus, invalid_menus = await _collect_food_pages(
                 lambda page_no: client.restarea.food_menus(num_of_rows=FOOD_MENU_PAGE_SIZE, page_no=page_no),
-                "python-krex-api:restarea.food_menus",
+                "python-krex-api:restarea.food_menus", max_pages=FOOD_MENU_MAX_PAGES,
             )
+            self._food_invalid_rows = invalid_codes + invalid_menus
             return (*codes, *menus)
 
         return await self._run(session, trigger, REST_AREA_FOOD_SOURCE,
@@ -304,13 +366,15 @@ class RestAreaCollectionService:
         menus = [item for item in items if isinstance(item, KrexRestAreaFoodMenu)]
         if not codes or not menus:
             return 0
+        await self._refuse_shrunk_food_set(session, len({item.std_rest_code for item in codes}),
+                                           len({(item.std_rest_code, item.seq) for item in menus}))
         code_values: dict[str, dict[str, Any]] = {}
         for item in codes:
             code = item.std_rest_code.strip()
             if not code or code in code_values:
                 continue
             code_values[code] = {
-                "name": item.name.strip(),
+                "name": item.name.strip()[:160],
                 "facility_class": _FACILITY_CLASSES.get(getattr(item.facility_class, "value", "")),
                 "direction": _DIRECTIONS.get(getattr(item.direction, "value", "")),
                 "route_code": item.route_code,
@@ -343,7 +407,7 @@ class RestAreaCollectionService:
             values = code_values.get(key[0])
             if values is None:
                 code_values[key[0]] = {
-                    "name": (item.rest_area_name or key[0]).strip(), "facility_class": None, "direction": None,
+                    "name": (item.rest_area_name or key[0]).strip()[:160], "facility_class": None, "direction": None,
                     "route_code": item.route_code, "route_name": item.route_name, "service_area_code": None,
                     "address": item.address, "phone_number": None, "last_seen_at": collected_at, "raw_item_json": None,
                 }
@@ -371,4 +435,24 @@ class RestAreaCollectionService:
                 for key, value in values.items():
                     setattr(row, key, value)
         await session.flush()
+        logger.info("rest_area_food_stored codes=%d menus=%d invalid_rows=%d", len(code_values), len(menu_values),
+                    getattr(self, "_food_invalid_rows", 0))
         return len(code_values) + len(menu_values)
+
+    async def _refuse_shrunk_food_set(self, session: AsyncSession, codes: int, menus: int) -> None:
+        """직전 성공 집합(마지막 성공이 본 행)보다 크게 줄면 실패한다 — export가 축소 집합을 200으로 내지 않게."""
+        state = await get_or_create_state(session, REST_AREA_FOOD_SOURCE)
+        if state.last_success_at is None:
+            return
+        seen_from = state.last_success_at
+        previous = {
+            "codes": await session.scalar(select(func.count()).select_from(RestAreaCode).where(
+                RestAreaCode.source == REST_AREA_FOOD_SOURCE, RestAreaCode.last_seen_at >= seen_from)) or 0,
+            "menus": await session.scalar(select(func.count()).select_from(RestAreaFoodMenu).where(
+                RestAreaFoodMenu.source == REST_AREA_FOOD_SOURCE, RestAreaFoodMenu.last_seen_at >= seen_from)) or 0,
+        }
+        current = {"codes": codes, "menus": menus}
+        for kind, ratio in FOOD_MIN_KEEP_RATIO.items():
+            if previous[kind] >= FOOD_KEEP_RATIO_BASELINE and current[kind] < previous[kind] * ratio:
+                raise ShrunkRestAreaFoodCollectionError(
+                    f"{REST_AREA_FOOD_SOURCE}: {kind} {current[kind]} < {ratio:.0%} of previous {previous[kind]}")
