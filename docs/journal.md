@@ -1,3 +1,30 @@
+## 2026-11-27 — 유가 장기 추이 보류 P2 정리(FUEL-HISTORY-P2)
+
+- PR #300의 보류·기각 P2를 모두 처리했다. 관리 `/fuel/statistics` 주·월 점은 툴팁·키보드 안내가 버킷 시작일 하루(`00:00 KST`)를
+  보였다 → 실제 기록 범위·일수(`first_day → last_day KST · 기록 N일`, 유종마다 다르면 행마다). 공유 차트는 선택 필드 `span`만 더했다.
+- 1년·모든 유종 표(약 1,825행)를 한 번에 그렸다 → 60행씩 쪽(표준 `OffsetPager`, 표 이름 `n/N쪽`, 쪽 안내 status, 터치 44px). 저장소에
+  가상화 표 사용처가 없고 가상화는 native table role을 잃어 semantic table을 유지하는 쪽 나눔을 골랐다.
+- 공개 추이 경로에 동시 상한이 없었다 → (리뷰 뒤) backend 동시 4건 + 12307 BFF·직접 합계 4(places와 다른 zone), 12301 4, 429 + Retry-After 2 problem+json(12307 CORS),
+  응답 0.42~0.46MB용 256KiB 버퍼·임시 파일 없음. probe가 PR #300 template에서 11건 FAIL, 새 template 0 FAIL(WSL Docker).
+- 0047·0050 오프라인 `--sql`이 `MockConnection.scalar`로 죽었다 → transaction 밖 DROP/CREATE CONCURRENTLY. 생성 SQL 순서 시험과 PG18에서
+  실패한 CONCURRENTLY의 invalid 잔재(같은 이름 UNIQUE)를 바꾸는 시험, `0046:head --sql | psql` 실측(두 인덱스 valid, 버전 head).
+- 휴게소 원천 가격(INTEGER) 1억 이상이 통계 point `NUMERIC(10,2)` insert를 넘쳐 공개 전체를 실패시켰다 → 그 값만 빼고 경고.
+- 적대적 리뷰(PR #302, James·Popper 독립 실행, P0 없음) 반영:
+  - Popper P1 오프라인 스크립트에서 CREATE 실패 뒤에도 `psql`(ON_ERROR_STOP=off)이 버전을 올림 → 버전 UPDATE 앞 `DO` 확인 문장(유효한
+    인덱스가 없으면 예외), 문서에 `-v ON_ERROR_STOP=1`. P2 유효한 인덱스를 지우고 다시 만듦 → invalid 잔재만 이름 바꿔 지우고
+    `CREATE … IF NOT EXISTS`(같은 OID 유지 시험). PG 시험 복구를 새 연결로·lock/statement timeout. PG16·PG18 모두 22 passed.
+  - Popper P1 12307 BFF·직접 두 몫은 공개 BFF로 우회돼 외부가 12건 → 한 key 4건 + backend 동시 4건 초과 429(관리·공개 BFF 포함).
+    P2 socket 버퍼를 메모리 계산에 포함·`keepalive_timeout 5s`·`reset_timedout_connection on`, 12301 전용 map, probe에 읽지 않는 연결·
+    HEAD GET 확인·304 전달. P2 휴게소 2^31 이상은 수집 transaction도 실패 → 수집 저장 경계에서 범위 밖은 미제공(null), 문서 0022 정정.
+  - James P2 pager 밑줄·표와 함께 가로 스크롤·아래쪽 배치 → pager를 표 위·스크롤 밖으로, 최신 날짜부터 정렬, 경계 쪽 초점 이동,
+    안내 하나(건 단위), span 형식 검사, 주 버킷을 월요일 시작·first_day가 다른 mock과 정확한 hover 문구, 추이만 다시 조회 버튼.
+    `IS_REACT_ACT_ENVIRONMENT` 전역 설정은 이 파일 모든 시험의 기존 관례라 그대로 두었다.
+  - 재리뷰(P1 1·P2 다수): James P1 새 class `fuel-trend-table`이 주유소 이력 소형 표 CSS와 겹쳐 표가 160px 안쪽 스크롤·summary 28px →
+    `fuel-long-trend-table`로 바꾸고 e2e에 안쪽 스크롤 없음·summary 44px. 다시 조회 초점 유지. Popper P2 backend 상한을 줄별(공개 6 =
+    gateway 4+2, 내부 2)로 나눠 공개 부하가 관리 화면을 막지 못하게, 직렬화까지 자리 안. keepalive는 부분 완화로 문서 정정·probe에
+    읽지 않는 연결 32건 메모리. 오프라인 확인 문장이 `_invalid` 잔재도 거절. 휴게소 0·음수는 예전처럼 저장(정수 아님·1억 이상·-2^31 미만만 null, 최종 확인에서 Popper가 하한 누락 지적).
+  - 최종 확인: James 지적 없음, Popper P2 하한 하나 반영.
+
 ## 2026-11-27 — 공개 유가 지역별 통계 화면(FUEL-HISTORY-PUBLIC-UI)
 
 - #300이 연 공개 경로(`statistics`·`statistics/history`)로 fuel web에 `/statistics`를 더했다. 관리 `/fuel/statistics` 파일은 다른 작업

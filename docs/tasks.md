@@ -5,6 +5,12 @@
   시군구 통계 페이지 2~3초는 0050 인덱스로 공개일 항목만 읽게 했다([유가 통계](fuel-statistics.md#장기-추이)).
 - [ ] **FUEL-HISTORY-VERIFY / P1** — 배포(0049·0050) 뒤 공개 GET으로 확인: `/v1/transport/fuel/statistics?scope=sigungu&product_code=ZZZZ`가
   0.3초 안팎(전: 2.6~3.0초), `.../statistics/history?scope=nationwide&bucket=auto`의 첫 날짜가 일별 기록 첫날과 같은지.
+- [x] **FUEL-HISTORY-P2 / P2** — PR #300 보류 P2 정리(2026-11-27): 주·월 툴팁에 기록 범위·일수(James#6), 장기 추이 표 60행 쪽 나눔
+  (James#12, 표준 `OffsetPager`·터치 44px), 동시 상한(Popper#10: backend 줄별 공개 6·내부 2 + 12307 BFF·직접 합계 4, 12301 2, 429 + Retry-After 2
+  problem+json, probe 확장), 0047·0050 오프라인 `--sql`(Popper#9, transaction 밖 DROP/CREATE CONCURRENTLY, PG 시험), 휴게소 1억 이상
+  가격이 공개를 막던 문제(Popper#3, 수집 저장 경계·통계에서 저장할 수 없는 값만 빼고 경고).
+- [ ] **FUEL-HISTORY-P2-VERIFY / P2** — 배포(fuel gateway 이미지 재빌드, 12301 재생성) 뒤 `curl -sI 'https://fuel-api.../v1/transport/fuel/statistics/history?bucket=auto'`
+  200과 `docker logs ... | grep -c 'limiting connections by zone "fuel_history'`가 평소 0인지 확인.
 - [x] **FUEL-HISTORY-PUBLIC-UI / P3** — 2026-11-27 공개 유가 웹 `/statistics`(지역별 유가 통계): 전국·시도·시군구·고속도로(노선),
   유종, 현재 평균·최저·최고·주유소 수·최저가 주유소(공개 지도 링크)·통계 기준 시각·반영 대기·오래됨, 30일·90일·1년·전체 추이와 기간 요약,
   혼잡(429·503 Retry-After) 자동 1회·대기 후 다시 조회, 이상 최저·최고 제외, 없는 지역 안내, 1분 재사용·ETag 재검증,
