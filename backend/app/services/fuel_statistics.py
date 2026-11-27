@@ -30,6 +30,10 @@ OPINET = "opinet_browser"
 HIGHWAY = "krex_rest_area_fuel"
 SCOPES = {"nationwide", "sido", "sigungu", "highways", "highway", "highway_direction"}
 logger = logging.getLogger(__name__)
+# 통계 point·추이 가격 열은 NUMERIC(10,2)라 1억 이상은 저장할 수 없다. 휴게소 원천 가격은 INTEGER라 그런 값이 오면
+# point insert가 공개 transaction 전체를 실패시킨다(PR #300 Popper#3). 저장할 수 없는 값은 통계에서 빼고 경고를 남긴다.
+# 오피넷 가격은 원천 표부터 NUMERIC(10,2)라 이 상한을 넘을 수 없다.
+STATISTICS_PRICE_LIMIT = 100_000_000
 _viewport_cache: OrderedDict[tuple, tuple[float, list[dict]]] = OrderedDict()
 
 
@@ -184,6 +188,7 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
                     region["located"] += 1
             await consume(point, scopes)
     elif source == HIGHWAY:
+        skipped_prices = 0
         stream = await session.stream(select(RestAreaFuelPrice).where(
             RestAreaFuelPrice.source == source, RestAreaFuelPrice.last_seen_at == collected_at,
         ).order_by(RestAreaFuelPrice.service_area_code).execution_options(yield_per=500))
@@ -194,6 +199,12 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
             for product, price in (("B027", row.gasoline_price), ("D047", row.diesel_price), ("K015", row.lpg_price)):
                 if price is None or price <= 0:
                     continue
+                if price >= STATISTICS_PRICE_LIMIT:
+                    skipped_prices += 1
+                    if skipped_prices == 1:
+                        logger.warning("fuel_statistics_price_out_of_range source=%s station_key=%s product=%s",
+                                       source, row.service_area_code, product)
+                    continue
                 await consume({"source": source, "station_key": row.service_area_code, "generated_at": stamp,
                                "name": row.service_area_name or row.service_area_code, "address": row.address,
                                "brand_name": row.oil_company, "longitude": None, "latitude": None,
@@ -202,6 +213,9 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
                     ("highway", _key(route_key), route),
                     ("highway_direction", _key(route_key, direction), f"{route} · {direction}"),
                 ])
+        if skipped_prices:
+            logger.warning("fuel_statistics_prices_out_of_range source=%s count=%d limit=%d",
+                           source, skipped_prices, STATISTICS_PRICE_LIMIT)
     else:
         raise ValueError("지원하지 않는 유가 원천입니다.")
     if pending:
