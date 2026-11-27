@@ -246,3 +246,38 @@ def test_ranked_cheapest_ten_are_published_cohort_snapshot(client):
     assert [(row["price"], row["station_key"]) for row in ranks] == sorted((row["price"], row["station_key"]) for row in ranks)
     assert all(row["price"] >= 1600 and row["address"].startswith("주소") for row in ranks)
     assert ranks[0]["longitude"] is not None
+
+
+def test_statistics_page_can_skip_thirty_day_history(client):
+    """공개 통계 화면은 장기 추이 API를 따로 읽으므로 30일 이력 없이 현재 지표만 받는다."""
+
+    async def exercise():
+        async with client.app.state.session_factory() as session:
+            stamp = datetime(2026, 10, 12, 16, tzinfo=timezone.utc)
+            await seed(session, stamp)
+            for offset in range(3):
+                await session.execute(update(FuelLatestPrice).values(collected_at=stamp + timedelta(days=offset)))
+                await publish_fuel_statistics(session, OPINET, stamp + timedelta(days=offset))
+            await session.commit()
+            full = await fuel_statistics_page(session, "nationwide", "B027")
+            slim = await fuel_statistics_page(session, "nationwide", "B027", include_history=False)
+            assert len(full["history"]) == 3 and slim["history"] == []
+            assert slim["items"] == full["items"]
+            assert slim["history_scope_key"] == full["history_scope_key"]
+            assert slim["generated_at"] == full["generated_at"]
+    asyncio.run(exercise())
+
+    # 선택 범주(scope_key)의 가격순 목록은 이력 없이도 그대로 준다(시도 범위).
+    keyed = client.get("/v1/transport/fuel/statistics", params={"scope": "sido", "include_history": "false"}).json()
+    assert keyed["history"] == []
+    target = keyed["items"][-1]["scope_key"]
+    chosen = client.get("/v1/transport/fuel/statistics", params={
+        "scope": "sido", "scope_key": target, "include_history": "false"}).json()
+    full = client.get("/v1/transport/fuel/statistics", params={"scope": "sido", "scope_key": target}).json()
+    assert chosen["history_scope_key"] == target and chosen["history"] == []
+    assert [row["cheapest_stations"] for row in chosen["items"]] == [row["cheapest_stations"] for row in full["items"]]
+    assert next(row for row in chosen["items"] if row["scope_key"] == target)["ranking_complete"] is True
+    with_history = client.get("/v1/transport/fuel/statistics", params={"scope": "nationwide"}).json()
+    without = client.get("/v1/transport/fuel/statistics", params={"scope": "nationwide", "include_history": "false"}).json()
+    assert len(with_history["history"]) == 3 and without["history"] == []
+    assert without["items"] == with_history["items"]

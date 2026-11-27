@@ -1,19 +1,31 @@
 import { z } from "zod";
 import { TransportError } from "./journey";
 
+/**
+ * `Retry-After`(RFC 9110: 0 이상 정수 초 또는 HTTP-date)를 초로 바꾼다. 없거나 읽을 수 없으면 0이다.
+ * 날짜면 지금부터 남은 초(올림, 지난 날짜는 0)다.
+ */
+export function parseRetryAfter(value: string | null | undefined, now: number = Date.now()): number {
+  const text = value?.trim();
+  if (!text) return 0;
+  if (/^\d+$/.test(text)) return Number(text);
+  const date = Date.parse(text);
+  return Number.isFinite(date) ? Math.max(0, Math.ceil((date - now) / 1000)) : 0;
+}
+
 /** 기존 지도 reader의 경로를 공개 유가 BFF의 한정된 연산으로 바꾼다. */
 export async function publicFuelGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   const [pathname, query] = path.split("?", 2);
   const operation = pathname === "features/places" ? "places"
     : pathname.startsWith("fuel/") ? pathname.slice(5) : pathname;
-  if (!/^(places|stations|statistics|price-distribution|area-catalog|health|stations\/[1-9][0-9]*\/price-history)$/.test(operation)) {
+  if (!/^(places|stations|statistics|statistics\/history|price-distribution|area-catalog|health|stations\/[1-9][0-9]*\/price-history)$/.test(operation)) {
     throw new TransportError("허용되지 않은 유가 조회입니다.", 404, 0);
   }
   const response = await fetch(`/api/public/fuel/${operation}${query ? `?${query}` : ""}`, {
     cache: "no-store", credentials: "omit", signal,
   });
   if (!response.ok) {
-    const seconds = Number(response.headers.get("retry-after") ?? "0");
+    const seconds = parseRetryAfter(response.headers.get("retry-after"));
     // backend가 준 한국어 안내(혼잡·시한 초과)는 그대로 보여 준다. 그 밖의 본문은 내부 표현일 수 있어 쓰지 않는다.
     const body = await response.json().catch(() => null) as { detail?: unknown } | null;
     const message = typeof body?.detail === "string" && /[가-힣]/.test(body.detail)

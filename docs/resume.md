@@ -1,3 +1,11 @@
+## 현재 상태 — 2026-11-27 공개 유가 지역별 통계 화면(FUEL-HISTORY-PUBLIC-UI)
+
+- transport-admin(fuel web): `/statistics` 공개 화면, 지도 "통계" 단추, proxy rewrite, 공개 reader 경로·Retry-After 날짜 형식.
+  backend: `GET /v1/transport/fuel/statistics?include_history=false`(추가 query, 기본 동작 불변), OpenAPI. gateway·migration 없음.
+- 배포(Codex 담당): backend 이미지, fuel web 이미지(transport-admin과 같은 artifact) 재빌드. 순서 무관(옛 backend는 query를 무시하고
+  30일 이력을 더 줄 뿐이다). #300(0049·0050·장기 추이 API·gateway)이 먼저 배포돼 있어야 추이가 보인다.
+- 다음 한 작업: FUEL-HISTORY-PUBLIC-UI-VERIFY(tasks.md).
+
 ## 현재 상태 — 2026-11-26 유가 통계 장기 추이(FUEL-HISTORY-20261126)
 
 - backend(0049 `fuel_statistics_history` 표+backfill, 0050 `ix_fuel_statistics_daily_current` CONCURRENTLY, 공개 transaction 쓰기, 새 API,

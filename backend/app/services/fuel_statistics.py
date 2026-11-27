@@ -446,7 +446,12 @@ async def _legacy_global_rankings(session: AsyncSession, source: str, scope: str
 
 
 async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: str,
-                               scope_key: str | None = None) -> dict:
+                               scope_key: str | None = None, include_history: bool = True) -> dict:
+    """현재 공개 세대의 범주별 지표와 선택 범주의 30일 이력.
+
+    ``include_history=False``면 30일 이력 행을 읽지 않고 ``history``는 빈 목록이다(현재 지표·선택 범주 순위는 그대로).
+    장기 추이 API를 따로 읽는 공개 통계 화면이 쓰지 않는 이력을 내려받지 않게 한다.
+    """
     source = OPINET if scope in {"nationwide", "sido", "sigungu"} else HIGHWAY
     d, state = FuelStatisticsDaily, FuelStatisticsState
     product_filter = literal(True) if product_code == "ALL" else d.product_code == product_code
@@ -458,12 +463,13 @@ async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: 
         select(func.min(current_keys.c.scope_key)).scalar_subquery(),
     )
     day_start = func.date(state.day, "-29 days") if session.bind.dialect.name == "sqlite" else state.day - 29
+    current_row = and_(d.day == state.day, d.generated_at == state.generated_at)
     # 현재 범주와 선택 범주의 30일 이력을 한 SQL snapshot에서 읽는다.
     # 발행의 delete/insert 사이 또는 자정 보관 정리 사이를 섞어 읽지 않는다.
     rows = (await session.execute(select(d, state.generated_at, state.day, chosen).select_from(state).outerjoin(d, and_(
         d.source == state.source, d.scope == scope, product_filter,
         d.day.between(day_start, state.day), d.generated_at <= state.generated_at,
-        or_(and_(d.day == state.day, d.generated_at == state.generated_at), d.scope_key == chosen),
+        or_(current_row, d.scope_key == chosen) if include_history else current_row,
     )).where(state.source == source).order_by(d.scope_key, d.day, d.product_code))).all()
     generated_at = rows[0][1] if rows else None
     selected_key = rows[0][3] if rows else None
@@ -477,7 +483,7 @@ async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: 
                 "minimum_price": row[0].metrics_json.get("minimum_price"),
                 "maximum_price": row[0].metrics_json.get("maximum_price"),
                 "cheapest_station": row[0].metrics_json.get("cheapest_station")}
-               for row in rows if row[0] is not None and row[0].scope_key == selected_key]
+               for row in rows if include_history and row[0] is not None and row[0].scope_key == selected_key]
     collection = await session.scalar(select(TransportCollectionState).where(TransportCollectionState.source == source))
     pending = bool(collection and collection.last_success_at and (
         generated_at is None or serialize_utc(collection.last_success_at) > serialize_utc(generated_at)))

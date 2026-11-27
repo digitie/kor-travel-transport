@@ -8,7 +8,7 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (process.env.TRANSPORT_UI_MODE === "fuel") {
     const api = pathname.startsWith("/api/public/fuel/");
-    const allowed = pathname === "/" || pathname === "/public/fuel" || api
+    const allowed = pathname === "/" || pathname === "/public/fuel" || pathname === "/statistics" || pathname === "/public/fuel/statistics" || api
       || pathname.startsWith("/_next/") || pathname.startsWith("/maplibre/")
       || pathname.startsWith("/fuel-brands/") || pathname === "/favicon.ico";
     if (!allowed) return new NextResponse(null, { status: 404 });
@@ -16,8 +16,9 @@ export function proxy(request: NextRequest) {
     if (!methods.includes(request.method)) {
       return new NextResponse(null, { status: 405, headers: { Allow: methods.join(", ") } });
     }
-    if (pathname === "/") {
-      const target = request.nextUrl.clone(); target.pathname = "/public/fuel";
+    // 공개 주소는 `/`(지도)와 `/statistics`(지역별 통계)다. 실제 page는 /public/fuel 아래에 있다.
+    if (pathname === "/" || pathname === "/statistics") {
+      const target = request.nextUrl.clone(); target.pathname = pathname === "/" ? "/public/fuel" : "/public/fuel/statistics";
       return NextResponse.rewrite(target);
     }
     return NextResponse.next();

@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { LocateFixed } from "lucide-react";
+import { ChartLine, LocateFixed } from "lucide-react";
+import Link from "next/link";
 import { CameraRequest, FitBoundsRequest, UserLocationMarker, type BoundsTarget, type CameraTarget } from "@/components/map-overlays";
 import { FuelRegionPicker, type FuelAreaChoice, type FuelSelectedRegion } from "@/components/public-fuel-controls";
 import { TransportMap } from "@/components/transport-map";
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { FUEL_CHART_ORDER } from "@/lib/fuel-chart-model";
+import { FROM_MAP_PARAM } from "@/lib/public-fuel-statistics";
 import { publicFuelGet } from "@/lib/public-fuel";
 import {
   LOCATE_MESSAGES, LOCATE_WATCHDOG_MS, RETRYABLE_LOCATE_FAILURES, isLocateFailure, requestUserPosition, type LocateFailure,
@@ -65,6 +69,12 @@ function parseProductPreferences(value: string | null): string[] {
     }
   } catch { /* 잘못 저장된 값은 전체 유종으로 복원한다. */ }
   return [];
+}
+
+/** `from=map`: 통계 화면의 "유가 지도"가 새 지도를 쌓지 않고 뒤로 가게 한다(화면이 첫 렌더에 읽고 주소에서 지운다). */
+function statisticsHref(products: string[]) {
+  const product = FUEL_CHART_ORDER.find(code => products.includes(code));
+  return `/statistics?${new URLSearchParams({ ...(product && product !== "B027" ? { product } : {}), [FROM_MAP_PARAM]: "map" })}`;
 }
 
 export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boolean }) {
@@ -195,9 +205,15 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
         setRegionTarget({ bounds, id: `${region.label}:${Date.now()}` });
       }} onRelease={selectedRegion ? () => setSelectedRegion(undefined) : undefined} returnFocus={opener} />
     <div className="public-fuel-location">
-      <Button type="button" variant="outline" onClick={locate} loading={locating} aria-label="내 위치 주변 유가 보기">
-        <LocateFixed aria-hidden="true" size={18} />
-      </Button>
+      <div className="public-fuel-location-actions">
+        <Button type="button" variant="outline" onClick={locate} loading={locating} aria-label="내 위치 주변 유가 보기">
+          <LocateFixed aria-hidden="true" size={18} />
+        </Button>
+        {/* 지역별 통계로 가는 공개 화면의 유일한 입구. 고른 유종이 있으면 그 유종으로 연다. */}
+        <Link className={buttonVariants({ variant: "outline" })} href={statisticsHref(products)} aria-label="지역별 유가 통계">
+          <ChartLine aria-hidden="true" size={18} /><span aria-hidden="true">통계</span>
+        </Link>
+      </div>
       {locationError ? <div className="public-fuel-location-status" data-failure={locationError}>
         <p role="status">{LOCATE_MESSAGES[locationError]}</p>
         {RETRYABLE_LOCATE_FAILURES.has(locationError)

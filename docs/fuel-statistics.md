@@ -9,7 +9,7 @@
 
 평균은 유효한 양수 가격의 주유소별 단순 평균이다. 유종별 개수·평균·최저·최고·최고-최저 차이·모표준편차·50L 평균 대비 최저가 절감액을 제공한다. 최저가 동률은 안정적으로 한 주유소를 대표 표시하고 동률 개수도 제공한다. 정상 세대의 각 범주·유종에는 가격과 station_key 순으로 최대 10곳의 이름·주소·좌표·가격을 metrics_json에 함께 보존한다. 누적기는 범주별 10곳만 유지하며 원본 조회 중에 처리하므로 공개 잠금 범위는 늘리지 않는다. 좌표 미등록 주유소도 전국 통계에 포함하고 지도 통계에서는 제외한다. 2026-11-02 사용자가 선택한 기준에 따라 오피넷은 최신 읽기 모델 중 `collected_at`이 이번 성공 수집 시각과 같은 가격만 집계한다. 이전 수집 가격·주유소·원본을 삭제하지 않으며, 이번 수집에서 확인되지 않은 가격을 새 통계에 포함하지 않는다. 고속도로도 해당 성공 수집에서 확인된 주유소만 사용한다.
 
-`GET /v1/transport/fuel/statistics?scope=nationwide&product_code=B027`은 작은 일별 통계 테이블만 읽는다. scope는 nationwide, sido, sigungu, highways, highway, highway_direction이다. scope_key로 추이 범주를 지정한다. product_code=ALL은 같은 공개 세대의 모든 유종을 한 SQL snapshot에서 반환한다. items와 history에 product_code를 포함하며 선택 범주의 history는 30일이다. history의 minimum_price·maximum_price·cheapest_station은 해당 날짜에 저장된 값만 반환한다. 과거 값이 없으면 null이며 현재의 극값이나 주유소로 채우지 않는다. cheapest_stations와 ranking_complete는 선택 범주의 현재 세대에만 제공하고 나머지 범주는 빈 배열/false다. 이전 집계에 10곳 순위가 없으면 이미 알려진 cheapest_station과 minimum_price 한 곳은 유지하되 나머지 순위를 추정하지 않는다. 지역·노선 키는 문자열 배열의 JSON 표현이며 코드의 선행 0을 보존한다.
+`GET /v1/transport/fuel/statistics?scope=nationwide&product_code=B027`은 작은 일별 통계 테이블만 읽는다. `include_history=false`(2026-11-27)면 30일 이력 행을 읽지 않고 `history`는 빈 목록이다(현재 지표·선택 범주 순위는 같다, 공개 통계 화면용). scope는 nationwide, sido, sigungu, highways, highway, highway_direction이다. scope_key로 추이 범주를 지정한다. product_code=ALL은 같은 공개 세대의 모든 유종을 한 SQL snapshot에서 반환한다. items와 history에 product_code를 포함하며 선택 범주의 history는 30일이다. history의 minimum_price·maximum_price·cheapest_station은 해당 날짜에 저장된 값만 반환한다. 과거 값이 없으면 null이며 현재의 극값이나 주유소로 채우지 않는다. cheapest_stations와 ranking_complete는 선택 범주의 현재 세대에만 제공하고 나머지 범주는 빈 배열/false다. 이전 집계에 10곳 순위가 없으면 이미 알려진 cheapest_station과 minimum_price 한 곳은 유지하되 나머지 순위를 추정하지 않는다. 지역·노선 키는 문자열 배열의 JSON 표현이며 코드의 선행 0을 보존한다.
 
 `GET /v1/transport/features/places`에 `include_fuel_statistics=true`와 완전한 bbox를 주면 현재 화면 전체의 유종별 통계를 함께 반환한다. 종류·출처·검색·유종 필터를 적용하며 마커 limit과 클러스터 수에는 영향을 받지 않는다. 최신 통계 가격만 한 SQL로 집계하고 세대별 최대 64개/10초 캐시로 반복 조회를 줄인다. 브라우저 기존 지도 요청/캐시를 재사용해 별도 왕복을 추가하지 않는다.
 
@@ -65,8 +65,8 @@
 관리 UI `/fuel/statistics`는 범위·유종 옆에 **기간**(30일·90일·1년·전체)을 둔다. 30일은 예전 그대로 페이지 응답의 이력(날짜별 최저가
 주유소 포함)을 쓴다. 90일·1년은 페이지가 고른 범주(`history_scope_key`)와 공개 세대 KST 날짜(`to`)로 `bucket=day`, 전체는
 `bucket=auto`를 읽어 같은 ECharts 차트·표로 보인다. 주·월 점은 점 간격(7일·31일)보다 먼 빈 기간에서만 선을 끊고, 넉 달 넘는 범위는
-x축을 연.월로 쓴다. 장기 추이 실패는 그 자리에서만 알리고 현재 범주·순위 표는 그대로 둔다. 공개 유가 웹에는 통계 화면이 없어 이번에
-더하지 않았다(gateway·BFF 경로는 열어 두었다).
+x축을 연.월로 쓴다. 장기 추이 실패는 그 자리에서만 알리고 현재 범주·순위 표는 그대로 둔다. 공개 유가 웹은 2026-11-27부터 `/statistics`에서 같은 두 API로
+지역별 현재 값과 추이를 보인다([공개 유가 서비스](design/2026-11-20-public-fuel-service.md#지역별-유가-통계-statistics)).
 
 ## 통계 페이지 시군구 읽기 (2026-11-26)
 
