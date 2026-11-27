@@ -225,14 +225,16 @@ location(Map)과 backend 직접(loopback 12302, 관리 BFF·측정 스크립트)
 - 장기 유가 추이(`/v1/transport/fuel/statistics/history`, 2026-11-27)는 두 공개 gateway에서 정확 일치 location이다.
   - 응답은 유종당 최대 400점(점 하나 약 230 bytes)이라 1년·모든 유종(약 1,825점)이 비압축 약 0.42MB, 상한 5유종×400점이 약 0.46MB다.
     `proxy_buffers 8 32k`(요청당 최대 256KiB)·`proxy_max_temp_file_size 0`·`send_timeout 10s`로 임시 파일 없이 나머지는
-    클라이언트 속도로 흘린다(BFF는 같은 호스트라 곧바로 읽는다). 응답을 커널에 다 넘기면 상한 자리가 풀리므로 읽지 않는 연결이 송신
-    socket 버퍼를 오래 쥐지 않게 `keepalive_timeout 5s`·`reset_timedout_connection on`을 둔다.
-  - backend가 동시 4건(`FUEL_HISTORY_MAX_RUNNING`)을 넘으면 기다리지 않고 429다. gateway는 같은 4건을 미리 센다.
+    클라이언트 속도로 흘린다(BFF는 같은 호스트라 곧바로 읽는다). `keepalive_timeout 5s`·`reset_timedout_connection on`은 **부분 완화**다:
+    응답을 커널에 다 넘기면 상한 자리는 풀리고 읽지 않는 연결의 남은 본문(gzip이면 수십 KB)은 커널 송신 버퍼에 남아 상한이 묶지 않는다.
+    `reset_timedout_connection`은 `send_timeout`으로 끊는 연결만 RST로 버퍼를 바로 놓는다. 많은 읽지 않는 연결의 실제 메모리는 probe가 잰다.
+  - backend는 줄별 상한이다(`FUEL_HISTORY_MAX_RUNNING`): 공개 줄 6(= 12307 4 + 12301 2, 넘는 요청은 gateway가 먼저 거절), 내부 줄
+    (관리 BFF) 2. 공개 부하가 관리 화면을 막지 못한다.
   - 12307은 BFF·직접 호출을 **한 key**(`$fuel_history_slot`, zone `fuel_history`) 4건으로 센다. places와 달리 나누지 않는다: 공개 BFF
     (`/api/public/fuel/statistics/history`)도 누구나 부를 수 있어 둘로 나누면 외부 호출자가 두 몫을 다 쓴다. places와 zone이 달라
     추이 조회가 지도 몫을, 지도가 추이 몫을 쓰지 않는다. 메모리(최악, 모두 gzip 직접 호출 + 송신 socket 버퍼 약 512KiB):
     4×(652+512)KiB ≈ 4.6MiB로 places 두 몫(≈15.2MiB)과 합쳐 ≈19.8MiB, 64MiB의 1/3 이하다.
-  - 12301은 직접 호출뿐이라 listener 전체 한 key(`$transport_fuel_history_slot`, export와 다른 map) 4건이다. 정규식 공개 읽기에서는
+  - 12301은 직접 호출뿐이라 listener 전체 한 key(`$transport_fuel_history_slot`, export와 다른 map) 2건이다. 정규식 공개 읽기에서는
     이 경로를 뺐다.
   - 넘으면 `429` + `Retry-After: 2` problem+json(다섯 항목, `instance`=`/v1/transport/fuel/statistics/history`, 12307은 CORS 다섯 줄을
     다시 적는다). access log `uct=- ust=-`, error log `limiting connections by zone "fuel_history"`(12301은
@@ -274,10 +276,11 @@ template에서 port 변수만 바꾼 문자열과 같은지 먼저 본다(다르
   backend 429는 그대로 전달(`ust=429`), gateway 429 줄은 `uct=- ust=-`, error log에 두 zone의 `[warn] limiting connections`.
   64MiB 한도에서 OOM 없음(memory.peak 출력).
 - 장기 유가 추이: path·query 그대로 전달, 공개 표지·Server-Timing 숨김, 0.47MB 본문(12301 identity, 12307 identity·gzip).
-  12301 동시 5건 → 200 4건·429 1건(`Retry-After: 2`, problem+json), 몫이 찬 동안 stations·export 200. 12307 preflight 204/403,
+  12301 동시 3건 → 200 2건·429 1건(`Retry-After: 2`, problem+json), 몫이 찬 동안 stations·export 200. 12307 preflight 204/403,
   HEAD는 upstream이 GET으로 받음, If-None-Match 304가 gzip 요청에도 ETag·CORS와 함께 전달, BFF·직접 호출을 섞은 동시 5건 →
   200 4건·429 1건(CORS 포함), 직접 호출이 상한을 채우면 BFF 추이도 429, 그동안 places(BFF·직접)·statistics 200, places 두 몫이
   찬 동안 추이 200. 읽지 않는 직접 호출 4건(3MB)이 상한을 채우면 다음 추이 429, `send_timeout` 뒤 8~16초 안에 풀림(메모리 INFO).
+  실제 크기 본문(0.47MB)을 읽지 않는 연결 32건을 열어도(자리는 곧 풀린다) 64MiB 안이다(메모리 INFO·peak).
   backend 429 전달(`ust=429`)과 gateway 429(`uct=- ust=-`) 구분, error log의 `[warn]` 줄. PR #300 template(상한 없음)으로 돌리면
   로컬 실측 11건 FAIL이었다.
 - access log: 모든 줄이 timing 형식(12307은 `gz=` 포함), query·cursor 값 없음, `/health` 없음.

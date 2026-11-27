@@ -58,7 +58,7 @@ FUEL_DIRECT_CONN_LIMIT = 8
 # 장기 유가 추이 동시 상한(12307은 BFF·직접 호출 합계 한 key, 12301은 listener 전체). template·backend와 같은 값이어야 한다.
 HISTORY = "/v1/transport/fuel/statistics/history"
 FUEL_HISTORY_CONN_LIMIT = 4
-ADMIN_HISTORY_CONN_LIMIT = 4
+ADMIN_HISTORY_CONN_LIMIT = 2
 HISTORY_ETAG = 'W/"probe-history"'
 # 1년·모든 유종(약 1,825점) 비압축 약 0.42MB, 상한 5유종×400점 약 0.46MB.
 HISTORY_BODY = 470_000
@@ -593,6 +593,25 @@ def probe_fuel(gw: Gateway) -> None:
         time.sleep(0.5)
     check("fuel: 읽지 않는 추이 연결은 send_timeout(10초) 뒤 끊겨 자리가 풀림(8~16초)", freed is not None and 8 <= freed <= 16, freed)
     for sock in stalled:
+        sock.close()
+
+    # 실제 크기 본문(0.47MB)을 읽지 않는 연결 여럿: 자리는 본문을 커널에 넘기면 풀리므로 상한이 연결 수를 묶지 않는다(부분 완화).
+    # 남은 본문이 커널 송신 버퍼에 있어도 64MiB 안인지 잰다.
+    many = []
+    for index in range(32):
+        sock = socket.socket()
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+        sock.bind((DIRECT_ADDR if index % 2 else BFF_ADDR, 0))
+        sock.connect(("127.0.0.1", gw.port))
+        encoding = "gzip" if index % 2 else "identity"
+        sock.sendall(f"GET {HISTORY}?big={HISTORY_BODY} HTTP/1.1\r\nHost: probe\r\nAccept-Encoding: {encoding}\r\n\r\n".encode())
+        many.append(sock)
+        time.sleep(0.05)
+    time.sleep(2.0)
+    print(f"INFO fuel: 읽지 않는 실제 크기 추이 연결 32건 동안 memory {gw.memory_now()}", flush=True)
+    _, oom, _ = gw.memory()
+    check("fuel: 읽지 않는 실제 크기 추이 연결 32건에도 OOM 없음, places 200", not oom and request(gw.port, places)[0] == 200)
+    for sock in many:
         sock.close()
     check_history_log(gw, 3)
 

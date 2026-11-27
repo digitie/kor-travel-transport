@@ -32,7 +32,8 @@ map $server_port $transport_export_slot {
 limit_conn_zone $transport_export_slot zone=transport_export:1m;
 # 공개 장기 유가 추이 동시 처리 상한. 직접 호출자(HAProxy·NAT 공유)를 주소별로 나누지 않고 listener 전체 한 key로 센다
 # (export map과 따로 둔다 — 한쪽 key를 바꿔도 다른 상한이 바뀌지 않는다).
-# 관리 UI는 관리 BFF가 backend 12302를 직접 부르므로 이 listener를 지나지 않는다. backend도 동시 4건을 넘으면 429다.
+# 관리 UI는 관리 BFF가 backend 12302를 직접 부르므로 이 listener를 지나지 않는다. backend 공개 줄 상한(6)은 이 상한(2)과
+# 12307(4)의 합이라 넘는 요청은 gateway가 먼저 거절한다.
 map $server_port $transport_fuel_history_slot {
     default history;
 }
@@ -104,7 +105,7 @@ server {
     }
 
     # 공개 장기 유가 추이. 응답(최대 약 0.46MB 비압축)이 기본 버퍼를 넘어 proxy_temp 파일로 내려가지 않게 요청당 최대
-    # 256KiB 메모리 버퍼로 받고 임시 파일은 쓰지 않는다. 동시 4건(≈1MiB)을 넘으면 429 + Retry-After 2 problem+json이다
+    # 256KiB 메모리 버퍼로 받고 임시 파일은 쓰지 않는다. 동시 2건을 넘으면 429 + Retry-After 2 problem+json이다
     # (12307 공개 유가 gateway와 같은 거절 형식). 그 밖의 header·timeout은 위 공개 읽기 location과 같다.
     location = /v1/transport/fuel/statistics/history {
         limit_except GET { deny all; }
@@ -120,10 +121,11 @@ server {
         proxy_buffers 8 32k;
         proxy_max_temp_file_size 0;
         send_timeout 10s;
-        # 응답을 커널에 넘기면 상한 자리는 풀린다. 읽지 않는 연결이 커널 송신 버퍼를 오래 쥐지 않게 keepalive를 짧게 둔다.
+        # 부분 완화: 응답을 커널에 다 넘기면 상한 자리는 풀리고, 읽지 않는 연결의 남은 본문은 커널 송신 버퍼에 남는다(이 상한이
+        # 묶지 않는다). keepalive를 짧게 둬 다음 요청 대기를 줄이고, send_timeout으로 끊는 연결은 RST로 버퍼를 바로 놓는다.
         keepalive_timeout 5s;
         reset_timedout_connection on;
-        limit_conn transport_fuel_history 4;
+        limit_conn transport_fuel_history 2;
         limit_conn_status 429;
         limit_conn_log_level warn;
         error_page 429 = @transport_fuel_history_busy;

@@ -267,7 +267,7 @@ def test_public_fuel_history_has_its_own_concurrency_cap_on_both_gateways():
 
     12307은 BFF·직접 호출을 한 key로 센다(공개 BFF도 누구나 부를 수 있어 둘로 나누면 외부 호출자가 두 몫을 다 쓴다, PR #302).
     상한은 backend 동시 실행 상한과 같다."""
-    from app.services.fuel_statistics import FUEL_HISTORY_MAX_RUNNING, FUEL_HISTORY_RETRY_AFTER_SECONDS
+    from app.services.fuel_statistics import FUEL_HISTORY_GATEWAY_LIMITS, FUEL_HISTORY_RETRY_AFTER_SECONDS
 
     fuel = _text(FUEL)
     block = _block(fuel, f"    location = {HISTORY}")
@@ -276,7 +276,7 @@ def test_public_fuel_history_has_its_own_concurrency_cap_on_both_gateways():
     assert "limit_conn_zone $fuel_history_slot zone=fuel_history:1m;" in fuel
     limit = int(re.search(r"limit_conn fuel_history (\d+);", block).group(1))
     assert len(re.findall(r"limit_conn fuel_history", block)) == 1
-    assert limit == FUEL_HISTORY_MAX_RUNNING
+    assert limit == FUEL_HISTORY_GATEWAY_LIMITS["fuel"]
     assert "fuel_places" not in block  # 지도 몫을 쓰지 않는다.
     for directive in ("proxy_max_temp_file_size 0;", "send_timeout 10s;", "limit_conn_status 429;",
                       "keepalive_timeout 5s;", "reset_timedout_connection on;",
@@ -316,7 +316,7 @@ def test_public_fuel_history_has_its_own_concurrency_cap_on_both_gateways():
     assert slot.strip() == "default history;"
     assert "limit_conn_zone $transport_fuel_history_slot zone=transport_fuel_history:1m;" in admin
     limit = int(re.search(r"limit_conn transport_fuel_history (\d+);", block).group(1))
-    assert limit == FUEL_HISTORY_MAX_RUNNING and limit * (_per_request(block) + 4 * 1024 + 512 * 1024) <= 4 * 1024 * 1024
+    assert limit == FUEL_HISTORY_GATEWAY_LIMITS["transport"] and limit * (_per_request(block) + 4 * 1024 + 512 * 1024) <= 4 * 1024 * 1024
     for directive in ("limit_except GET { deny all; }", "proxy_pass http://127.0.0.1:12302;",
                       "proxy_hide_header Server-Timing;", "proxy_set_header Host 127.0.0.1;",
                       "proxy_set_header X-Transport-Listener public;", "proxy_read_timeout 30s;",

@@ -408,10 +408,10 @@ function FuelTrendTable({ unit, label, points, columns }: { unit: string; label:
     if (active && active !== document.body && !(active as HTMLButtonElement).disabled) return;
     pager.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
   }, [current]);
-  return <details className="fuel-trend-table"><summary className="flex min-h-11 cursor-pointer items-center text-sm text-text-secondary">{unit} 가격 표{pages > 1 ? ` · ${count(ordered.length)}건` : ""}</summary>
-    {pages > 1 ? <div ref={pager} className="fuel-trend-table-pager">
+  return <details className="fuel-long-trend-table"><summary className="flex min-h-11 cursor-pointer items-center text-sm text-text-secondary">{unit} 가격 표{pages > 1 ? ` · ${count(ordered.length)}건` : ""}</summary>
+    {pages > 1 ? <div ref={pager} className="fuel-long-trend-table-pager">
       <p className="sr-only" role="status">{`${unit} 가격 표 ${current}/${pages}쪽 · ${count(start + 1)}–${count(start + shown.length)}번째 / 총 ${count(ordered.length)}건`}</p>
-      <OffsetPager ariaPrefix={`${unit} 가격 표`} page={current} totalPages={pages} totalCount={ordered.length} currentCount={shown.length} onPageChange={next => { paged.current = true; setPage(Math.max(1, Math.min(pages, next))); }} />
+      <OffsetPager ariaPrefix={`${unit} 가격 표`} page={current} totalPages={pages} totalCount={ordered.length} currentCount={shown.length} onPageChange={next => { const target = Math.max(1, Math.min(pages, next)); paged.current = target !== current; setPage(target); }} />
     </div> : null}
     <div className="fuel-stat-table overflow-x-auto">
       <VirtualTable ariaLabel={pages > 1 ? `${label} ${current}/${pages}쪽` : label} data={shown} getRowId={point => `${point.product_code}:${point.day}`} virtualized={false} columns={columns} />
@@ -420,11 +420,19 @@ function FuelTrendTable({ unit, label, points, columns }: { unit: string; label:
 }
 /** 장기 추이 영역의 조회 중·실패·결과. 30일 통계(순위 표 등)와 따로 알린다. */
 function FuelLongTrendSection({ period, trend }: { period: Exclude<Period, "30">; trend: TrendState }) {
+  const section = useRef<HTMLDivElement>(null);
+  const retried = useRef(false);
+  // 다시 조회 버튼은 조회 중에 사라진다. 누를 때 초점을 이 영역에 두고, 다시 실패하면 새 버튼으로 돌려준다(body로 떨어지지 않게).
+  useEffect(() => {
+    if (!retried.current || trend.pending) return;
+    retried.current = false;
+    if (trend.error && document.activeElement === section.current) section.current?.querySelector<HTMLButtonElement>(".fuel-long-trend-retry")?.focus();
+  }, [trend.pending, trend.error]);
   const body = trend.pending ? <p role="status" className="text-sm text-text-secondary">추이 조회 중…</p>
     : trend.error ? <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-sm text-destructive">{trend.error}</p>
-      <Button type="button" variant="outline" size="sm" className="fuel-long-trend-retry" onClick={trend.retry}>추이 다시 조회</Button></div>
+      <Button type="button" variant="outline" size="sm" className="fuel-long-trend-retry" onClick={() => { retried.current = true; section.current?.focus(); trend.retry(); }}>추이 다시 조회</Button></div>
     : trend.data ? <FuelLongTrend trend={trend.data} period={period} /> : null;
-  return <div className="fuel-long-trend" aria-busy={trend.pending}>{body}</div>;
+  return <div ref={section} tabIndex={-1} className="fuel-long-trend outline-none" aria-busy={trend.pending}>{body}</div>;
 }
 const productOrder = (code: string) => FUEL_CHART_ORDER.includes(code) ? FUEL_CHART_ORDER.indexOf(code) : FUEL_CHART_ORDER.length;
 function StationAddress({ station }: { station?: FuelChartStation | null }) {

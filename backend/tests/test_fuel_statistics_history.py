@@ -519,6 +519,11 @@ def test_postgres_offline_sql_replaces_invalid_leftover_keeps_valid_index_and_gu
             await connection.exec_driver_sql(f"DROP INDEX {name}")
             with pytest.raises(sa.exc.DBAPIError, match="invalid"):
                 await connection.exec_driver_sql(guard)
+            # 잔재 DROP이 실패해 `<이름>_invalid`가 남아도(ON_ERROR_STOP=off) 확인 문장이 버전 전진을 막는다.
+            await connection.exec_driver_sql(f"CREATE INDEX {name} ON {table} {columns}")
+            await connection.exec_driver_sql(f"CREATE INDEX {name}_invalid ON {table} (source)")
+            with pytest.raises(sa.exc.DBAPIError, match="잔재"):
+                await connection.exec_driver_sql(guard)
         finally:
             await connection.close()
             # 공유 시험 DB를 원래 인덱스로 되돌린다. 위 연결이 깨졌어도 새 연결로 한다.
@@ -533,17 +538,31 @@ def test_postgres_offline_sql_replaces_invalid_leftover_keeps_valid_index_and_gu
 
 
 def test_history_admission_rejects_beyond_running_limit_with_retry_after(client):
-    """backend 동시 실행 상한(PR #302): gateway를 지나지 않는 BFF 호출도 4건을 넘으면 기다리지 않고 429 problem+json이다."""
-    from app.services.fuel_statistics import FUEL_HISTORY_MAX_RUNNING, FUEL_HISTORY_RETRY_AFTER_SECONDS
+    """backend 동시 실행 상한(PR #302): 공개 줄(gateway 표지)과 내부 줄(관리 BFF 등)을 따로 세고, 넘치면 기다리지 않고
+    429 problem+json이다. 공개 줄이 가득 차도 내부 줄(관리 화면)은 막히지 않는다. 공개 줄 상한은 두 gateway 상한의 합이다."""
+    from app.services.fuel_statistics import (
+        FUEL_HISTORY_GATEWAY_LIMITS, FUEL_HISTORY_MAX_RUNNING, FUEL_HISTORY_RETRY_AFTER_SECONDS,
+    )
 
+    assert FUEL_HISTORY_MAX_RUNNING["public"] == sum(FUEL_HISTORY_GATEWAY_LIMITS.values())
     _publish_days(client, 2)
     state = client.app.state
-    assert state.fuel_history_running == 0
-    state.fuel_history_running = FUEL_HISTORY_MAX_RUNNING
+    assert state.fuel_history_running == {"public": 0, "internal": 0}
+    public = {"X-Transport-Listener": "public"}
+    state.fuel_history_running["public"] = FUEL_HISTORY_MAX_RUNNING["public"]
     try:
-        busy = _history(client)
+        busy = client.get("/v1/transport/fuel/statistics/history", headers=public)
+        admin = _history(client)  # 표지 없는 내부 호출은 공개 줄과 무관하다.
     finally:
-        state.fuel_history_running = 0
+        state.fuel_history_running["public"] = 0
+    assert admin.status_code == 200
+    state.fuel_history_running["internal"] = FUEL_HISTORY_MAX_RUNNING["internal"]
+    try:
+        internal_busy = _history(client)
+        assert client.get("/v1/transport/fuel/statistics/history", headers=public).status_code == 200
+    finally:
+        state.fuel_history_running["internal"] = 0
+    assert internal_busy.status_code == 429
     assert busy.status_code == 429
     assert busy.headers["retry-after"] == str(FUEL_HISTORY_RETRY_AFTER_SECONDS)
     assert busy.headers["content-type"].startswith("application/problem+json")
@@ -551,4 +570,4 @@ def test_history_admission_rejects_beyond_running_limit_with_retry_after(client)
     # 성공·422 뒤에는 자리를 돌려준다.
     assert _history(client).status_code == 200
     assert _history(client, bucket="day", **{"from": "1999-12-31"}).status_code == 422
-    assert state.fuel_history_running == 0
+    assert state.fuel_history_running == {"public": 0, "internal": 0}

@@ -34,8 +34,11 @@ logger = logging.getLogger(__name__)
 # point insert가 공개 transaction 전체를 실패시킨다(PR #300 Popper#3). 저장할 수 없는 값은 통계에서 빼고 경고를 남긴다.
 # 오피넷 가격은 원천 표부터 NUMERIC(10,2)라 이 상한을 넘을 수 없다.
 STATISTICS_PRICE_LIMIT = 100_000_000
-# 장기 추이 API 동시 실행 상한과 거절 시 Retry-After(초). gateway 12301·12307 limit_conn과 같은 값이다.
-FUEL_HISTORY_MAX_RUNNING = 4
+# 장기 추이 API 동시 실행 상한(줄별)과 거절 시 Retry-After(초). 공개 줄(`X-Transport-Listener: public`, gateway가 덮어쓴다)은
+# 두 gateway 상한의 합(12307 4 + 12301 2)과 같아 gateway가 먼저 거절한다. 내부 줄(관리 BFF 등 12302 loopback 직접 호출)은
+# 따로 세어 공개 부하가 관리 화면을 막지 못한다.
+FUEL_HISTORY_GATEWAY_LIMITS = {"fuel": 4, "transport": 2}
+FUEL_HISTORY_MAX_RUNNING = {"public": sum(FUEL_HISTORY_GATEWAY_LIMITS.values()), "internal": 2}
 FUEL_HISTORY_RETRY_AFTER_SECONDS = 2
 _viewport_cache: OrderedDict[tuple, tuple[float, list[dict]]] = OrderedDict()
 

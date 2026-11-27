@@ -23,8 +23,8 @@ places는 동시 처리 상한이 있다(2026-11-25). 같은 호스트의 공개
 준다. 이 `instance`는 gateway 경로 `/v1/transport/fuel/places`이고, backend가 내는 places 오류(입장 거절 429·시한 504·
 검증 422)의 `instance`는 upstream 경로 `/v1/transport/features/places`다. 둘은 access log `uct=-`(gateway)와
 `ust=429`(backend)로 구분한다. backend 응답은 gateway가 바꾸지 않는다. 10초 동안 읽지 않는 클라이언트는 끊는다.
-장기 유가 추이(`/v1/transport/fuel/statistics/history`)도 동시 처리 상한이 있다(2026-11-27). BFF·직접 호출을 합쳐 4건(backend
-동시 실행 상한과 같다, places와 다른 zone)이고, 넘으면 같은 `429` + `Retry-After: 2` problem+json(CORS 포함, `instance`는 같은
+장기 유가 추이(`/v1/transport/fuel/statistics/history`)도 동시 처리 상한이 있다(2026-11-27). BFF·직접 호출을 합쳐 4건(places와 다른
+zone, backend 공개 줄 상한 6 = 12307 4 + 12301 2)이고, 넘으면 같은 `429` + `Retry-After: 2` problem+json(CORS 포함, `instance`는 같은
 경로)이다. 공개 BFF는 상태·`Retry-After`를 그대로 전달하므로 공개 화면은 429를 재시도 가능한 혼잡으로 다룬다.
 HEAD도 기존 GET reader를 쓰고 nginx가 응답 body를 생략한다.
 

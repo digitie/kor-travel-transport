@@ -91,7 +91,7 @@ def test_rest_area_collection_is_disabled_without_explicit_setting(tmp_path: Pat
 
 
 def test_rest_area_fuel_prices_outside_storable_range_are_stored_as_missing(tmp_path: Path, caplog) -> None:
-    """저장 경계 검사(PR #302): INTEGER·통계 NUMERIC(10,2) 밖이거나 0 이하인 휴게소 가격은 미제공(null)으로 둔다.
+    """저장 경계 검사(PR #302): 정수가 아니거나 1억 이상인 휴게소 가격은 미제공(null)으로 둔다. 0·음수는 예전처럼 그대로다.
 
     예전에는 2^31 이상이면 수집 transaction이, 1억 이상이면 통계 공개 transaction이 실패했다."""
     from datetime import datetime, timezone
@@ -122,12 +122,12 @@ def test_rest_area_fuel_prices_outside_storable_range_are_stored_as_missing(tmp_
                     for row in await session.scalars(select(RestAreaFuelPrice))}
         assert stored == 3
         assert rows == {"A": (1700, STATISTICS_PRICE_LIMIT - 1, None, 1700),
-                        "B": (None, None, None, STATISTICS_PRICE_LIMIT),
-                        "C": (None, None, 1100, -5)}
+                        "B": (None, None, 0, STATISTICS_PRICE_LIMIT),
+                        "C": (-5, None, 1100, -5)}
         await engine.dispose()
 
     with caplog.at_level("WARNING", logger="app.services.rest_area_collection"):
         asyncio.run(run())
     messages = [record.getMessage() for record in caplog.records]
     assert sum("rest_area_fuel_price_out_of_range" in message for message in messages) == 1
-    assert any("rest_area_fuel_prices_out_of_range count=5" in message for message in messages)
+    assert any("rest_area_fuel_prices_out_of_range count=3" in message for message in messages)

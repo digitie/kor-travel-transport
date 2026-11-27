@@ -114,7 +114,9 @@ for (const width of [390, 1440]) {
     // 마지막 쪽에서 누른 버튼이 disabled가 되면 초점은 같은 pager의 첫 페이지 버튼으로 옮긴다(body로 떨어지지 않는다).
     await expect(page.getByRole("button", { name: "일별 가격 표 첫 페이지" })).toBeFocused();
     // 좁은 화면에서 표를 옆으로 밀어도 pager는 가로 스크롤 밖이라 제자리다.
-    const scroller = page.locator(".fuel-trend-table .fuel-stat-table");
+    const scroller = page.locator(".fuel-long-trend-table .fuel-stat-table");
+    // 표는 안쪽 세로 스크롤 상자에 갇히지 않는다(60행이 다 펼쳐진다).
+    expect(await page.locator('.fuel-long-trend-table [data-slot="table-container"]').evaluate(element => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);
     const before = (await page.getByRole("navigation", { name: "일별 가격 표 pagination" }).boundingBox())!;
     await scroller.evaluate(element => { element.scrollLeft = element.scrollWidth; });
     const after = (await page.getByRole("navigation", { name: "일별 가격 표 pagination" }).boundingBox())!;
@@ -377,6 +379,7 @@ test.describe("터치 장기 추이 표", () => {
     await page.getByText("일별 가격 표 · 730건", { exact: true }).click();
     const nav = page.getByRole("navigation", { name: "일별 가격 표 pagination" });
     await nav.scrollIntoViewIfNeeded();
+    expect((await page.locator(".fuel-long-trend-table > summary").boundingBox())!.height).toBeGreaterThanOrEqual(44);
     for (const name of ["첫 페이지", "이전 페이지", "다음 페이지", "마지막 페이지"]) {
       const box = await page.getByRole("button", { name: `일별 가격 표 ${name}` }).boundingBox();
       expect(box!.height, name).toBeGreaterThanOrEqual(44);

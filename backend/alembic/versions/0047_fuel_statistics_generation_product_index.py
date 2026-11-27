@@ -52,7 +52,8 @@ def _offline_upgrade() -> None:
        SHARE UPDATE EXCLUSIVE(PostgreSQL 12+)라 읽기·쓰기를 막지 않는다. 유효한 인덱스는 그대로 둔다(다시 만들지 않아 느린 계획
        구간이 없다).
     2. (COMMIT 뒤 transaction 밖) 잔재를 `DROP INDEX CONCURRENTLY IF EXISTS`, `CREATE INDEX CONCURRENTLY IF NOT EXISTS`.
-    3. (다시 BEGIN 안) 인덱스가 없거나 invalid면 예외로 그 transaction을 중단해 `alembic_version`을 올리지 않는다.
+    3. (다시 BEGIN 안) 인덱스가 없거나 invalid이거나 `<이름>_invalid` 잔재가 남았으면(DROP 실패) 예외로 그 transaction을
+       중단해 `alembic_version`을 올리지 않는다.
        `psql`은 기본(`ON_ERROR_STOP=off`)이면 2의 실패 뒤에도 다음 문장을 계속 실행하므로 이 확인이 버전 전진을 막는다.
        실행은 `psql -v ON_ERROR_STOP=1 -f`를 쓴다.
     """
@@ -68,7 +69,9 @@ def _offline_upgrade() -> None:
         op.create_index(NAME, TABLE, COLUMNS, postgresql_concurrently=True, if_not_exists=True)
     op.execute(
         f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_index WHERE indexrelid = pg_catalog.to_regclass('{NAME}') "
-        f"AND indisvalid) THEN RAISE EXCEPTION '{NAME} 인덱스가 없거나 invalid라 버전을 올리지 않는다'; END IF; END $$"
+        f"AND indisvalid) THEN RAISE EXCEPTION '{NAME} 인덱스가 없거나 invalid라 버전을 올리지 않는다'; END IF; "
+        f"IF pg_catalog.to_regclass('{old}') IS NOT NULL THEN RAISE EXCEPTION "
+        f"'{old} 잔재가 남았다(DROP 실패). DROP INDEX CONCURRENTLY {old} 뒤 다시 실행'; END IF; END $$"
     )
 
 

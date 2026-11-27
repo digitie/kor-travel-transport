@@ -725,7 +725,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.fuel_map_limiter = CapacityLimiter(2)
     # 장기 유가 추이 동시 실행 수(PR #302). 기다리지 않고 넘치면 429 + Retry-After 2다. gateway(12301·12307) 상한과 같은 값이며
     # gateway를 지나지 않는 관리 BFF·공개 BFF가 한꺼번에 불러도 DB 풀을 이 경로가 다 쓰지 않는다.
-    app.state.fuel_history_running = 0
+    app.state.fuel_history_running = {lane: 0 for lane in FUEL_HISTORY_MAX_RUNNING}
     @app.exception_handler(HTTPException)
     async def problem_json_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
         # RFC 7807 (ADR-005): every error response uses the same shape,
@@ -1489,7 +1489,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/transport/fuel/statistics/history", response_model=FuelStatisticsTrendResponse,
                 responses={304: {"description": "If-None-Match와 같은 ETag"}, 422: {},
-                           429: {"description": "동시 조회 상한(4)을 넘었다. Retry-After 2초 뒤 다시 요청"}})
+                           429: {"description": "동시 조회 상한(공개 6·내부 2)을 넘었다. Retry-After 2초 뒤 다시 요청"}})
     async def transport_fuel_statistics_history(
         request: Request,
         scope: str = Query(default="nationwide", pattern="^(nationwide|sido|sigungu|highways|highway|highway_direction)$"),
@@ -1510,19 +1510,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         공개 통계 세대보다 새 날짜는 내지 않는다. 응답은 weak ETag와 `Cache-Control: private, no-cache`를 붙이고
         If-None-Match가 같으면 304다(공개 유가·관리 BFF는 no-store로 다시 쓰므로 304는 gateway 직접 호출에만 해당한다).
         """
-        if request.app.state.fuel_history_running >= FUEL_HISTORY_MAX_RUNNING:
+        # 공개 gateway를 지난 요청(표지 public)과 그 밖(관리 BFF 등 loopback 직접 호출)을 따로 센다. 단일 worker라 전역 상한이다.
+        lane = "public" if request.headers.get("x-transport-listener") is not None else "internal"
+        running = request.app.state.fuel_history_running
+        if running[lane] >= FUEL_HISTORY_MAX_RUNNING[lane]:
             raise HTTPException(429, "유가 추이 조회가 혼잡합니다. 잠시 후 다시 시도하세요.",
                                 headers={"Retry-After": str(FUEL_HISTORY_RETRY_AFTER_SECONDS)})
-        request.app.state.fuel_history_running += 1
+        running[lane] += 1
         try:
-            result = await fuel_statistics_history(session, scope, scope_key, product_code, from_day, to_day, bucket)
-        except FuelHistoryRequestError as exc:
-            raise HTTPException(422, str(exc)) from None
+            try:
+                result = await fuel_statistics_history(session, scope, scope_key, product_code, from_day, to_day, bucket)
+            except FuelHistoryRequestError as exc:
+                raise HTTPException(422, str(exc)) from None
+            await session.rollback()
+            # 직렬화(최대 약 0.46MB)도 자리 안에서 한다(event loop CPU까지 상한에 넣는다).
+            payload = FuelStatisticsTrendResponse.model_validate(result).model_dump(mode="json")
+            body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
         finally:
-            request.app.state.fuel_history_running -= 1
-        await session.rollback()
-        payload = FuelStatisticsTrendResponse.model_validate(result).model_dump(mode="json")
-        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
+            running[lane] -= 1
         etag = f'W/"{hashlib.sha256(body).hexdigest()[:32]}"'
         headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
         candidates = request.headers.get("if-none-match", "").split(",")

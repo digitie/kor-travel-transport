@@ -585,6 +585,25 @@ test("장기 추이 실패는 30일 통계를 지우지 않고 그 자리에서 
   } finally { await act(async () => root.unmount()); container.remove(); get.mockRestore(); }
 });
 
+test("추이 다시 조회가 또 실패해도 초점이 body로 떨어지지 않고 새 버튼으로 돌아온다", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const get = vi.spyOn(journey, "transportGet").mockImplementation(async (path: string) => {
+    if (path.startsWith("transport/fuel/statistics/history")) throw new Error("network");
+    return page;
+  });
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelStatisticsPage />));
+    await choosePeriod(container, "90");
+    const retry = container.querySelector<HTMLButtonElement>(".fuel-long-trend-retry")!;
+    retry.focus();
+    await act(async () => retry.click());
+    const again = container.querySelector<HTMLButtonElement>(".fuel-long-trend-retry")!;
+    expect(again).not.toBeNull();
+    expect(document.activeElement).toBe(again);
+  } finally { await act(async () => root.unmount()); container.remove(); get.mockRestore(); }
+});
+
 test("주·월 점 간격에서는 선을 끊지 않고 그보다 먼 빈 기간에서만 끊는다", async () => {
   const { fuelLineValues } = await import("@/lib/fuel-chart-model");
   const weekly = fuelLineValues([{ time: "2026-01-05", average: 1 }, { time: "2026-01-12", average: 2 }, { time: "2026-01-26", average: 3 }], 7);
@@ -624,13 +643,13 @@ test("1년·모든 유종 추이 표는 60행씩 쪽으로 나누고 표준 page
     expect(container.querySelector("summary")?.textContent).toBe("일별 가격 표 · 1,825건");
     // pager는 표 위, 가로 스크롤 영역(.fuel-stat-table) 밖이다.
     expect(container.querySelector(".fuel-stat-table nav")).toBeNull();
-    expect(container.querySelector(".fuel-trend-table-pager")!.compareDocumentPosition(table()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.querySelector(".fuel-long-trend-table-pager")!.compareDocumentPosition(table()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const nav = container.querySelector('nav[aria-label="일별 가격 표 pagination"]')!;
     expect(nav.textContent).toContain(`페이지 1 / ${pages}`);
     expect(container.querySelector<HTMLButtonElement>('button[aria-label="일별 가격 표 이전 페이지"]')!.disabled).toBe(true);
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="일별 가격 표 다음 페이지"]')!.click());
     expect(table().getAttribute("aria-label")).toBe(`최근 1년 유가 일별 관측값 2/${pages}쪽`);
-    expect(container.querySelector(".fuel-trend-table-pager [role=status]")?.textContent).toBe(`일별 가격 표 2/${pages}쪽 · 61–120번째 / 총 1,825건`);
+    expect(container.querySelector(".fuel-long-trend-table-pager [role=status]")?.textContent).toBe(`일별 가격 표 2/${pages}쪽 · 61–120번째 / 총 1,825건`);
     expect(firstRow()).toEqual([days.at(-13), "휘발유"]);
     // 마지막 쪽으로 가면 누른 버튼이 disabled가 된다. 초점은 body로 떨어지지 않고 같은 pager의 첫 페이지 버튼으로 옮긴다.
     const last = container.querySelector<HTMLButtonElement>('button[aria-label="일별 가격 표 마지막 페이지"]')!;
