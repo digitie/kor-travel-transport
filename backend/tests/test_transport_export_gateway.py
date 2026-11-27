@@ -87,7 +87,8 @@ def test_export_gateway_does_not_expand_admin_or_public_contract():
     ("/v1/transport/fuel/stations/9274/price-history", True),
     ("/v1/transport/fuel/stations", True),
     ("/v1/transport/fuel/statistics", True),
-    ("/v1/transport/fuel/statistics/history", True),
+    # 장기 추이는 아래 정규식이 아니라 동시 상한이 있는 정확 일치 location이 받는다(test_gateway_guard_rails).
+    ("/v1/transport/fuel/statistics/history", False),
     ("/v1/transport/fuel/statistics/history/", False),
     ("/v1/transport/fuel/statistics/history/delete", False),
     ("/v1/transport/fuel/stations/0/price-history", False),

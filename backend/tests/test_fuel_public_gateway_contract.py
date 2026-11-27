@@ -60,10 +60,12 @@ def test_gateway_uses_fixed_fuel_alias_and_rejects_other_readers_and_credentials
     assert "proxy_hide_header Set-Cookie;" in text
     assert "location / { return 404; }" in text
     assert "if ($fuel_read_method = 0) { return 405; }" in text
-    assert text.count("proxy_pass ") == 3
+    assert text.count("proxy_pass ") == 4
     assert "stations/[1-9][0-9]*/price-history" in text
     assert "|price-distribution|" in text
-    assert "|statistics|statistics/history|" in text
+    assert "|statistics|price-distribution|" in text
+    # 장기 추이는 동시 상한이 있는 정확 일치 location이다(정규식에서 뺐다).
+    assert "location = /v1/transport/fuel/statistics/history {" in text and "statistics/history|" not in text
     assert "|area-catalog|" in text
     assert "regions" not in text and "/mcp" not in text and "/exports/" not in text
     assert "$arg_zoom" not in text and "zoom=" not in text
@@ -75,8 +77,8 @@ def test_public_cors_is_exact_and_preflight_never_reaches_upstream():
     assert '"OPTIONS:https://fuel.digitie.mywire.org:GET" 1;' in text
     assert '"OPTIONS:https://fuel.digitie.mywire.org:HEAD" 1;' in text
     assert "~^OPTIONS: 2;" in text
-    assert text.count("if ($fuel_preflight = 1) { return 204; }") == 3
-    assert text.count("if ($fuel_preflight = 2) { return 403; }") == 3
+    assert text.count("if ($fuel_preflight = 1) { return 204; }") == 4
+    assert text.count("if ($fuel_preflight = 2) { return 403; }") == 4
     assert "add_header Access-Control-Allow-Credentials" not in text
     assert 'add_header Access-Control-Allow-Origin "*"' not in text
     # 장소 지도 429·504의 Retry-After를 다른 출처 화면도 읽어 재조회 시각을 정한다.

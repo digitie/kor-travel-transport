@@ -222,6 +222,17 @@ location(Map)과 backend 직접(loopback 12302, 관리 BFF·측정 스크립트)
 
     상한은 places location에만 있어 stations·statistics 등 다른 경로는 막히지 않는다. backend의 429·504는
     가로채지 않고 그대로 전달한다(`ust=429`·`ust=504`).
+- 장기 유가 추이(`/v1/transport/fuel/statistics/history`, 2026-11-27)는 두 공개 gateway에서 정확 일치 location이다.
+  - 응답은 유종당 최대 400점(점 하나 약 230 bytes)이라 1년·모든 유종(약 1,825점)이 비압축 약 0.42MB, 상한 5유종×400점이 약 0.46MB다.
+    `proxy_buffers 8 32k`(요청당 최대 256KiB)·`proxy_max_temp_file_size 0`·`send_timeout 10s`로 임시 파일 없이 나머지는
+    클라이언트 속도로 흘린다(BFF는 같은 호스트라 곧바로 읽는다).
+  - 12307은 places와 같은 두 key(`$fuel_places_bff_slot`·`$fuel_places_direct_slot`)를 쓰되 zone은 따로다:
+    `fuel_history_bff` 8, `fuel_history_direct` 4. 추이 조회가 지도 몫을, 지도가 추이 몫을 쓰지 않는다. 메모리는 BFF 8×260KiB +
+    직접 4×652KiB(gzip 상태·버퍼 포함) ≈ 4.6MiB로 places 두 몫(≈15.2MiB)과 합쳐 ≈19.8MiB, 64MiB의 1/3 이하다.
+  - 12301은 직접 호출뿐이라 listener 전체 한 key `transport_fuel_history` 4(≈1MiB)다. 정규식 공개 읽기에서는 이 경로를 뺐다.
+  - 넘으면 `429` + `Retry-After: 2` problem+json(다섯 항목, `instance`=`/v1/transport/fuel/statistics/history`, 12307은 CORS 다섯 줄을
+    다시 적는다). access log `uct=- ust=-`, error log `limiting connections by zone "fuel_history_bff"`(또는 `_direct`,
+    `transport_fuel_history`). backend 응답(422·429)은 그대로 전달한다(`ust=429`).
 - 공개 유가 gateway는 JSON을 gzip level 1(1KiB 이상, `gzip_proxied any`, `Vary: Accept-Encoding`)로 압축한다(MUI-11).
   - backend가 이미 gzip으로 준 가격 이력은 다시 압축하지 않는다. 압축 효과는 access log `gz`로 본다.
   - nginx gzip은 200·403·404만 압축한다. 오류 본문(problem+json)은 1KiB 미만이라 `gzip_types`에 넣지 않았다.
@@ -258,6 +269,11 @@ template에서 port 변수만 바꾼 문자열과 같은지 먼저 본다(다르
   BFF 몫까지 채우면 17번째 BFF 429, 그동안 stations 200. 멈춘 직접 호출은 `send_timeout` 뒤 끊겨 8~16초 안에 자리가 풀린다.
   backend 429는 그대로 전달(`ust=429`), gateway 429 줄은 `uct=- ust=-`, error log에 두 zone의 `[warn] limiting connections`.
   64MiB 한도에서 OOM 없음(memory.peak 출력).
+- 장기 유가 추이: path·query 그대로 전달, 공개 표지·Server-Timing 숨김, 0.47MB 본문(12301 identity, 12307 identity·gzip).
+  12301 동시 5건 → 200 4건·429 1건(`Retry-After: 2`, problem+json), 몫이 찬 동안 stations·export 200. 12307 preflight 204/403·HEAD,
+  BFF 9건 → 200 8건·429 1건, 직접 호출 5건 → 200 4건·429 1건(CORS 포함), 추이 두 몫이 찬 동안 places(BFF·직접)·statistics 200,
+  places 두 몫이 찬 동안 추이 200. backend 429 전달(`ust=429`)과 gateway 429(`uct=- ust=-`) 구분, error log의 `[warn]` 줄.
+  PR #300 template(상한 없음)으로 돌리면 11건 FAIL이다.
 - access log: 모든 줄이 timing 형식(12307은 `gz=` 포함), query·cursor 값 없음, `/health` 없음.
 - error log에 `buffered to a temporary file` 경고 없음. `proxy_max_temp_file_size 0`이 있으면 날 수 없는 경고라 이 검사는
   그 지시문이 빠지는 회귀를 잡는다(main의 옛 fuel template으로 돌리면 실제로 실패했다).
@@ -280,5 +296,6 @@ template에서 port 변수만 바꾼 문자열과 같은지 먼저 본다(다르
   docker stats --no-stream kor-travel-transport-fuel-fuel-api-gateway-1   # MEM USAGE가 64MiB에 가깝지 않은지
   ```
 
+  `fuel_history_*` 거절(`'"GET /v1/transport/fuel/statistics/history" 429 '` 중 ` uct=- `)이 평소에도 보이면 추이 상한을 다시 검토한다.
   `fuel_places_bff` 거절이 보이면 공개 지도 사용자가 혼잡 안내를 받은 것이다. backend places 입장 거절(`ust=429`)과
   함께 늘었는지 보고, BFF 몫만 차는 것이면 상한(16)을 다시 검토한다.
