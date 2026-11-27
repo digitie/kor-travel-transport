@@ -33,6 +33,15 @@ def upgrade() -> None:
     if not _concurrent():
         op.create_index(NAME, TABLE, COLUMNS, if_not_exists=True)
         return
+    if op.get_context().as_sql:
+        # 오프라인 `alembic upgrade --sql`: 연결이 없어 indisvalid를 읽을 수 없다. 스크립트는 DB가 down_revision에
+        # 있다고 가정하므로 남은 인덱스는 실패한 CONCURRENTLY의 invalid 잔재뿐이다. 지우고 다시 만든다(둘 다 쓰기를
+        # 막지 않는다). 이미 유효한 인덱스가 있으면 한 번 다시 만든다. autocommit_block은 COMMIT 뒤에 이 두 문장을
+        # transaction 밖에서 내고 BEGIN으로 돌아간다(CONCURRENTLY는 transaction 안에서 실행할 수 없다).
+        with op.get_context().autocommit_block():
+            op.drop_index(NAME, table_name=TABLE, postgresql_concurrently=True, if_exists=True)
+            op.create_index(NAME, TABLE, COLUMNS, postgresql_concurrently=True)
+        return
     with op.get_context().autocommit_block():
         is_valid = op.get_bind().scalar(sa.text(
             "SELECT pg_index.indisvalid FROM pg_index WHERE pg_index.indexrelid = pg_catalog.to_regclass(:name)"

@@ -398,3 +398,106 @@ def test_bucket_average_is_not_station_weighted(client):
     point = _history(client, bucket="week").json()["points"][0]
     assert point["average_price"] == 1500  # 가중이면 1250
     assert point["station_count"] == 2 and point["day_count"] == 2
+
+
+# 0047·0050 오프라인 `alembic upgrade --sql`. 연결이 없어 indisvalid를 읽지 못하므로 transaction 밖에서
+# DROP INDEX CONCURRENTLY IF EXISTS → CREATE INDEX CONCURRENTLY를 낸다(실패한 CONCURRENTLY 잔재를 바꾼다).
+CONCURRENT_INDEXES = {
+    "0047_fuel_points_gen_product": ("0046_fuel_manual_refresh", "ix_fuel_statistics_points_generation_product",
+                                     "fuel_statistics_points", "(source, generated_at, product_code)"),
+    "0050_fuel_daily_current_index": ("0049_fuel_statistics_history", "ix_fuel_statistics_daily_current",
+                                      "fuel_statistics_daily", "(source, scope, day, product_code)"),
+}
+
+
+def _offline_sql(start, end, direction="upgrade"):
+    """env.py 오프라인 분기와 같은 설정(literal_binds)으로 PostgreSQL SQL 스크립트를 만든다."""
+    import io
+    from alembic.config import Config
+    from alembic.runtime.environment import EnvironmentContext
+    from alembic.script import ScriptDirectory
+
+    config = Config()
+    config.set_main_option("script_location", str(Path(__file__).parents[1] / "alembic"))
+    script = ScriptDirectory.from_config(config)
+    buffer = io.StringIO()
+    planner = script._upgrade_revs if direction == "upgrade" else script._downgrade_revs
+    with EnvironmentContext(config, script, fn=lambda _rev, _context: planner(end, start), as_sql=True,
+                            starting_rev=start, destination_rev=end) as context:
+        context.configure(dialect_name="postgresql", output_buffer=buffer, literal_binds=True)
+        with context.begin_transaction():
+            context.run_migrations()
+    return [part.strip() for part in buffer.getvalue().split(";\n") if part.strip()]
+
+
+def _without_comments(statement):
+    return "\n".join(line for line in statement.splitlines() if not line.startswith("--")).strip()
+
+
+@pytest.mark.parametrize("revision", sorted(CONCURRENT_INDEXES))
+def test_offline_sql_builds_concurrent_index_outside_a_transaction(revision):
+    previous, name, table, columns = CONCURRENT_INDEXES[revision]
+    statements = [_without_comments(statement) for statement in _offline_sql(previous, revision)]
+    statements = [statement for statement in statements if statement]
+    drop = f"DROP INDEX CONCURRENTLY IF EXISTS {name}"
+    create = f"CREATE INDEX CONCURRENTLY {name} ON {table} {columns}"
+    assert drop in statements and create in statements
+    at = statements.index(drop)
+    # COMMIT으로 migration transaction을 닫고, 두 문장 뒤 BEGIN으로 돌아가 버전을 같은 스크립트에서 올린다.
+    assert statements[at - 1] == "COMMIT" and statements[at + 1] == create and statements[at + 2] == "BEGIN"
+    assert statements[at + 3] == (f"UPDATE alembic_version SET version_num='{revision}' "
+                                  f"WHERE alembic_version.version_num = '{previous}'")
+    assert statements[-1] == "COMMIT"
+    # 일반(transaction 안) CREATE INDEX나 indisvalid 조회는 내지 않는다.
+    assert not any("pg_index" in statement for statement in statements)
+    assert sum(f"INDEX {name}" in statement or f"INDEX CONCURRENTLY {name}" in statement
+               or f"EXISTS {name}" in statement for statement in statements) == 2
+
+    back = [_without_comments(statement) for statement in _offline_sql(revision, previous, "downgrade")]
+    at = back.index(drop)
+    assert back[at - 1] == "COMMIT" and back[at + 1] == "BEGIN"
+
+
+def test_offline_sql_covers_every_revision_after_0026():
+    """0026 뒤→head 한 스크립트(오프라인을 지원하는 범위 전체): 0047·0050 두 번만 transaction 밖으로 나간다."""
+    statements = [_without_comments(statement) for statement in _offline_sql("0026_transport_map_indexes", "head")]
+    concurrent = [statement for statement in statements if "CONCURRENTLY" in statement]
+    assert len(concurrent) == 4
+    assert statements[-1] == "COMMIT"
+
+
+@pytest.mark.parametrize("revision", sorted(CONCURRENT_INDEXES))
+def test_postgres_offline_sql_replaces_an_invalid_leftover_index(client, revision):
+    """실패한 CONCURRENTLY가 남긴 invalid 인덱스(같은 이름, 다른 정의)를 오프라인 스크립트가 올바른 정의로 바꾼다."""
+    engine = client.app.state.engine
+    if engine.dialect.name != "postgresql":
+        pytest.skip("실제 PostgreSQL에서 CONCURRENTLY 스크립트를 실행한다")
+    previous, name, table, columns = CONCURRENT_INDEXES[revision]
+    _publish_days(client, 2)  # 두 표 모두 같은 source 행이 2개 이상이라 아래 UNIQUE가 실패한다.
+    statements = [_without_comments(statement) for statement in _offline_sql(previous, revision)]
+    ddl = statements[statements.index(f"DROP INDEX CONCURRENTLY IF EXISTS {name}"):][:2]
+    validity = sa.text("SELECT indisvalid, indisunique, pg_get_indexdef(indexrelid) FROM pg_index "
+                       "WHERE indexrelid = pg_catalog.to_regclass(:name)")
+
+    async def run():
+        async with engine.connect() as connection:
+            connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
+            try:
+                await connection.exec_driver_sql(f"DROP INDEX IF EXISTS {name}")
+                with pytest.raises(sa.exc.DBAPIError):
+                    await connection.exec_driver_sql(f"CREATE UNIQUE INDEX CONCURRENTLY {name} ON {table} (source)")
+                leftover = (await connection.execute(validity, {"name": name})).one()
+                assert leftover.indisvalid is False and leftover.indisunique is True
+                for statement in ddl:
+                    await connection.exec_driver_sql(statement)
+                built = (await connection.execute(validity, {"name": name})).one()
+                assert built.indisvalid is True and built.indisunique is False
+                assert built.pg_get_indexdef.endswith(f"USING btree {columns}")
+                # 이미 유효한 인덱스가 있어도 같은 스크립트를 다시 실행할 수 있다(다시 만든다).
+                for statement in ddl:
+                    await connection.exec_driver_sql(statement)
+                assert (await connection.execute(validity, {"name": name})).one().indisvalid is True
+            finally:
+                await connection.exec_driver_sql(f"DROP INDEX IF EXISTS {name}")
+                await connection.exec_driver_sql(f"CREATE INDEX {name} ON {table} {columns}")
+    asyncio.run(run())
