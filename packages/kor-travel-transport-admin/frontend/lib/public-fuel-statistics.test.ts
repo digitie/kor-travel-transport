@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  currentScope, historyPath, kstDay, listScope, parseStatisticsView, publicMapHref, resolveRegion, sigunguGroups,
+  currentScope, historyPath, kstDay, listScope, missingRegionName, parseStatisticsView, plausiblePoints, publicMapHref, regionOptions, resolveRegion, sigunguGroups, statisticsPath,
   statisticsAgeHours, statisticsViewQuery, trendSummary, type PublicFuelMetrics, type PublicFuelTrendPoint,
 } from "./public-fuel-statistics";
 
@@ -76,6 +76,26 @@ describe("기간 요약", () => {
   });
   it("주·월 점의 기록 일수를 더한다", () => {
     expect(trendSummary([{ ...point("2026-10-26", 1800), day_count: 7 }, { ...point("2026-11-02", 1810), day_count: 3 }])?.dayCount).toBe(10);
+  });
+});
+
+describe("이상값·안내", () => {
+  it("평균의 70% 미만 최저·160% 초과 최고만 뺀다(운영 실제 범위 0.83~1.38은 그대로)", () => {
+    const { points, excluded } = plausiblePoints([point("2026-11-01", 1830, 1037, 1990), point("2026-11-02", 1830, 1500, 3000), point("2026-11-03", 1853, 1540, 2549)]);
+    expect(excluded).toBe(2);
+    expect(points.map(row => [row.minimum_price, row.maximum_price])).toEqual([[null, 1990], [1500, null], [1540, 2549]]);
+    expect(trendSummary([point("2026-11-01", 1830, 184, 1990), point("2026-11-02", 1830, 1700, 1990)])?.lowest?.price).toBe(1700);
+  });
+  it("요청한 지역이 응답에 없으면 그 이름을 돌려준다", () => {
+    expect(missingRegionName({ area: "sigungu", region: '["서울특별시","마포구"]' }, '["서울특별시","강남구"]')).toBe("마포구");
+    expect(missingRegionName({ area: "sido", region: '["세종특별자치시"]' }, '["서울특별시"]')).toBe("세종특별자치시");
+    expect(missingRegionName({ area: "highway", region: '["0140"]' }, "all")).toBe("선택한 노선");
+    expect(missingRegionName({ area: "sigungu", region: "" }, '["서울특별시","강남구"]')).toBeNull();
+    expect(missingRegionName({ area: "sido", region: '["서울특별시"]' }, '["서울특별시"]')).toBeNull();
+  });
+  it("현재 값은 30일 이력 없이 읽고, 노선 미제공 묶음은 풀어 쓴 이름으로 맨 뒤에 둔다", () => {
+    expect(statisticsPath("sigungu", "B027")).toBe("fuel/statistics?scope=sigungu&product_code=B027&include_history=false");
+    expect(regionOptions([metric('["7001"]', "노선 미제공"), metric('["0010"]', "경부선")]).map(row => row.label)).toEqual(["경부선", "노선 정보가 없는 휴게소"]);
   });
 });
 

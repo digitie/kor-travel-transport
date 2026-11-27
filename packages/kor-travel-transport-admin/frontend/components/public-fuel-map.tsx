@@ -9,6 +9,7 @@ import { TransportMap } from "@/components/transport-map";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { FUEL_CHART_ORDER } from "@/lib/fuel-chart-model";
+import { FROM_MAP_KEY } from "@/lib/public-fuel-statistics";
 import { publicFuelGet } from "@/lib/public-fuel";
 import {
   LOCATE_MESSAGES, LOCATE_WATCHDOG_MS, RETRYABLE_LOCATE_FAILURES, isLocateFailure, requestUserPosition, type LocateFailure,
@@ -208,8 +209,9 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
           <LocateFixed aria-hidden="true" size={18} />
         </Button>
         {/* 지역별 통계로 가는 공개 화면의 유일한 입구. 고른 유종이 있으면 그 유종으로 연다. */}
-        <Link className={buttonVariants({ variant: "outline" })} href={statisticsHref(products)} aria-label="지역별 유가 통계" title="지역별 유가 통계">
-          <ChartLine aria-hidden="true" size={18} />
+        <Link className={buttonVariants({ variant: "outline" })} href={statisticsHref(products)} aria-label="지역별 유가 통계"
+          onClick={() => { try { window.sessionStorage.setItem(FROM_MAP_KEY, "1"); } catch { /* 저장소를 못 쓰면 돌아갈 때 지도를 새로 연다. */ } }}>
+          <ChartLine aria-hidden="true" size={18} /><span aria-hidden="true">통계</span>
         </Link>
       </div>
       {locationError ? <div className="public-fuel-location-status" data-failure={locationError}>

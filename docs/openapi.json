@@ -16372,6 +16372,18 @@
               ],
               "title": "Scope Key"
             }
+          },
+          {
+            "description": "선택 범주의 30일 이력(history)을 포함. false면 history는 빈 목록이다(장기 추이 API를 따로 읽는 화면용)",
+            "in": "query",
+            "name": "include_history",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "선택 범주의 30일 이력(history)을 포함. false면 history는 빈 목록이다(장기 추이 API를 따로 읽는 화면용)",
+              "title": "Include History",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {

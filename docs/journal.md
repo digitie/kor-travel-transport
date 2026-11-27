@@ -4,9 +4,14 @@
   (툴팁·표 가상화·gateway 동시 상한)과 겹치지 않게 건드리지 않고 `FuelPriceChart`·`StatStrip`·`EmptyState`·`VirtualTable`만 재사용했다.
 - 범위 4종·지역·유종·기간, URL 상태, 현재 값·최저가 주유소(공개 지도 링크)·기준 시각·반영 대기·36시간 오래됨, 기간 요약·추이·표,
   혼잡 자동 1회·Retry-After 대기 버튼, 응답 형식 검사. vitest(모델·화면·proxy·reader), 격리 e2e `E2E_PUBLIC_FUEL=true` 390·1440px 8건.
-- 격리 e2e `public-fuel-map.spec.ts`의 "자동 재조회 대기" 2건(375·1440)은 origin/main 빌드에서도 같은 34.5px로 실패한다(이 변경 전부터,
-  재조회 성공 뒤 요약 y 이동). 이 PR과 무관하다 — places `route.fallback()`이 로컬 BFF를 거쳐 실제 upstream을 부르는
-  환경 의존이다(이번 로컬 실행은 BACKEND_INTERNAL_URL을 운영 공개 gateway로 두어 실제 응답이 섞였다).
+- 적대적 리뷰(James·Popper 독립) 27건을 모두 반영했다(PR #301 본문 표). 주요: 앱 안 이동으로 연 "지도에서 보기"가 전국 지도를 열었다
+  (지도는 첫 렌더에 주소 좌표를 읽는다 → 새로 여는 링크), 뒤로 가기로 돌아오면 첫 요청 조건으로 돌아갔다(→ `useSearchParams`),
+  고속도로 노선에 그 유종이 없으면 "통계 없음"으로 막혔다(→ 응답에 맞춘 지역으로 scope 결정·전체 노선 읽기), 운영 고속도로 자료의
+  최저 184원·1,037원이 기간 최저가와 차트 y축을 망쳤다(→ 평균 70% 미만·160% 초과 제외, 운영 실제 범위 0.83~1.38 근거),
+  "다시 조회"가 전체를 다시 받고 초점을 잃었다(→ 구역별·제목 초점), Retry-After HTTP-date·없음(→ 날짜 해석·3~6초·최소 5초).
+  payload는 backend `include_history=false`로 30일 이력을 빼고, 클라이언트 1분 재사용·ETag 재검증을 더했다.
+- 격리 e2e `public-fuel-map.spec.ts`의 "자동 재조회 대기" 2건(375·1440)은 origin/main(47d62230) 빌드에서도 같은 34.5px로 실패한다
+  (upstream을 닿지 않는 주소로 두어도 같다). 이 PR과 무관해 FUEL-PUBLIC-MAP-RETRY-E2E로 남겼다.
 
 ## 2026-11-26 — 유가 통계 장기 추이와 시군구 통계 읽기(FUEL-HISTORY-20261126)
 

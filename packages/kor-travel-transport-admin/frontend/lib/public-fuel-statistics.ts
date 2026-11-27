@@ -16,9 +16,15 @@ export type PublicFuelStatisticsView = { area: PublicFuelArea; region: string; p
 export const PUBLIC_FUEL_AREAS: [PublicFuelArea, string][] = [["nationwide", "전국"], ["sido", "시도"], ["sigungu", "시군구"], ["highway", "고속도로"]];
 export const PUBLIC_FUEL_PERIODS: [PublicFuelPeriod, string][] = [["30", "30일"], ["90", "90일"], ["365", "1년"], ["all", "전체"]];
 export const PUBLIC_FUEL_PRODUCTS = FUEL_CHART_ORDER.filter(code => Object.hasOwn(FUEL_PRODUCT_LABELS, code));
+/** 한국도로공사 휴게소 유가가 주는 유종(휘발유·경유·LPG). 고급유·등유는 고속도로 범위에서 고를 수 없다. */
+export const HIGHWAY_PRODUCTS = ["B027", "D047", "K015"];
 /** 고속도로 노선 선택의 "전체 노선". */
 export const ALL_ROUTES = "all";
 const MAX_REGION_LENGTH = 512;
+
+export const formatPrice = (value: number) => value.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
+/** 지도의 통계 아이콘이 남기는 표시(sessionStorage). 있으면 "유가 지도"가 새 지도를 여는 대신 뒤로 가 지도 화면(위치·선택)을 그대로 돌려준다. */
+export const FROM_MAP_KEY = "transport.public-fuel.statistics-from-map";
 
 export const DEFAULT_VIEW: PublicFuelStatisticsView = { area: "nationwide", region: "", product: "B027", period: "30" };
 
@@ -45,7 +51,7 @@ export function parseStatisticsView(search: SearchInput, fallbackProduct?: strin
 export function statisticsViewQuery(view: PublicFuelStatisticsView) {
   const search = new URLSearchParams();
   if (view.area !== DEFAULT_VIEW.area) search.set("scope", view.area);
-  if (view.region && view.area !== "nationwide") search.set("region", view.region);
+  if (view.region && view.region !== ALL_ROUTES && view.area !== "nationwide") search.set("region", view.region);
   if (view.product !== DEFAULT_VIEW.product) search.set("product", view.product);
   if (view.period !== DEFAULT_VIEW.period) search.set("period", view.period);
   return search.toString();
@@ -54,9 +60,11 @@ export function statisticsViewQuery(view: PublicFuelStatisticsView) {
 export type PublicFuelMetrics = {
   scope_key: string; label: string; product_code?: string; generated_at: string;
   station_count: number; average_price: number; minimum_price: number; maximum_price: number;
-  cheapest_station_count?: number; cheapest_station?: (FuelChartStation & { address?: string | null }) | null;
+  cheapest_station_count?: number | null; cheapest_station?: (FuelChartStation & { address?: string | null }) | null;
+  /** 가격순 최대 10곳. 응답의 선택 범주(history_scope_key)에만 채워진다. */
+  cheapest_stations?: (FuelChartStation & { address?: string | null; station_key: string; price: number })[] | null;
 };
-export type PublicFuelStatistics = { scope?: string; generated_at: string | null; update_pending: boolean; items: PublicFuelMetrics[] };
+export type PublicFuelStatistics = { scope?: string; generated_at: string | null; update_pending: boolean; history_scope_key?: string | null; items: PublicFuelMetrics[] };
 export type PublicFuelTrendPoint = {
   product_code: string; day: string; first_day: string; last_day: string; day_count: number; generated_at: string;
   average_price: number; minimum_price: number | null; maximum_price: number | null; station_count: number;
@@ -71,14 +79,15 @@ export type PublicFuelTrend = {
 export function listScope(area: PublicFuelArea) {
   return area === "highway" ? "highway" : area;
 }
-/** 현재 값(카드)을 읽는 API scope. */
+/** 현재 값(카드)을 읽는 API scope. `region`은 응답에 맞춘 지역(resolveRegion)이다. */
 export function currentScope(view: Pick<PublicFuelStatisticsView, "area" | "region">) {
   if (view.area === "highway") return !view.region || view.region === ALL_ROUTES ? "highways" : "highway";
   return view.area;
 }
 
+/** 현재 지표·선택지. 30일 이력은 장기 추이 API로 따로 읽으므로 받지 않는다(옛 backend는 이 query를 무시한다). */
 export function statisticsPath(scope: string, product: string) {
-  return `fuel/statistics?${new URLSearchParams({ scope, product_code: product })}`;
+  return `fuel/statistics?${new URLSearchParams({ scope, product_code: product, include_history: "false" })}`;
 }
 
 /** 공개 통계 세대 시각의 KST 날짜(통계 일자와 같은 기준). */
@@ -111,10 +120,13 @@ function parseKey(key: string): string[] {
 export type RegionOption = { key: string; label: string };
 export type SidoGroup = { sido: string; label: string; sigungu: RegionOption[] };
 
-/** 시도·고속도로 노선 선택지(이름순). */
+/** 원천이 노선을 주지 않은 휴게소 묶음의 이름. 목록 맨 뒤에 풀어 쓴 이름으로 둔다. */
+const UNKNOWN_ROUTE_LABEL = "노선 미제공";
+/** 시도·고속도로 노선 선택지(이름순, "노선 미제공"은 맨 뒤). */
 export function regionOptions(items: PublicFuelMetrics[]): RegionOption[] {
-  return [...new Map(items.map(item => [item.scope_key, { key: item.scope_key, label: item.label }])).values()]
-    .sort((a, b) => collator.compare(a.label, b.label));
+  return [...new Map(items.map(item => [item.scope_key, {
+    key: item.scope_key, label: item.label === UNKNOWN_ROUTE_LABEL ? "노선 정보가 없는 휴게소" : item.label,
+  }])).values()].sort((a, b) => Number(a.label === "노선 정보가 없는 휴게소") - Number(b.label === "노선 정보가 없는 휴게소") || collator.compare(a.label, b.label));
 }
 
 /**
@@ -160,15 +172,40 @@ export function resolveRegion(view: Pick<PublicFuelStatisticsView, "area" | "reg
   return sido?.sigungu[0]?.key ?? "";
 }
 
+/**
+ * 평균에서 너무 먼 최저·최고(원천 입력 오류로 보이는 값). 운영 고속도로 자료에 평균 1,830원인 날 최저 184원·1,037원 같은 값이 있다.
+ * 2026-11-27 운영 공개 통계(전국·시군구 5유종, 고속도로 전체·노선·방향)의 실제 범위는 최저/평균 0.83 이상, 최고/평균 1.38 이하였다.
+ * 그보다 넉넉히 평균의 70% 미만 최저, 160% 초과 최고만 뺀다.
+ */
+export const IMPLAUSIBLE_MINIMUM_RATIO = 0.7;
+export const IMPLAUSIBLE_MAXIMUM_RATIO = 1.6;
+export function isImplausibleMinimum(minimum: number | null | undefined, average: number) {
+  return minimum != null && Number.isFinite(minimum) && average > 0 && minimum < average * IMPLAUSIBLE_MINIMUM_RATIO;
+}
+export function isImplausibleMaximum(maximum: number | null | undefined, average: number) {
+  return maximum != null && Number.isFinite(maximum) && average > 0 && maximum > average * IMPLAUSIBLE_MAXIMUM_RATIO;
+}
+/** 차트·요약용 점: 믿기 어려운 최저·최고를 null로 둔다(표에는 원래 값을 그대로 보인다). */
+export function plausiblePoints(points: PublicFuelTrendPoint[]) {
+  let excluded = 0;
+  const cleaned = points.map(point => {
+    const minimum = isImplausibleMinimum(point.minimum_price, point.average_price) ? null : point.minimum_price;
+    const maximum = isImplausibleMaximum(point.maximum_price, point.average_price) ? null : point.maximum_price;
+    excluded += Number(minimum !== point.minimum_price) + Number(maximum !== point.maximum_price);
+    return minimum === point.minimum_price && maximum === point.maximum_price ? point : { ...point, minimum_price: minimum, maximum_price: maximum };
+  });
+  return { points: cleaned, excluded };
+}
+
 export type TrendSummary = {
   first: PublicFuelTrendPoint; last: PublicFuelTrendPoint; change: number; changePercent: number | null;
   lowest: { price: number; point: PublicFuelTrendPoint } | null; highest: { price: number; point: PublicFuelTrendPoint } | null;
   dayCount: number;
 };
 
-/** 기간 요약: 처음·마지막 평균과 변화, 기간 최저가·최고가(제공된 값만), 기록 일수. 점이 없으면 null. */
+/** 기간 요약: 처음·마지막 평균과 변화, 기간 최저가·최고가(제공된 값만, 믿기 어려운 값 제외), 기록 일수. 점이 없으면 null. */
 export function trendSummary(points: PublicFuelTrendPoint[]): TrendSummary | null {
-  const ordered = points.filter(point => Number.isFinite(point.average_price) && point.average_price > 0)
+  const ordered = plausiblePoints(points.filter(point => Number.isFinite(point.average_price) && point.average_price > 0)).points
     .sort((a, b) => a.day.localeCompare(b.day));
   const first = ordered[0], last = ordered.at(-1);
   if (!first || !last) return null;
@@ -180,6 +217,18 @@ export function trendSummary(points: PublicFuelTrendPoint[]): TrendSummary | nul
   const change = Math.round((last.average_price - first.average_price) * 100) / 100;
   return { first, last, change, changePercent: first === last ? null : Math.round(change / first.average_price * 10_000) / 100, lowest, highest,
     dayCount: ordered.reduce((sum, point) => sum + Math.max(1, point.day_count || 1), 0) };
+}
+
+/**
+ * 요청한 지역이 이번 응답에 없어 다른 지역을 보일 때 안내할 이름(예: 유종을 바꿨더니 그 시군구에 LPG 주유소가 없음).
+ * 요청이 없었거나 그대로 보이면 null.
+ */
+export function missingRegionName(view: Pick<PublicFuelStatisticsView, "area" | "region">, resolved: string | null) {
+  if (!resolved || !view.region || view.region === ALL_ROUTES || view.area === "nationwide" || view.region === resolved) return null;
+  const parts = parseKey(view.region);
+  if (view.area === "sigungu") return parts[1] ?? "선택한 시군구";
+  if (view.area === "sido") return parts[0] ?? "선택한 시도";
+  return "선택한 노선";
 }
 
 /** 통계 세대가 이만큼 오래되면 "갱신 지연"을 알린다(오피넷 하루 3회·도로공사 매시 공개보다 넉넉히). */
@@ -203,8 +252,11 @@ const metricsSchema = z.looseObject({
   scope_key: z.string(), label: z.string(), generated_at: z.string(), station_count: z.number().int().nonnegative(),
   average_price: price, minimum_price: price, maximum_price: price, cheapest_station_count: z.number().int().nullish(),
   cheapest_station: station.nullish(),
+  cheapest_stations: z.array(station.extend({ station_key: z.string(), price })).nullish(),
 });
-export const statisticsSchema = z.looseObject({ generated_at: z.string().nullable(), update_pending: z.boolean(), items: z.array(metricsSchema) });
+export const statisticsSchema = z.looseObject({
+  generated_at: z.string().nullable(), update_pending: z.boolean(), history_scope_key: z.string().nullish(), items: z.array(metricsSchema),
+});
 const trendPointSchema = z.looseObject({
   product_code: z.string(), day: z.string(), first_day: z.string(), last_day: z.string(), day_count: z.number().int().nonnegative(),
   generated_at: z.string(), average_price: price, minimum_price: price.nullable(), maximum_price: price.nullable(), station_count: z.number().nonnegative(),
@@ -216,22 +268,45 @@ export const trendSchema = z.looseObject({
 
 /** 화면에서 다시 조회를 막는 최대 시간. 서버 Retry-After가 더 길어도 이만큼만 기다리게 한다. */
 const MAX_RETRY_WAIT_SECONDS = 60;
-const GENERIC_PUBLIC_FUEL_ERROR = "유가 정보를 불러오지 못했습니다. 다시 확인해 주세요.";
+/** Retry-After 없이 온 혼잡·연결 실패에도 이만큼은 다시 조회를 막는다(연타가 혼잡한 gateway를 더 누르지 않게). */
+const MIN_BUSY_WAIT_SECONDS = 5;
 export type StatisticsLoadError = { message: string; retryAfter: number };
+/** 서버 본문에 한국어 안내가 없을 때 읽기 함수가 쓰는 일반 문구(공개 지도 reader와 같다). 화면에서는 상태별 문구로 바꾼다. */
+export const GENERIC_FUEL_ERROR = "유가 정보를 불러오지 못했습니다. 다시 확인해 주세요.";
+const BUSY_STATUSES = new Set([429, 503]);
 
-/** 실패 안내 문구. 혼잡(429·503)·시한(504·브라우저 시한)은 기다렸다 다시 조회하라고 알린다. */
+/**
+ * 실패 안내 문구. 서버의 한국어 안내는 혼잡·시한(429·503·504)에만 그대로 쓴다 — 그 밖(422 등)의 안내는 개발자용이라 일반 문구로 바꾼다.
+ * 502는 BFF가 upstream에 닿지 못했거나 30초 상한에 걸린 경우다(느린 조회일 수 있다).
+ */
 export function describeStatisticsError(reason: unknown): StatisticsLoadError {
-  if (reason instanceof DOMException && reason.name === "TimeoutError" || reason instanceof TransportError && reason.status === 504) {
-    return { message: "통계 조회가 제시간에 끝나지 않았습니다. 잠시 후 다시 조회해 주세요.", retryAfter: reason instanceof TransportError ? Math.min(reason.retryAfter, MAX_RETRY_WAIT_SECONDS) : 0 };
-  }
-  if (reason instanceof TransportError) {
-    const busy = reason.status === 429 || reason.status === 503;
-    const serverMessage = reason.message && reason.message !== GENERIC_PUBLIC_FUEL_ERROR && /[가-힣]/.test(reason.message) ? reason.message : null;
-    return {
-      message: serverMessage ?? (busy ? "지금 유가 통계 조회가 몰려 있습니다. 잠시 후 다시 조회해 주세요." : "유가 통계를 불러오지 못했습니다. 다시 조회해 주세요."),
-      retryAfter: Math.min(Math.max(0, reason.retryAfter), MAX_RETRY_WAIT_SECONDS),
-    };
+  const wait = (seconds: number, floor = 0) => Math.min(Math.max(floor, seconds), MAX_RETRY_WAIT_SECONDS);
+  if (reason instanceof DOMException && reason.name === "TimeoutError") {
+    return { message: "통계 조회가 제시간에 끝나지 않았습니다. 잠시 후 다시 조회해 주세요.", retryAfter: MIN_BUSY_WAIT_SECONDS };
   }
   if (reason instanceof ZodError) return { message: "받은 통계 형식이 올바르지 않습니다. 잠시 후 다시 조회해 주세요.", retryAfter: 0 };
-  return { message: "유가 통계를 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 조회해 주세요.", retryAfter: 0 };
+  if (!(reason instanceof TransportError)) return { message: "유가 통계를 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 조회해 주세요.", retryAfter: 0 };
+  const korean = reason.message !== GENERIC_FUEL_ERROR && /[가-힣]/.test(reason.message) ? reason.message : null;
+  if (BUSY_STATUSES.has(reason.status)) {
+    return { message: korean ?? "지금 유가 통계 조회가 몰려 있습니다. 잠시 후 다시 조회해 주세요.", retryAfter: wait(reason.retryAfter, MIN_BUSY_WAIT_SECONDS) };
+  }
+  if (reason.status === 504) {
+    return { message: korean ?? "통계 조회가 제시간에 끝나지 않았습니다. 잠시 후 다시 조회해 주세요.", retryAfter: wait(reason.retryAfter, MIN_BUSY_WAIT_SECONDS) };
+  }
+  if (reason.status === 502) {
+    return { message: "유가 서버 응답이 늦거나 연결되지 않았습니다. 잠시 후 다시 조회해 주세요.", retryAfter: wait(reason.retryAfter, MIN_BUSY_WAIT_SECONDS) };
+  }
+  return { message: "유가 통계를 불러오지 못했습니다. 다시 조회해 주세요.", retryAfter: wait(reason.retryAfter) };
+}
+
+/** 자동 재조회 상한(초). 이보다 긴 Retry-After는 사용자가 직접 다시 조회한다. */
+const AUTO_RETRY_MAX_SECONDS = 5;
+/**
+ * 혼잡(429·503) 한 번 자동 재조회 대기(ms). Retry-After를 지키고 그만큼 흩뜨린다. Retry-After가 없으면 3~6초 —
+ * 장소 지도의 1초보다 길게 두어, 동시 상한에 걸린 gateway에 여러 사용자가 곧바로 다시 몰리지 않게 한다. 504·그 밖은 null.
+ */
+export function statisticsRetryDelay(reason: unknown, random: () => number = Math.random): number | null {
+  if (!(reason instanceof TransportError) || !BUSY_STATUSES.has(reason.status) || reason.retryAfter > AUTO_RETRY_MAX_SECONDS) return null;
+  const base = reason.retryAfter > 0 ? reason.retryAfter * 1000 : 3000;
+  return base + random() * base;
 }

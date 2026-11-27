@@ -54,7 +54,7 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole("heading", { name: "전국 · 휘발유 현재 가격" })).toBeVisible();
     await expect(page.getByLabel("현재 유가")).toContainText("1,853.72");
     await expect(page.getByRole("link", { name: "지도에서 보기" })).toHaveAttribute("href", "/?longitude=126.978&latitude=37.5665");
-    await expect(page.locator("time")).toHaveText("2026.11.27 09:31 KST");
+    await expect(page.locator("time")).toHaveText("2026.11.27 09:31");
     await expect(page.getByRole("group", { name: /전국 휘발유 최근 30일 평균·최저·최고 가격/ })).toBeVisible();
     expect(requests[0].get("from")).toBe("2026-10-29");
     expect(await noHorizontalScroll(page)).toBe(true);
@@ -64,7 +64,7 @@ for (const width of [390, 1440]) {
 
     // 1년·전체: 장기 추이 API(일·auto). 점이 많으면 점선 범례.
     await page.getByRole("radio", { name: "1년" }).check();
-    await expect(page.getByRole("heading", { name: "최근 1년 휘발유 평균 가격 추이" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "최근 1년 휘발유 평균 가격 변화" })).toBeVisible();
     await expect.poll(() => requests.at(-1)?.get("from")).toBe("2025-11-28");
     await expect(page.getByText("실선: 평균 · 같은 색 점선")).toBeVisible();
     await page.getByRole("radio", { name: "전체" }).check();
@@ -146,4 +146,54 @@ test("공개 지도에서 지역별 통계로 가고 다시 지도로 돌아온�
   await expect(page.getByRole("heading", { level: 1, name: "지역별 유가 통계" })).toBeVisible();
   await page.getByRole("link", { name: "유가 지도" }).click();
   await expect(page.getByRole("button", { name: "내 위치 주변 유가 보기" })).toBeVisible();
+});
+
+test("뒤로 가기로 돌아와도 고른 조건이 남고, 지도에서 왔으면 '유가 지도'가 지도를 그대로 돌려준다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await routeFuel(page);
+  await page.route("**/api/public/fuel/places?*", (route) => route.fulfill({ json: {
+    items: [], total: 0, truncated: false, clustered: false, available_sources: [], fuel_statistics: [],
+    fuel_prices_stale: false, fuel_prices_last_refreshed_at: generated } }));
+  await page.goto("/statistics");
+  await page.getByRole("radio", { name: "경유" }).check();
+  await page.getByRole("radio", { name: "시도" }).check();
+  await expect(page.getByRole("heading", { name: "서울 · 경유 현재 가격" })).toBeVisible();
+  await expect(page).toHaveURL(/scope=sido/);
+  await page.getByRole("link", { name: "유가 지도" }).click();
+  await expect(page.getByRole("button", { name: "내 위치 주변 유가 보기" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "서울 · 경유 현재 가격" })).toBeVisible();
+  await expect(page).toHaveURL(/product=D047/);
+  // 지도 → 통계 → "유가 지도"는 새 지도를 쌓지 않고 뒤로 간다.
+  await page.goto("/");
+  await page.getByRole("link", { name: "지역별 유가 통계" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "지역별 유가 통계" })).toBeVisible();
+  const before = await page.evaluate(() => history.length);
+  await page.getByRole("link", { name: "유가 지도" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  expect(await page.evaluate(() => history.length)).toBe(before);
+});
+
+test("최저가 주유소 '지도에서 보기'는 그 주유소 둘레를 확대해 연다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await routeFuel(page);
+  const zooms: string[] = [];
+  await page.route("**/api/public/fuel/places?*", (route) => {
+    zooms.push(new URL(route.request().url()).searchParams.get("zoom") ?? "");
+    return route.fulfill({ json: { items: [], total: 0, truncated: false, clustered: false, available_sources: [], fuel_statistics: [],
+      fuel_prices_stale: false, fuel_prices_last_refreshed_at: generated } });
+  });
+  await page.goto("/statistics");
+  await page.getByRole("link", { name: "지도에서 보기" }).click();
+  await expect(page).toHaveURL(/longitude=126.978/);
+  await expect.poll(() => zooms.at(-1)).toBe("15");
+});
+
+test("고속도로에서 고른 노선에 그 유종이 없으면 전체 노선 값을 보이고 알린다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await routeFuel(page);
+  await page.goto(`/statistics?scope=highway&region=${encodeURIComponent('["0140"]')}&product=K015`);
+  await expect(page.getByRole("heading", { name: "고속도로 전체 · LPG 현재 가격" })).toBeVisible();
+  await expect(page.getByText("선택한 노선에는 LPG 통계가 없어 고속도로 전체 값을 보여 드립니다")).toBeVisible();
+  await expect(page.getByRole("radio", { name: "고급유" })).toBeDisabled();
 });

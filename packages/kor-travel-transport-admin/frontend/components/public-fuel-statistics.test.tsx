@@ -5,20 +5,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TransportError } from "@/lib/journey";
 
 const state = vi.hoisted(() => ({ get: vi.fn(), chart: [] as Record<string, unknown>[] }));
-vi.mock("@/lib/public-fuel", () => ({ publicFuelGet: state.get }));
+vi.mock("@/lib/public-fuel-statistics-client", () => ({ statisticsGet: state.get }));
 vi.mock("./fuel-price-chart-loader", () => ({ default: (props: Record<string, unknown>) => { state.chart.push(props); return <div data-chart={String(props.label)} />; } }));
-vi.mock("next/link", () => ({ default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => <a href={href} {...props}>{children}</a> }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
 import { PublicFuelStatisticsPage } from "./public-fuel-statistics";
-import { DEFAULT_VIEW, describeStatisticsError, type PublicFuelStatisticsView } from "@/lib/public-fuel-statistics";
+import { FROM_MAP_KEY, describeStatisticsError, statisticsRetryDelay } from "@/lib/public-fuel-statistics";
 
 const generated = "2026-11-27T00:31:44Z";
+const station = { name: "최저가 시험주유소", address: "서울 중구", longitude: 126.98, latitude: 37.56 };
 const item = (scope_key: string, label: string, extra: Record<string, unknown> = {}) => ({ scope_key, label, generated_at: generated, product_code: "B027",
-  station_count: 10200, average_price: 1853.72, minimum_price: 1736, maximum_price: 2549, cheapest_station_count: 2,
-  cheapest_station: { name: "최저가 시험주유소", address: "서울 중구", longitude: 126.98, latitude: 37.56 }, ...extra });
-const statistics = (items: unknown[], extra: Record<string, unknown> = {}) => ({ generated_at: generated, update_pending: false, items, ...extra });
-const trend = (days: number) => ({ label: "전국", bucket: "day", from_day: "2026-10-29", to_day: "2026-11-27", generated_at: generated,
+  station_count: 10200, average_price: 1853.72, minimum_price: 1736, maximum_price: 2549, cheapest_station_count: 2, cheapest_station: station, ...extra });
+const statistics = (scope: string, items: unknown[], extra: Record<string, unknown> = {}) => ({ scope, generated_at: generated, update_pending: false, items, history: [], ...extra });
+const trend = (days: number, extra: (index: number) => Record<string, unknown> = () => ({})) => ({ label: "전국", bucket: "day", from_day: "2026-10-29", to_day: "2026-11-27", generated_at: generated,
   points: Array.from({ length: days }, (_, index) => { const day = new Date(Date.UTC(2026, 9, 29 + index)).toISOString().slice(0, 10);
-    return { product_code: "B027", day, first_day: day, last_day: day, day_count: 1, generated_at: generated, average_price: 1800 + index, minimum_price: 1700, maximum_price: 1900 + index, station_count: 10000 }; }) });
+    return { product_code: "B027", day, first_day: day, last_day: day, day_count: 1, generated_at: generated, average_price: 1800 + index, minimum_price: 1700, maximum_price: 1900 + index, station_count: 10000, ...extra(index) }; }) });
+const SIDO = [item('["경기도"]', "경기"), item('["서울특별시"]', "서울")];
+const SIGUNGU = [item('["서울특별시","강남구"]', "서울 강남구"), item('["서울특별시","마포구"]', "서울 마포구"), item('["부산광역시","중구"]', "부산 중구")];
+
+function respond(overrides: Record<string, unknown> = {}) {
+  return (path: string) => {
+    const search = new URLSearchParams(path.split("?")[1]);
+    if (path.startsWith("fuel/statistics/history")) return Promise.resolve(overrides.history ?? trend(30));
+    const scope = search.get("scope")!;
+    const items = (overrides[scope] as unknown[] | undefined) ?? (scope === "sido" ? SIDO : scope === "sigungu" ? SIGUNGU : scope === "highway" ? [item('["0010"]', "경부선")] : [item("all", scope === "highways" ? "고속도로 전체" : "전국")]);
+    return Promise.resolve(statistics(scope, items));
+  };
+}
 
 let root: Root, host: HTMLDivElement;
 beforeEach(() => {
@@ -27,109 +39,181 @@ beforeEach(() => {
   state.get.mockReset(); state.chart = [];
   window.history.replaceState(null, "", "/statistics");
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
-async function render(view: Partial<PublicFuelStatisticsView> = {}) {
-  await act(async () => root.render(<PublicFuelStatisticsPage initialView={{ ...DEFAULT_VIEW, ...view }} />));
-  await act(async () => { await Promise.resolve(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); sessionStorage.clear(); });
+async function render(query = "") {
+  window.history.replaceState(null, "", `/statistics${query}`);
+  await act(async () => root.render(<PublicFuelStatisticsPage />));
+  for (let index = 0; index < 4; index++) await act(async () => { await Promise.resolve(); });
 }
 const paths = () => state.get.mock.calls.map(call => String(call[0]));
 const radio = (name: string) => [...host.querySelectorAll<HTMLInputElement>("input[type=radio]")].find(input => input.parentElement?.textContent === name)!;
+const select = (label: string) => host.querySelector<HTMLSelectElement>(`#${CSS.escape([...host.querySelectorAll("label")].find(node => node.textContent === label)!.htmlFor)}`)!;
+async function choose(element: HTMLSelectElement, value: string) {
+  await act(async () => { element.value = value; element.dispatchEvent(new Event("change", { bubbles: true })); });
+  for (let index = 0; index < 4; index++) await act(async () => { await Promise.resolve(); });
+}
 
 describe("공개 유가 지역별 통계", () => {
   it("전국 현재 값·최저가 주유소·기준 시각과 30일 추이를 보인다", async () => {
-    state.get.mockImplementation((path: string) => Promise.resolve(path.startsWith("fuel/statistics/history") ? trend(30) : statistics([item("all", "전국")])));
+    state.get.mockImplementation(respond());
     await render();
-    expect(paths()[0]).toBe("fuel/statistics?scope=nationwide&product_code=B027");
+    expect(paths()[0]).toBe("fuel/statistics?scope=nationwide&product_code=B027&include_history=false");
     expect(paths()[1]).toBe("fuel/statistics/history?scope=nationwide&scope_key=all&product_code=B027&to=2026-11-27&bucket=day&from=2026-10-29");
     expect(host.querySelector("h2")?.textContent).toBe("전국 · 휘발유 현재 가격");
     expect(host.textContent).toContain("1,853.72");
-    expect(host.textContent).toContain("최저가 시험주유소 외 1곳");
-    expect(host.querySelector<HTMLAnchorElement>('a[href^="/?longitude"]')?.getAttribute("href")).toBe("/?longitude=126.98&latitude=37.56");
-    expect(host.querySelector("time")?.textContent).toBe("2026.11.27 09:31 KST");
-    expect(host.textContent).toContain("최근 30일 휘발유 평균 가격 추이");
+    expect(host.textContent).toContain("최저가 시험주유소 외 같은 가격 1곳");
+    // 지도는 첫 렌더에 주소 좌표를 읽으므로 앱 안 이동(next/link)이 아니라 새로 여는 링크다.
+    const link = host.querySelector<HTMLAnchorElement>('a[href^="/?longitude"]')!;
+    expect(link.getAttribute("href")).toBe("/?longitude=126.98&latitude=37.56");
+    expect(host.querySelector("time")?.textContent).toBe("2026.11.27 09:31");
+    expect(host.textContent).toContain("최근 30일 휘발유 평균 가격 변화");
     expect(host.textContent).toContain("+29원");
     expect(state.chart.at(-1)).toMatchObject({ maxGapDays: 1, rangeAsLines: false });
-    // 차트 점에는 관리 지도(/fuel)로 가는 최저가 링크를 넣지 않는다.
     expect((state.chart.at(-1)!.series as { points: Record<string, unknown>[] }[])[0].points[0].cheapest).toBeUndefined();
+    expect(host.querySelector('[aria-live="polite"]')?.textContent).toBe("전국 휘발유 평균 1,853.72원");
   });
 
-  it("유종·기간·범위를 바꾸면 그 조건으로 다시 읽고 URL에 남긴다", async () => {
-    state.get.mockImplementation((path: string) => Promise.resolve(path.startsWith("fuel/statistics/history") ? { ...trend(60), bucket: "week" }
-      : path.includes("scope=sido") ? statistics([item('["경기도"]', "경기"), item('["서울특별시"]', "서울")]) : statistics([item("all", "전국")])));
+  it("유종·기간·범위를 바꾸면 그 조건으로 다시 읽고 실제로 보이는 지역을 URL에 남긴다", async () => {
+    state.get.mockImplementation(respond({ history: { ...trend(60), bucket: "week" } }));
     await render();
     await act(async () => radio("경유").click());
-    expect(paths()).toContain("fuel/statistics?scope=nationwide&product_code=D047");
+    expect(paths()).toContain("fuel/statistics?scope=nationwide&product_code=D047&include_history=false");
     await act(async () => radio("전체").click());
     expect(paths().at(-1)).toBe("fuel/statistics/history?scope=nationwide&scope_key=all&product_code=D047&to=2026-11-27&bucket=auto");
     expect(state.chart.at(-1)).toMatchObject({ maxGapDays: 7, rangeAsLines: true });
     await act(async () => radio("시도").click());
-    expect(paths()).toContain("fuel/statistics?scope=sido&product_code=D047");
-    expect(paths().at(-1)).toContain("scope=sido&scope_key=%5B%22%EC%84%9C%EC%9A%B8%ED%8A%B9%EB%B3%84%EC%8B%9C%22%5D");
-    expect(window.location.search).toBe("?scope=sido&product=D047&period=all");
-    const select = host.querySelector("select")!;
-    expect(select.value).toBe('["서울특별시"]');
-    await act(async () => { select.value = '["경기도"]'; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    for (let index = 0; index < 4; index++) await act(async () => { await Promise.resolve(); });
+    expect(paths()).toContain("fuel/statistics?scope=sido&product_code=D047&include_history=false");
+    expect(select("시도 선택").value).toBe('["서울특별시"]');
+    expect(new URLSearchParams(window.location.search).get("region")).toBe('["서울특별시"]');
+    await choose(select("시도 선택"), '["경기도"]');
     expect(new URLSearchParams(window.location.search).get("region")).toBe('["경기도"]');
+    expect(window.location.search).toContain("scope=sido");
   });
 
-  it("고속도로 전체 노선은 노선 목록과 전체 범주를 따로 읽고, 없는 유종은 안내한다", async () => {
-    state.get.mockImplementation((path: string) => Promise.resolve(path.includes("scope=highways") ? statistics([]) : statistics([])));
-    await render({ area: "highway", product: "B034" });
-    expect(paths()).toEqual(expect.arrayContaining(["fuel/statistics?scope=highway&product_code=B034", "fuel/statistics?scope=highways&product_code=B034"]));
-    expect(host.textContent).toContain("이 범위에는 고급유 통계가 없습니다");
-    expect(host.textContent).toContain("휘발유·경유·LPG");
-    expect(paths().some(path => path.includes("history"))).toBe(false);
+  it("고른 지역에 그 유종이 없으면 다른 지역을 보인다고 알리고 URL도 보이는 지역으로 바꾼다", async () => {
+    state.get.mockImplementation(respond({ sigungu: [SIGUNGU[0], SIGUNGU[2]] }));
+    await render(`?scope=sigungu&region=${encodeURIComponent('["서울특별시","마포구"]')}&product=K015`);
+    expect(host.textContent).toContain("마포구에는 LPG 통계가 없어 서울 강남구 값을 보여 드립니다");
+    expect(new URLSearchParams(window.location.search).get("region")).toBe('["서울특별시","강남구"]');
+  });
+
+  it("고속도로: 전체 노선은 전체 범주를 먼저, 끝난 뒤 노선 목록을 읽는다", async () => {
+    state.get.mockImplementation(respond());
+    await render("?scope=highway");
+    const statisticsPaths = paths().filter(path => !path.startsWith("fuel/statistics/history"));
+    expect(statisticsPaths).toEqual(["fuel/statistics?scope=highways&product_code=B027&include_history=false", "fuel/statistics?scope=highway&product_code=B027&include_history=false"]);
+    expect(host.querySelector("h2")?.textContent).toBe("고속도로 전체 · 휘발유 현재 가격");
+    // 고급유·등유는 고속도로에서 고를 수 없다.
+    expect(radio("고급유").disabled).toBe(true); expect(radio("등유").disabled).toBe(true); expect(radio("LPG").disabled).toBe(false);
+  });
+
+  it("고속도로: 고른 노선에 그 유종이 없으면 전체 노선 값을 읽어 보인다(빈 상태로 막히지 않는다)", async () => {
+    state.get.mockImplementation(respond({ highway: [item('["0010"]', "경부선")] }));
+    await render(`?scope=highway&region=${encodeURIComponent('["0140"]')}&product=K015`);
+    expect(paths()).toContain("fuel/statistics?scope=highways&product_code=K015&include_history=false");
+    expect(host.querySelector("h2")?.textContent).toBe("고속도로 전체 · LPG 현재 가격");
+    expect(host.textContent).toContain("선택한 노선에는 LPG 통계가 없어 고속도로 전체 값을 보여 드립니다");
+    expect(select("노선 선택").value).toBe("all");
+    expect(new URLSearchParams(window.location.search).has("region")).toBe(false);
+  });
+
+  it("고속도로 좌표 없는 최저가 휴게소와 같은 최저가 목록·이상값을 안내한다", async () => {
+    const tie = (key: string, name: string) => ({ station_key: key, name, address: null, longitude: null, latitude: null, price: 184 });
+    state.get.mockImplementation(respond({
+      highways: [item("all", "고속도로 전체", { minimum_price: 184, average_price: 1830, cheapest_station: { name: "시험휴게소", address: null, longitude: null, latitude: null }, cheapest_station_count: 2, cheapest_stations: [tie("1", "시험휴게소"), tie("2", "둘째휴게소")] })],
+      history: trend(30, index => index === 0 ? { minimum_price: 184 } : {}),
+    }));
+    await render("?scope=highway");
+    expect(host.textContent).toContain("휴게소 위치 좌표가 없어 지도 링크는 없습니다");
+    expect(host.textContent).toContain("같은 최저가 2곳 보기");
+    expect(host.textContent).toContain("평균보다 30% 넘게 낮음 · 입력 오류일 수 있음");
+    expect(host.textContent).toContain("최저·최고 1건은 입력 오류로 보고");
+    expect(host.textContent).not.toContain("184 원/L26.10.29");
+    const points = (state.chart.at(-1)!.series as { points: { minimum: number | null }[] }[])[0].points;
+    expect(points[0].minimum).toBeNull();
   });
 
   it("반영 대기·오래된 통계를 알린다", async () => {
     state.get.mockImplementation((path: string) => Promise.resolve(path.startsWith("fuel/statistics/history") ? trend(1)
-      : statistics([item("all", "전국", { generated_at: "2026-11-20T00:00:00Z" })], { update_pending: true, generated_at: "2026-11-20T00:00:00Z" })));
+      : statistics("nationwide", [item("all", "전국", { generated_at: "2026-11-20T00:00:00Z" })], { update_pending: true, generated_at: "2026-11-20T00:00:00Z" })));
     await render();
-    expect(host.textContent).toContain("새로 수집한 가격을 통계에 반영하는 중입니다");
+    expect(host.textContent).toContain("새로 모은 가격을 통계에 반영하는 중입니다");
     expect(host.textContent).toMatch(/통계가 \d+일 전 기준입니다/);
     expect(host.textContent).toContain("비교할 기록 없음");
   });
 
-  it("혼잡(Retry-After)은 남은 초 동안 다시 조회를 막고, 지나면 다시 읽는다", async () => {
+  it("혼잡(Retry-After)은 남은 초 동안 다시 조회를 막고, 지나면 그 구역만 다시 읽고 제목으로 초점을 옮긴다", async () => {
     vi.useFakeTimers();
-    state.get.mockRejectedValue(new TransportError("유가 정보를 불러오지 못했습니다. 다시 확인해 주세요.", 429, 30));
+    state.get.mockImplementation((path: string) => path.startsWith("fuel/statistics/history")
+      ? Promise.reject(new TransportError("유가 정보를 불러오지 못했습니다. 다시 확인해 주세요.", 429, 30)) : respond()(path));
     await render();
     const alert = host.querySelector('[role="alert"]')!;
     expect(alert.textContent).toContain("지금 유가 통계 조회가 몰려 있습니다");
     const button = alert.querySelector("button")!;
     expect(button.disabled).toBe(true); expect(button.textContent).toContain("30초 후");
-    const before = state.get.mock.calls.length;
     for (let second = 0; second < 30; second++) await act(async () => { vi.advanceTimersByTime(1000); });
     expect(button.disabled).toBe(false);
-    state.get.mockImplementation((path: string) => Promise.resolve(path.startsWith("fuel/statistics/history") ? trend(3) : statistics([item("all", "전국")])));
+    const listCalls = paths().filter(path => !path.startsWith("fuel/statistics/history")).length;
+    state.get.mockImplementation(respond());
     await act(async () => button.click());
-    await act(async () => { await Promise.resolve(); });
-    expect(state.get.mock.calls.length).toBeGreaterThan(before);
+    for (let index = 0; index < 4; index++) await act(async () => { await Promise.resolve(); });
+    expect(paths().filter(path => !path.startsWith("fuel/statistics/history")).length).toBe(listCalls);
+    expect(state.get.mock.calls.at(-1)![2]).toMatchObject({ force: true });
+    expect(document.activeElement?.textContent).toBe("최근 30일 휘발유 평균 가격 변화");
+    expect(host.textContent).toContain("+29원");
   });
 
   it("짧은 혼잡은 한 번 자동으로 다시 조회하며 그동안 알린다", async () => {
     vi.useFakeTimers();
-    state.get.mockRejectedValueOnce(new TransportError("혼잡", 503, 2)).mockImplementation((path: string) => Promise.resolve(path.startsWith("fuel/statistics/history") ? trend(3) : statistics([item("all", "전국")])));
+    state.get.mockRejectedValueOnce(new TransportError("혼잡", 503, 2)).mockImplementation(respond());
     await render();
     expect(host.textContent).toContain("조회가 몰려 잠시 뒤 다시 조회하는 중");
-    await act(async () => { vi.advanceTimersByTime(3100); });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(4100); });
+    for (let index = 0; index < 4; index++) await act(async () => { await Promise.resolve(); });
     expect(host.textContent).toContain("1,853.72");
+  });
+
+  it("형식이 다른 응답은 화면을 깨뜨리지 않고 조회 실패로 보인다", async () => {
+    state.get.mockImplementation(respond({ history: { points: "x" } }));
+    await render();
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("추이 다시 조회");
+    expect(host.textContent).toContain("1,853.72");
+  });
+
+  it("지도에서 왔으면 '유가 지도'가 뒤로 가고, 아니면 지도를 새로 연다", async () => {
+    state.get.mockImplementation(respond());
+    await render();
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
+    const link = [...host.querySelectorAll("a")].find(node => node.textContent === "유가 지도")!;
+    const first = new MouseEvent("click", { bubbles: true, cancelable: true });
+    link.dispatchEvent(first);
+    expect(first.defaultPrevented).toBe(false);
+    sessionStorage.setItem(FROM_MAP_KEY, "1");
+    window.history.pushState(null, "", window.location.href);
+    const second = new MouseEvent("click", { bubbles: true, cancelable: true });
+    link.dispatchEvent(second);
+    expect(second.defaultPrevented).toBe(true); expect(back).toHaveBeenCalledOnce();
+    expect(sessionStorage.getItem(FROM_MAP_KEY)).toBeNull();
   });
 });
 
-it("형식이 다른 응답은 화면을 깨뜨리지 않고 조회 실패로 보인다", async () => {
-  state.get.mockImplementation((path: string) => Promise.resolve(path.startsWith("fuel/statistics/history") ? { points: "x" } : statistics([item("all", "전국")])));
-  await render();
-  expect(host.querySelector('[role="alert"]')?.textContent).toContain("추이 다시 조회");
-  expect(host.textContent).toContain("1,853.72");
-});
-
-describe("실패 문구", () => {
-  it("서버 한국어 안내는 그대로, 시한 초과는 시한 안내로 바꾼다", () => {
+describe("실패 문구·재조회 대기", () => {
+  it("서버 한국어 안내는 혼잡·시한에만 쓰고, 개발자용 422 안내는 일반 문구로 바꾼다", () => {
     expect(describeStatisticsError(new TransportError("유가 통계 조회가 혼잡합니다.", 429, 120))).toEqual({ message: "유가 통계 조회가 혼잡합니다.", retryAfter: 60 });
+    expect(describeStatisticsError(new TransportError("유가 정보를 불러오지 못했습니다. 다시 확인해 주세요.", 429, 0))).toEqual({ message: "지금 유가 통계 조회가 몰려 있습니다. 잠시 후 다시 조회해 주세요.", retryAfter: 5 });
+    expect(describeStatisticsError(new TransportError("이 범위는 scope_key가 필요합니다(통계 페이지의 history_scope_key).", 422, 0)).message).toBe("유가 통계를 불러오지 못했습니다. 다시 조회해 주세요.");
+    expect(describeStatisticsError(new TransportError("유가 API에 연결하지 못했습니다.", 502, 0))).toMatchObject({ message: expect.stringContaining("늦거나 연결되지"), retryAfter: 5 });
     expect(describeStatisticsError(new TransportError("x", 504, 10)).message).toContain("제시간에");
-    expect(describeStatisticsError(new DOMException("t", "TimeoutError")).retryAfter).toBe(0);
+    expect(describeStatisticsError(new DOMException("t", "TimeoutError")).retryAfter).toBe(5);
     expect(describeStatisticsError(new TypeError("fetch failed")).message).toContain("네트워크");
+  });
+  it("Retry-After 없는 혼잡은 3~6초 뒤 한 번, 5초 넘는 Retry-After·504는 자동으로 다시 묻지 않는다", () => {
+    expect(statisticsRetryDelay(new TransportError("x", 429, 0), () => 0)).toBe(3000);
+    expect(statisticsRetryDelay(new TransportError("x", 429, 0), () => 1)).toBe(6000);
+    expect(statisticsRetryDelay(new TransportError("x", 503, 2), () => .5)).toBe(3000);
+    expect(statisticsRetryDelay(new TransportError("x", 429, 8))).toBeNull();
+    expect(statisticsRetryDelay(new TransportError("x", 504, 1))).toBeNull();
+    expect(statisticsRetryDelay(new Error("x"))).toBeNull();
   });
 });

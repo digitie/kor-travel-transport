@@ -7,7 +7,10 @@
   0.3초 안팎(전: 2.6~3.0초), `.../statistics/history?scope=nationwide&bucket=auto`의 첫 날짜가 일별 기록 첫날과 같은지.
 - [x] **FUEL-HISTORY-PUBLIC-UI / P3** — 2026-11-27 공개 유가 웹 `/statistics`(지역별 유가 통계): 전국·시도·시군구·고속도로(노선),
   유종, 현재 평균·최저·최고·주유소 수·최저가 주유소(공개 지도 링크)·통계 기준 시각·반영 대기·오래됨, 30일·90일·1년·전체 추이와 기간 요약,
-  혼잡(429·503 Retry-After) 자동 1회·대기 후 다시 조회. 지도 왼쪽 아래 통계 아이콘이 입구다([공개 유가 서비스](design/2026-11-20-public-fuel-service.md#지역별-유가-통계-statistics)).
+  혼잡(429·503 Retry-After) 자동 1회·대기 후 다시 조회, 이상 최저·최고 제외, 없는 지역 안내, 1분 재사용·ETag 재검증,
+  backend `statistics?include_history=false`. 지도 왼쪽 아래 "통계" 단추가 입구다([공개 유가 서비스](design/2026-11-20-public-fuel-service.md#지역별-유가-통계-statistics)).
+- [ ] **FUEL-PUBLIC-MAP-RETRY-E2E / P2** — 격리 e2e `public-fuel-map.spec.ts` "자동 재조회 대기"(375·1440)가 origin/main(47d62230)
+  빌드에서도 재조회 성공 뒤 요약 y가 34.5px 움직여 실패한다(BACKEND_INTERNAL_URL 무관, 2026-11-27 확인). 공개 지도 요약 배치 확인 필요.
 - [ ] **FUEL-HISTORY-PUBLIC-UI-VERIFY / P2** — fuel web 이미지 배포 뒤 https://fuel.digitie.mywire.org/statistics 를 390·1440px에서 열어
   전국·시군구·고속도로 LPG와 1년·전체 추이가 보이는지, 지도 아이콘·"지도에서 보기"가 지도로 돌아가는지 확인.
 

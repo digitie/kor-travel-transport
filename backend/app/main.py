@@ -1478,9 +1478,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         scope: str = Query(default="nationwide", pattern="^(nationwide|sido|sigungu|highways|highway|highway_direction)$"),
         product_code: str = Query(default="B027", min_length=1, max_length=20, description="유종 코드. ALL은 같은 공개 세대의 모든 유종"),
         scope_key: str | None = Query(default=None, max_length=512),
+        include_history: bool = Query(default=True, description=(
+            "선택 범주의 30일 이력(history)을 포함. false면 history는 빈 목록이다(장기 추이 API를 따로 읽는 화면용)")),
         session: AsyncSession = Depends(get_db),
     ) -> dict:
-        return await fuel_statistics_page(session, scope, product_code, scope_key)
+        return await fuel_statistics_page(session, scope, product_code, scope_key, include_history)
 
     @router.get("/transport/fuel/statistics/history", response_model=FuelStatisticsTrendResponse,
                 responses={304: {"description": "If-None-Match와 같은 ETag"}, 422: {}})
