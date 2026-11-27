@@ -82,7 +82,7 @@ def test_initialize_discover_tools_and_same_api_lifespan(fuel_mcp):
     notified = client.post("/mcp", headers=HEADERS, json={"jsonrpc": "2.0", "method": "notifications/initialized"})
     assert notified.status_code in (200, 202)
     tools = rpc(client, "tools/list").json()["result"]["tools"]
-    assert {tool["name"] for tool in tools} == {"search_nearby_fuel", "get_regional_fuel_prices"}
+    assert {tool["name"] for tool in tools} == {"search_nearby_fuel", "get_regional_fuel_prices", "list_nearby_fuel_stations", "query_fuel_widget", "render_fuel_widget"}
     assert all(tool["annotations"]["readOnlyHint"] and tool["outputSchema"] for tool in tools)
     discover = rpc(client, "server/discover", {"_meta": {
         "io.modelcontextprotocol/protocolVersion": "2026-07-28",
@@ -254,3 +254,74 @@ def test_postgres_read_only_snapshot_does_not_mix_publication_generations(fuel_m
             current = await regional_fuel(session, RegionalFuelQuery())
             assert current.products[0].average_price == 333
     asyncio.run(exercise())
+
+
+def test_widget_resource_and_data_tools_remain_separate_and_authenticated(fuel_mcp):
+    client, _ = fuel_mcp
+    tools = {tool["name"]: tool for tool in rpc(client, "tools/list").json()["result"]["tools"]}
+    uri = tools["render_fuel_widget"]["_meta"]["ui"]["resourceUri"]
+    assert uri == "ui://transport-fuel/v1.html"
+    assert all("resourceUri" not in tools[name].get("_meta", {}).get("ui", {}) for name in (
+        "search_nearby_fuel", "get_regional_fuel_prices", "list_nearby_fuel_stations", "query_fuel_widget"))
+    resources = rpc(client, "resources/list").json()["result"]["resources"]
+    resource = next(row for row in resources if row["uri"] == uri)
+    assert resource["mimeType"] == "text/html;profile=mcp-app"
+    contents = rpc(client, "resources/read", {"uri": uri}).json()["result"]["contents"][0]
+    assert contents["mimeType"] == "text/html;profile=mcp-app"
+    assert contents["_meta"]["ui"]["permissions"] == {"geolocation": {}}
+    assert contents["_meta"]["ui"]["csp"]["connectDomains"] == ["https://tile.openstreetmap.org"]
+    assert "내 주변 유가" in contents["text"] and "ui/initialize" in contents["text"]
+    assert TOKEN not in contents["text"] and "x-kor-travel-transport-service-token" not in contents["text"]
+    denied = rpc(client, "resources/read", {"uri": uri}, headers={"Accept": "application/json, text/event-stream"})
+    assert denied.status_code == 404
+    unknown = rpc(client, "resources/read", {"uri": "ui://transport-fuel/../../core/config.py"}).json()
+    assert "error" in unknown
+
+
+def test_ranked_list_and_widget_use_same_cohort_and_full_radius_average(fuel_mcp):
+    client, _ = fuel_mcp
+    query = {"latitude": 37.5, "longitude": 127, "radius_m": 50000, "limit_per_product": 2, "product_codes": ["B027"]}
+    result = call(client, "list_nearby_fuel_stations", query)
+    product = result["products"][0]
+    assert product["station_count"] == 3 and product["average_price"] == 1600
+    assert [row["station_key"] for row in product["ranked_stations"]] == ["1", "2"]
+    assert product["ranking_truncated"] and product["cheapest_station_count"] == 2
+    assert call(client, "render_fuel_widget", query) == result
+    larger = call(client, "list_nearby_fuel_stations", {**query, "limit_per_product": 20})["products"][0]
+    assert [row["price"] for row in larger["ranked_stations"]] == [1500, 1500, 1800]
+    assert larger["average_price"] == product["average_price"] and not larger["ranking_truncated"]
+    assert len(larger["cheapest_stations"]) == 2
+
+
+def test_ranked_distance_sort_limits_and_missing_generation(fuel_mcp):
+    client, _ = fuel_mcp
+    result = call(client, "list_nearby_fuel_stations", {"latitude": 37.5, "longitude": 127.1, "radius_m": 50000, "sort_by": "distance", "limit_per_product": 1})
+    gas = result["products"][0]
+    assert result["sort_by"] == "distance" and gas["ranked_stations"][0]["station_key"] == "3"
+    assert gas["minimum_price"] == 1500 and gas["cheapest_station_count"] == 2
+    assert not gas["cheapest_stations"] and gas["truncated"]
+    invalid = rpc(client, "tools/call", {"name": "render_fuel_widget", "arguments": {"query": {"latitude": 37.5, "longitude": 127, "limit_per_product": 21}}}).json()
+    assert invalid.get("error") or invalid.get("result", {}).get("isError")
+    async def remove_state():
+        async with client.app.state.session_factory() as session:
+            await session.execute(text("DELETE FROM fuel_statistics_states"))
+            await session.commit()
+    asyncio.run(remove_state())
+    missing = call(client, "list_nearby_fuel_stations", {"latitude": 37.5, "longitude": 127})
+    assert missing["collection"]["status"] == "unavailable"
+    assert all(p["station_count"] is None and not p["ranked_stations"] for p in missing["products"])
+
+
+def test_widget_can_open_without_guessing_or_querying_location(fuel_mcp):
+    client, _ = fuel_mcp
+    statements = []
+    def capture(_, __, statement, *args):
+        statements.append(statement)
+    engine = client.app.state.engine.sync_engine
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        result = rpc(client, "tools/call", {"name": "render_fuel_widget", "arguments": {}}).json()["result"]["structuredContent"]
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert result["collection"]["reason"] == "location_required" and result["latitude"] is None
+    assert not result["products"] and not statements

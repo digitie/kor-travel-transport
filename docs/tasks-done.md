@@ -1,3 +1,7 @@
+## 2026-11-28 — 주변 유가 MCP UI 소스
+
+- [x] **FUEL-MCP-APPS-UI-SOURCE** — 공식 MCP Apps 브리지·무비밀 리소스, 위치 동의 우선·유가 지도/목록과 SQL 상위 목록을 구현했다. 최종 시험/리뷰/소스 머지는 PR 원장으로, 실제 게시/운영은 별도로 구분한다. [설계·검증](reports/2026-11-28-fuel-mcp-app-ui.md).
+
 ## 2026-11-18 — Node 26.13.1 툴체인 전환
 
 - [x] **NODE26-TOOLCHAIN-20261118** — Common T-029(`0dec954`) 소비자 체크리스트대로 `.nvmrc`·두 프론트 engines/lock·CI·Node Dockerfile 2개·guard 호출 2곳을 Node 26.13.1/npm 12.0.1로 전환했다. 배포 없음, 다음 배포에서 두 웹 이미지 재빌드.

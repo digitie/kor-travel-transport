@@ -9,7 +9,7 @@ from app.core.time_utils import now_utc, serialize_utc
 from app.models import FuelStatisticsDaily, FuelStatisticsPoint, FuelStatisticsState, TransportCollectionState
 from app.schemas import (
     FuelSearchCollection, FuelSearchProduct, FuelSearchRegion, FuelSearchResponse,
-    FuelSearchStation, NearbyFuelQuery, RegionalFuelQuery,
+    FuelSearchStation, NearbyFuelQuery, RegionalFuelQuery, FuelRankedSearchProduct, FuelRankedSearchResponse,
 )
 from app.services.fuel_statistics import OPINET, _key
 from app.services.transport_collection import FUEL_STALE_AFTER
@@ -66,9 +66,12 @@ def empty_products(codes, *, ready: bool):
             for code in dict.fromkeys(codes)}
 
 
-async def nearby_fuel(session: AsyncSession, query: NearbyFuelQuery) -> FuelSearchResponse:
+async def nearby_fuel(session: AsyncSession, query: NearbyFuelQuery, *,
+                      ranked: bool = False, sort_by: str = "price") -> FuelSearchResponse:
     metadata = await collection_metadata(session)
     products = empty_products(query.product_codes, ready=metadata.status == "ready")
+    if ranked:
+        products = {code: FuelRankedSearchProduct(**product.model_dump()) for code, product in products.items()}
     if metadata.generated_at is not None:
         p = FuelStatisticsPoint
         south, north, lon_delta = radius_bounds(query.latitude, query.longitude, query.radius_m)
@@ -92,11 +95,14 @@ async def nearby_fuel(session: AsyncSession, query: NearbyFuelQuery) -> FuelSear
                         func.avg(c.price).label("average_price"), func.min(c.price).label("minimum_price"),
                         ).group_by(c.product_code).cte("radius_totals")
         t = totals.c
+        # 목록도 동일 공개 세대·반경 모집단에서 SQL 상한을 적용한다. 기존 최저 동률 계약은 그대로다.
+        order = (c.price, c.distance_m, c.station_key) if sort_by == "price" else (c.distance_m, c.price, c.station_key)
         cheapest = select(candidates,
-            func.count().over(partition_by=c.product_code).label("tie_count"),
+            func.count(case((c.price == t.minimum_price, 1))).over(partition_by=c.product_code).label("tie_count"),
             func.row_number().over(partition_by=c.product_code,
-                order_by=(c.distance_m, c.station_key)).label("rank"),
-        ).join(totals, and_(c.product_code == t.product_code, c.price == t.minimum_price)).cte("radius_cheapest")
+                order_by=order if ranked else (c.distance_m, c.station_key)).label("rank"),
+        ).join(totals, c.product_code == t.product_code if ranked else
+               and_(c.product_code == t.product_code, c.price == t.minimum_price)).cte("radius_cheapest")
         rows = (await session.execute(select(totals, cheapest).join(cheapest,
             cheapest.c.product_code == t.product_code).where(cheapest.c.rank <= query.limit_per_product)
             .order_by(t.product_code, cheapest.c.rank))).mappings()
@@ -107,11 +113,20 @@ async def nearby_fuel(session: AsyncSession, query: NearbyFuelQuery) -> FuelSear
             product.minimum_price = float(row["minimum_price"])
             product.cheapest_station_count = row["tie_count"]
             product.truncated = row["tie_count"] > query.limit_per_product
-            product.cheapest_stations.append(FuelSearchStation(**{
+            station = FuelSearchStation(**{
                 key: row[key] for key in ("station_key", "name", "address", "brand_name", "latitude", "longitude", "price")
-            }, distance_m=round(float(row["distance_m"]), 2)))
-    return FuelSearchResponse(scope="radius", collection=metadata, products=list(products.values()),
-                              latitude=query.latitude, longitude=query.longitude, radius_m=query.radius_m)
+            }, distance_m=round(float(row["distance_m"]), 2))
+            if station.price == product.minimum_price:
+                product.cheapest_stations.append(station)
+            if isinstance(product, FuelRankedSearchProduct):
+                product.ranked_stations.append(station)
+                product.ranking_truncated = product.station_count > query.limit_per_product
+        if ranked:
+            for product in products.values():
+                product.truncated = product.cheapest_station_count > len(product.cheapest_stations)
+    response = dict(scope="radius", collection=metadata, products=list(products.values()),
+                    latitude=query.latitude, longitude=query.longitude, radius_m=query.radius_m)
+    return FuelRankedSearchResponse(**response, sort_by=sort_by) if ranked else FuelSearchResponse(**response)
 
 
 async def regional_fuel(session: AsyncSession, query: RegionalFuelQuery,

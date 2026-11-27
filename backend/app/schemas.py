@@ -19,6 +19,11 @@ class NearbyFuelQuery(BaseModel):
     limit_per_product: int = Field(default=5, ge=1, le=20, description="유종별 최저가 동률 결과 상한")
 
 
+class NearbyFuelListQuery(NearbyFuelQuery):
+    limit_per_product: int = Field(default=20, ge=1, le=20, description="유종별 표시 주유소 상한")
+    sort_by: Literal["price", "distance"] = "price"
+
+
 class RegionalFuelQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
     scope: Literal["nationwide", "sigungu"] = "nationwide"
@@ -92,6 +97,16 @@ class FuelSearchResponse(BaseModel):
     region: FuelSearchRegion | None = None
     price_unit: Literal["KRW/L"] = "KRW/L"
     distance_method: Literal["great_circle_6371008.8m"] = "great_circle_6371008.8m"
+
+
+class FuelRankedSearchProduct(FuelSearchProduct):
+    ranked_stations: list[FuelSearchStation] = Field(default_factory=list)
+    ranking_truncated: bool = False
+
+
+class FuelRankedSearchResponse(FuelSearchResponse):
+    products: list[FuelRankedSearchProduct]
+    sort_by: Literal["price", "distance"] = "price"
 
 
 class PublicParkingHours(BaseModel):

@@ -27,9 +27,33 @@ jobs:
         [{"package":"frontend/package.json","lock":"frontend/package-lock.json","workspace":"","profile":"web"},{"package":"packages/kor-travel-transport-admin/frontend/package.json","lock":"packages/kor-travel-transport-admin/frontend/package-lock.json","workspace":"","profile":"web"}]
       toolchain-manifests: '[]'
       node-dockerfiles: >-
-        ["frontend/Dockerfile","packages/kor-travel-transport-admin/frontend/Dockerfile"]
+        ["frontend/Dockerfile","packages/kor-travel-transport-admin/frontend/Dockerfile","backend/Dockerfile"]
+
+  fuel-mcp-ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/kor-travel-fuel-mcp-ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.13.1"
+          cache: npm
+          cache-dependency-path: packages/kor-travel-fuel-mcp-ui/package-lock.json
+      - run: npm install --global npm@12.0.1
+      - run: npm ci --engine-strict --no-audit --no-fund
+      - run: npm run type-check && npm test && npm run build
+      - run: node node_modules/@playwright/test/cli.js install --with-deps chromium
+      - run: node node_modules/@playwright/test/cli.js test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fuel-mcp-ui
+          path: backend/app/fuel_widget/index.html
+          retention-days: 3
 
   backend:
+    needs: fuel-mcp-ui
     runs-on: ubuntu-latest
     env:
       # Alembic은 Settings의 DATABASE_URL을 읽고, pytest fixture는 TEST_DATABASE_URL만 opt-in으로 쓴다.
@@ -55,6 +79,10 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: fuel-mcp-ui
+          path: backend/app/fuel_widget
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

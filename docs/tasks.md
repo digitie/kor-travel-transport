@@ -1,3 +1,7 @@
+## 2026-11-28 — 주변 유가 MCP UI 운영 수용
+
+- [ ] **FUEL-MCP-APPS-UI-VERIFY** — 개인 플러그인 UI 게시·기존 공개 범위 유지와 새 API 이미지 뒤 native 목록 전환·실제 도구/리소스를 확인한다. [구현 경계](reports/2026-11-28-fuel-mcp-app-ui.md).
+
 ## 2026-11-27 — 휴게소 먹거리(REST-AREA-FOOD)
 
 - [ ] **REST-AREA-FOOD-DEPLOY / P1** — odroid 배포(migration `0051`) 뒤 `rest_area_food_collection_job`을 한 번 수동 실행하고

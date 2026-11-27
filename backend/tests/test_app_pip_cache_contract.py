@@ -131,7 +131,9 @@ class AppPipCacheContract(unittest.TestCase):
 
 
     def test_non_app_run_instructions_remain_exact(self):
-        others = [block for block in runs(DOCKERFILE.read_text()) if block not in app_runs(DOCKERFILE.read_text())]
+        # 앞의 무비밀 UI 빌더는 별개 stage다. 기존 Python runtime RUN의 지문은 그대로 고정한다.
+        runtime = DOCKERFILE.read_text().split("FROM ghcr.io/astral-sh/uv:", 1)[1]
+        others = [block for block in runs(runtime) if block not in app_runs(runtime)]
         self.assertEqual(hashlib.sha256("\n---\n".join(others).encode()).hexdigest(), "3cdd9d82dd38f1cd98f86931ec8403bd2af54469ad1fa8999cfe18681c9106a2")
 
     def test_existing_final_interpreter_order_contract(self):

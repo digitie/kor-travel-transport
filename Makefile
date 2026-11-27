@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Youn-sok Choi (digitie)
 # 빌드·검사 진입점이다. 운영 배포·마이그레이션·수집을 자동 실행하지 않는다.
-.PHONY: frontend-install frontend-check admin-install admin-check backend-install backend-check image-build
+.PHONY: fuel-mcp-ui-install fuel-mcp-ui-check frontend-install frontend-check admin-install admin-check backend-install backend-check image-build
 
 frontend-install:
 	cd frontend && npm ci --engine-strict
@@ -29,10 +29,17 @@ admin-check:
 backend-install:
 	cd backend && uv sync --extra dev --locked
 
-backend-check:
+backend-check: fuel-mcp-ui-check
 	cd backend && uv run --locked python ../scripts/export_openapi.py --check
 	cd backend && uv run --locked pytest tests -q
 
 # 값은 BUILD_OPTIONS에 넣지 않고 --public-inputs 파일/stdin으로만 전달한다.
 image-build:
 	@python3 scripts/build-images.py $(BUILD_OPTIONS)
+
+# MCP UI의 브라우저 번들만 생성한다. 운영 변경·외부 API 호출은 없다.
+fuel-mcp-ui-install:
+	cd packages/kor-travel-fuel-mcp-ui && npm ci --engine-strict
+
+fuel-mcp-ui-check:
+	cd packages/kor-travel-fuel-mcp-ui && npm run type-check && npm test && npm run build
