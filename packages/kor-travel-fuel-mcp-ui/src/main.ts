@@ -17,7 +17,7 @@ root.innerHTML = `<header class="heading"><div><p class="eyebrow">FUEL · 내 �
 <section id="map-pane" aria-label="주유소 지도" hidden><div id="map"></div><p id="map-message" class="muted" role="status"></p><button id="tile-retry" type="button" hidden>배경지도 다시 불러오기</button></section>
 <div class="results-layout"><section id="stations" aria-label="주유소 목록"></section><aside id="detail" aria-label="선택한 주유소 상세" hidden tabindex="-1"></aside></div>
 <section class="comparison"><div class="compare-heading"><h2>지역 가격과 비교</h2><div><button id="district" type="button" disabled>현재 위치 시군구</button><button id="national" type="button" disabled>전국</button></div></div><div id="comparison" role="status" aria-live="polite">범위 선택 시 저장된 지역 통계를 조회합니다.</div></section>
-<footer><p id="timestamp">수집 시각 미제공</p><p>가격은 원/L · 거리는 직선거리입니다. 방문 전 실제 판매가를 확인하세요.</p><p>지도 배경은 OpenStreetMap에서 불러옵니다.</p><button id="full-fuel" type="button">fuel 웹에서 더 보기 ↗</button></footer>`;
+<footer><p id="timestamp">수집 시각 미제공</p><p>가격은 원/L · 거리는 직선거리입니다. 방문 전 실제 판매가를 확인하세요.</p><p>지도 배경은 OpenStreetMap에서 불러옵니다.</p><button id="full-fuel" type="button">fuel 웹에서 더 보기</button></footer>`;
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const app = new App({ name: "transport-nearby-fuel", version: "1.0.0" }, {}, { autoResize: true });
 let connected = false, busy = false, result: FuelResponse | null = null, query: Query | null = null, product = "B027", selected: Station | null = null, map: FuelMap | null = null, comparison: FuelResponse | null = null;
@@ -153,7 +153,7 @@ function renderDetail() {
     panel.append(list);
     const url = mapUrl(selected);
     if (url) {
-        const button = text("button", "큰 지도에서 위치 보기 ↗") as HTMLButtonElement;
+        const button = text("button", "큰 지도에서 위치 보기") as HTMLButtonElement;
         button.type = "button";
         button.onclick = () => { void app.openLink({ url }).catch(() => message("외부 지도를 열지 못했습니다. 다시 시도해 주세요.", true)); };
         panel.append(button);

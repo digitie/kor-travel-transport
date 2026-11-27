@@ -27,7 +27,7 @@ jobs:
         [{"package":"frontend/package.json","lock":"frontend/package-lock.json","workspace":"","profile":"web"},{"package":"packages/kor-travel-transport-admin/frontend/package.json","lock":"packages/kor-travel-transport-admin/frontend/package-lock.json","workspace":"","profile":"web"}]
       toolchain-manifests: '[]'
       node-dockerfiles: >-
-        ["frontend/Dockerfile","packages/kor-travel-transport-admin/frontend/Dockerfile","backend/Dockerfile"]
+        ["frontend/Dockerfile","packages/kor-travel-transport-admin/frontend/Dockerfile"]
 
   fuel-mcp-ui:
     runs-on: ubuntu-latest
@@ -41,7 +41,21 @@ jobs:
           node-version: "26.13.1"
           cache: npm
           cache-dependency-path: packages/kor-travel-fuel-mcp-ui/package-lock.json
+      - uses: actions/checkout@v4
+        with:
+          repository: digitie/kor-travel-common
+          ref: 309b881f8fd6d657b448f43b6fc61939fde742c2
+          path: .common-ui-policy
+          persist-credentials: false
       - run: npm install --global npm@12.0.1
+      - run: npm ci --ignore-scripts --engine-strict --prefix ../../.common-ui-policy
+      # 중앙 Node 검사는 Python RUN을 해석하지 않는다. 유일한 실제 Node stage 전부를 전달한다.
+      - name: Verify MCP UI toolchain and actual Node builder
+        working-directory: .
+        run: |
+          node packages/kor-travel-fuel-mcp-ui/project-node-builder.mjs > .fuel-ui.Dockerfile
+          node .common-ui-policy/tools/check_node_toolchain.mjs --root . --registry .common-ui-policy/versions.json --manifest packages/kor-travel-fuel-mcp-ui/package.json --dockerfile .fuel-ui.Dockerfile
+          rm .fuel-ui.Dockerfile
       - run: npm ci --engine-strict --no-audit --no-fund
       - run: npm run type-check && npm test && npm run build
       - run: node node_modules/@playwright/test/cli.js install --with-deps chromium
