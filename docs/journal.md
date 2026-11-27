@@ -1,3 +1,13 @@
+## 2026-11-27 — 공개 유가 지역별 통계 화면(FUEL-HISTORY-PUBLIC-UI)
+
+- #300이 연 공개 경로(`statistics`·`statistics/history`)로 fuel web에 `/statistics`를 더했다. 관리 `/fuel/statistics` 파일은 다른 작업
+  (툴팁·표 가상화·gateway 동시 상한)과 겹치지 않게 건드리지 않고 `FuelPriceChart`·`StatStrip`·`EmptyState`·`VirtualTable`만 재사용했다.
+- 범위 4종·지역·유종·기간, URL 상태, 현재 값·최저가 주유소(공개 지도 링크)·기준 시각·반영 대기·36시간 오래됨, 기간 요약·추이·표,
+  혼잡 자동 1회·Retry-After 대기 버튼, 응답 형식 검사. vitest(모델·화면·proxy·reader), 격리 e2e `E2E_PUBLIC_FUEL=true` 390·1440px 8건.
+- 격리 e2e `public-fuel-map.spec.ts`의 "자동 재조회 대기" 2건(375·1440)은 origin/main 빌드에서도 같은 34.5px로 실패한다(이 변경 전부터,
+  재조회 성공 뒤 요약 y 이동). 이 PR과 무관하다 — places `route.fallback()`이 로컬 BFF를 거쳐 실제 upstream을 부르는
+  환경 의존이다(이번 로컬 실행은 BACKEND_INTERNAL_URL을 운영 공개 gateway로 두어 실제 응답이 섞였다).
+
 ## 2026-11-26 — 유가 통계 장기 추이와 시군구 통계 읽기(FUEL-HISTORY-20261126)
 
 - 소유자 요청: 지역 평균 등 통계를 수집 완료 시 저장해 빨리 보이고, 오래 보존해 긴 기간 가격 추이를 본다. 일별 통계(`fuel_statistics_daily`)는

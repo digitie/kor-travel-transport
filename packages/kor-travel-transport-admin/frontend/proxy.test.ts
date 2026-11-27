@@ -14,6 +14,13 @@ describe("공개 유가 전용 실행", () => {
       expect(proxy(request(path)).headers.get("x-middleware-next")).toBe("1");
     }
   });
+  it("지역별 통계는 /statistics로 열고 query를 유지한다", () => {
+    vi.stubEnv("TRANSPORT_UI_MODE", "fuel");
+    expect(proxy(request("/statistics?scope=sido&product=D047")).headers.get("x-middleware-rewrite")).toBe("https://fuel.digitie.mywire.org/public/fuel/statistics?scope=sido&product=D047");
+    expect(proxy(request("/public/fuel/statistics")).headers.get("x-middleware-next")).toBe("1");
+    expect(proxy(request("/statistics", "POST")).status).toBe(405);
+    for (const path of ["/statistics/x", "/fuel/statistics", "/public/fuel/statistics/x"]) expect(proxy(request(path)).status).toBe(404);
+  });
   it("관리자 cookie가 있어도 관리자·인증·범용 API와 쓰기를 열지 않는다", () => {
     vi.stubEnv("TRANSPORT_UI_MODE", "fuel");
     for (const path of ["/login", "/fuel", "/api/auth/login", "/api/transport/transport/fuel/stations", "/api/admin/place-locations"]) expect(proxy(request(path)).status).toBe(404);

@@ -5,7 +5,11 @@
   시군구 통계 페이지 2~3초는 0050 인덱스로 공개일 항목만 읽게 했다([유가 통계](fuel-statistics.md#장기-추이)).
 - [ ] **FUEL-HISTORY-VERIFY / P1** — 배포(0049·0050) 뒤 공개 GET으로 확인: `/v1/transport/fuel/statistics?scope=sigungu&product_code=ZZZZ`가
   0.3초 안팎(전: 2.6~3.0초), `.../statistics/history?scope=nationwide&bucket=auto`의 첫 날짜가 일별 기록 첫날과 같은지.
-- [ ] **FUEL-HISTORY-PUBLIC-UI / P3** — 공개 유가 웹(fuel web)에는 통계 화면이 없다. 경로는 열어 두었다. 필요하면 소유자 결정 뒤 화면 설계.
+- [x] **FUEL-HISTORY-PUBLIC-UI / P3** — 2026-11-27 공개 유가 웹 `/statistics`(지역별 유가 통계): 전국·시도·시군구·고속도로(노선),
+  유종, 현재 평균·최저·최고·주유소 수·최저가 주유소(공개 지도 링크)·통계 기준 시각·반영 대기·오래됨, 30일·90일·1년·전체 추이와 기간 요약,
+  혼잡(429·503 Retry-After) 자동 1회·대기 후 다시 조회. 지도 왼쪽 아래 통계 아이콘이 입구다([공개 유가 서비스](design/2026-11-20-public-fuel-service.md#지역별-유가-통계-statistics)).
+- [ ] **FUEL-HISTORY-PUBLIC-UI-VERIFY / P2** — fuel web 이미지 배포 뒤 https://fuel.digitie.mywire.org/statistics 를 390·1440px에서 열어
+  전국·시군구·고속도로 LPG와 1년·전체 추이가 보이는지, 지도 아이콘·"지도에서 보기"가 지도로 돌아가는지 확인.
 
 ## 2026-11-24 — Map 호출 개선 후속(MAP-CALL-REVIEW-20261124)
 

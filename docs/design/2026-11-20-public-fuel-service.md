@@ -49,6 +49,28 @@ ETag·304·실패 상태와 재시도 안내를 유지한다.
 Manager·ingress 구현 및 실제 배포는 담당자가 통합된 정확한 source/image 증거를
 확인해 수행한다. gateway와 UI image는 검증된 정상 빌드 참조를 필수로 받는다.
 
+## 지역별 유가 통계 (/statistics)
+
+2026-11-27(FUEL-HISTORY-PUBLIC-UI). fuel 실행에서 `/statistics`를 `/public/fuel/statistics`로 rewrite한다(그 밖의 경로는 여전히 404,
+GET·HEAD만). 지도 왼쪽 아래 "내 위치" 옆 통계 아이콘(접근 이름 "지역별 유가 통계")이 입구이고, 지도에서 유종을 골랐으면 그 유종으로 연다.
+
+- 조건: 범위(전국·시도·시군구·고속도로), 지역(시도 하나 / 시도→시군구 두 단계 / 고속도로 "전체 노선"·노선), 유종(휘발유·경유·고급유·LPG·등유),
+  기간(30일·90일·1년·전체). 모두 라디오 묶음·native select이고 터치 목표 44px. 화면 상태는 URL query(`scope`·`region`·`product`·`period`,
+  기본값 생략)에 `replaceState`로 남아 공유·새로고침에 같은 화면이다. 서버가 query를 읽어 첫 렌더부터 같은 조건을 그린다.
+- 읽기: 공개 BFF `/api/public/fuel/statistics?scope=&product_code=`(현재 값·선택지) 하나, 고속도로 전체 노선이면 `highways`를 하나 더,
+  그리고 `/api/public/fuel/statistics/history`(30·90일·1년은 공개 세대 KST 날짜까지 `bucket=day`, 전체는 `auto`). 시군구 목록은
+  sigungu 응답의 scope_key(`["시도","시군구"]`)로 묶어 따로 읽지 않는다. URL의 지역이 응답에 없으면 서울(없으면 이름순 첫 항목)로 둔다.
+- 현재 값: 평균·최저·최고(원/L)·집계 주유소 수, 최저가 주유소 이름·동률 수·주소, 한국 안 좌표면 공개 지도 `/?longitude=&latitude=`
+  링크("지도에서 보기", 관리 `/fuel`이 아니다). 통계 기준 시각(KST), `update_pending`은 "반영 중" 안내, 세대가 36시간보다 오래되면 경고.
+- 추이: 관리 화면과 같은 `FuelPriceChart`(평균 선, 40점 초과면 최저·최고 점선). 기간 요약은 최근 평균, 기간 변화(첫 점 대비 원·%),
+  기간 최저가·최고가(제공된 값만, 날짜 표시). 기록이 요청 기간보다 짧으면 "가격 기록은 …부터" 안내. 표는 펼칠 때만 그린다.
+- 상태: 현재 값과 추이는 따로 조회 중·실패·빈 상태를 보인다. 응답은 화면이 쓰는 필드만 zod로 확인하고 다르면 조회 실패로 보인다.
+  429·503(Retry-After 5초 이하)은 한 번 자동으로 다시 묻고 그동안 "조회가 몰려…"를 보인다(`lib/place-retry.ts` 규칙 공유). 그 밖의
+  실패는 서버 한국어 안내(없으면 혼잡·시한·일반 문구)와 "다시 조회" 버튼이며 Retry-After(최대 60초) 동안 남은 초를 보이고 막는다.
+  브라우저 요청 상한은 40초(BFF 30초 뒤 502까지 포함).
+- gateway·BFF·CORS는 바꾸지 않았다. `statistics`·`statistics/history`는 #300에서 12307 허용 목록과 BFF 허용 목록에 이미 있고(계약 시험
+  `test_fuel_public_gateway_contract.py`), BFF는 `content-type`·`etag`·`retry-after`를 그대로 전달한다. 브라우저는 같은 origin BFF만 부른다.
+
 ## 검증과 한계
 
 실제 nginx fixture에서 경로·method·preflight·CORS·credential 제거·반복 query를
