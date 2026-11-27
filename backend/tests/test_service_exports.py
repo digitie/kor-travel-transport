@@ -598,7 +598,8 @@ def test_airport_export_covers_every_active_bundled_airport(export_client: TestC
 
 def test_rest_area_jobs_are_scheduled_and_running() -> None:
     for job_name, cron in [("rest_area_reference_collection_job", "40 3 * * *"),
-                           ("rest_area_fuel_price_collection_job", "25 */4 * * *")]:
+                           ("rest_area_fuel_price_collection_job", "25 */4 * * *"),
+                           ("rest_area_food_collection_job", "50 3 * * *")]:
         assert definitions.get_job_def(job_name).name == job_name
         schedule = definitions.get_schedule_def(f"{job_name}_schedule")
         assert schedule.cron_schedule == cron

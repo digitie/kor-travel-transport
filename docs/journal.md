@@ -1,3 +1,10 @@
+## 2026-11-27 — 휴게소 먹거리 수집·export(REST-AREA-FOOD)
+
+- PinVi 휴게소·고속도로 주유소 상세에 공식 메뉴를 보이기 위해(Map ADR-106: KREX 호출은 transport) 0615 휴게소코드정보와
+  0502 휴게소 푸드메뉴를 하루 한 번 수집한다(`rest_area_food_collection_job`, 03:50 KST, `krex_rest_area_food`).
+- `python-krex-api` PR #21(0502 경로 정정 `restBestfoodList`, 0615·0124 추가)을 핀했다.
+- export `GET /v1/service/exports/rest-area-food`: 표준 코드 한 행에 메뉴 목록. 현재 집합은 마지막 성공 수집이 본 행 그대로다.
+- migration `0051_rest_area_food`(표 2개). LLM 요약 없음(소유자 결정: 데이터만).
 ## 2026-11-27 — 공개 유가 지도 잔여 2건(FUEL-PUBLIC-MAP-RETRY-E2E·지도 유종 링크)
 
 - FUEL-PUBLIC-MAP-RETRY-E2E 원인: 제품 배치 회귀도, 낡은 기대값도 아니었다. 시험이 외부 요청을 모두 막아 VWorld 타일이 전부 실패하고,

@@ -5,6 +5,9 @@
   자연키로 쓴다 — kor-travel-map이 같은 원천에서 쓰던 키와 같아야 이관 뒤 Feature가 이어진다.
 - 유가: 한국도로공사 EX `curStateStation`(`krex.restarea.fuel_prices`, EX 키). 휴게소 코드
   (`service_area_code`)별 현재값 1행만 유지한다. 원천에 관측 시각이 없어 수집 시각을 쓴다.
+- 먹거리: 한국도로공사 EX 0615 휴게소코드정보(`krex.restarea.service_area_codes`)와 0502 푸드메뉴
+  (`krex.restarea.food_menus`). 두 원천을 한 수집·한 transaction으로 받아 같은 시각으로 남긴다 — 코드와
+  메뉴가 서로 다른 세대가 되지 않게 한다. 휴게소 기준정보(data.go.kr)와의 대응은 소비자(Map)가 맞춘다.
 
 두 수집 모두 성공한 수집 시각을 `transport_collection_states.last_success_at`과 각 행의
 `last_seen_at`에 같은 값으로 남긴다. service export는 이 값으로 "마지막 수집이 본 집합"을 고른다.
@@ -20,7 +23,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from krex import KrexClient, RestArea
+from krex import KrexClient, RestArea, RestAreaCode as KrexRestAreaCode, RestAreaFoodMenu as KrexRestAreaFoodMenu
 from krex import RestAreaFuelPrice as KrexRestAreaFuelPrice
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +33,8 @@ from app.core.time_utils import now_utc
 from app.models import (
     CollectionRun,
     RawApiResponse,
+    RestAreaCode,
+    RestAreaFoodMenu,
     RestAreaFuelPrice,
     RestAreaReference,
 )
@@ -45,6 +50,13 @@ REST_AREA_SOURCE = "krex_rest_area"
 REST_AREA_FUEL_SOURCE = "krex_rest_area_fuel"
 REST_AREA_TRIGGER = "dagster_rest_area_reference"
 REST_AREA_FUEL_TRIGGER = "dagster_rest_area_fuel"
+REST_AREA_FOOD_SOURCE = "krex_rest_area_food"
+REST_AREA_FOOD_TRIGGER = "dagster_rest_area_food"
+#: 0502는 서버가 한 페이지를 99행으로 자른다(2026-11-27 실측 7,291행 = 74페이지).
+FOOD_MENU_PAGE_SIZE = 99
+_FACILITY_CLASSES = {"0": "rest_area", "1": "gas_station"}
+_DIRECTIONS = {"0": "up", "1": "down"}
+_SEASONS = {"4": "all_year", "S": "summer", "W": "winter"}
 
 
 def rest_area_identity(name: str | None, route_name: str | None, direction: str | None) -> str:
@@ -95,6 +107,27 @@ class RestAreaCollectionService:
 
         return await self._run(session, trigger, REST_AREA_FUEL_SOURCE, "python-krex-api:restarea.fuel_prices",
                                fetch, self._store_fuel_prices)
+
+    async def collect_food(self, session: AsyncSession, *, trigger: str = REST_AREA_FOOD_TRIGGER) -> dict[str, Any]:
+        """0615 휴게소 코드(1회 호출)와 0502 푸드메뉴(전 페이지)를 함께 받는다."""
+        if not self.settings.rest_area_collection_enabled:
+            return {"status": "skipped", "reason": "rest area collection is disabled"}
+        if not self.settings.kex_ex_api_key:
+            return {"status": "skipped", "reason": "KEX_EX_API_KEY is required"}
+
+        async def fetch(client: KrexClient) -> tuple[Any, ...]:
+            codes = await _collect_krex_pages(
+                lambda page_no: client.restarea.service_area_codes(),
+                "python-krex-api:restarea.service_area_codes",
+            )
+            menus = await _collect_krex_pages(
+                lambda page_no: client.restarea.food_menus(num_of_rows=FOOD_MENU_PAGE_SIZE, page_no=page_no),
+                "python-krex-api:restarea.food_menus",
+            )
+            return (*codes, *menus)
+
+        return await self._run(session, trigger, REST_AREA_FOOD_SOURCE,
+                               "python-krex-api:restarea.service_area_codes+food_menus", fetch, self._store_food)
 
     async def _run(
         self,
@@ -264,3 +297,78 @@ class RestAreaCollectionService:
             logger.warning("rest_area_fuel_prices_out_of_range count=%d limit=%d", rejected, STATISTICS_PRICE_LIMIT)
         await session.flush()
         return stored
+
+    async def _store_food(self, session: AsyncSession, items: tuple[Any, ...], collected_at: Any) -> int:
+        """코드와 메뉴를 upsert한다. 어느 한쪽이 0건이면 0을 돌려 수집을 실패로 남긴다(전국 집합)."""
+        codes = [item for item in items if isinstance(item, KrexRestAreaCode)]
+        menus = [item for item in items if isinstance(item, KrexRestAreaFoodMenu)]
+        if not codes or not menus:
+            return 0
+        code_values: dict[str, dict[str, Any]] = {}
+        for item in codes:
+            code = item.std_rest_code.strip()
+            if not code or code in code_values:
+                continue
+            code_values[code] = {
+                "name": item.name.strip(),
+                "facility_class": _FACILITY_CLASSES.get(getattr(item.facility_class, "value", "")),
+                "direction": _DIRECTIONS.get(getattr(item.direction, "value", "")),
+                "route_code": item.route_code,
+                "route_name": item.route_name,
+                "service_area_code": item.service_area_code,
+                "address": item.address,
+                "phone_number": item.phone_number,
+                "last_seen_at": collected_at,
+                "raw_item_json": _plain_json(dict(item.raw)),
+            }
+        menu_values: dict[tuple[str, str], dict[str, Any]] = {}
+        for item in menus:
+            key = (item.std_rest_code.strip(), item.seq.strip())
+            if not key[0] or not key[1] or key in menu_values:
+                continue
+            menu_values[key] = {
+                "food_name": item.food_name.strip()[:200],
+                "price": item.price if item.price is not None and 0 <= item.price < 2**31 else None,
+                "is_best": item.is_best,
+                "is_premium": item.is_premium,
+                "is_recommended": item.is_recommended,
+                "season": _SEASONS.get(getattr(item.season, "value", "")),
+                "app_listed": item.app_listed,
+                "menu_updated_on": item.menu_updated_on,
+                "last_seen_at": collected_at,
+                "raw_item_json": _plain_json(dict(item.raw)),
+            }
+            # 0615에는 노선명이 비어 오는 행이 있다. 같은 휴게소 메뉴의 노선명으로 채우고, 0615에 없는 휴게소
+            # 코드(2026-11-27 함양 2곳)는 메뉴 행에서 코드 행을 만든다(분류·방향은 모른다).
+            values = code_values.get(key[0])
+            if values is None:
+                code_values[key[0]] = {
+                    "name": (item.rest_area_name or key[0]).strip(), "facility_class": None, "direction": None,
+                    "route_code": item.route_code, "route_name": item.route_name, "service_area_code": None,
+                    "address": item.address, "phone_number": None, "last_seen_at": collected_at, "raw_item_json": None,
+                }
+            elif values["route_name"] is None and item.route_name and (
+                    values["route_code"] is None or values["route_code"] == item.route_code):
+                values["route_name"] = item.route_name
+        existing_codes = {row.std_rest_code: row for row in (await session.scalars(
+            select(RestAreaCode).where(RestAreaCode.source == REST_AREA_FOOD_SOURCE))).all()}
+        for code, values in code_values.items():
+            row = existing_codes.get(code)
+            if row is None:
+                session.add(RestAreaCode(source=REST_AREA_FOOD_SOURCE, std_rest_code=code,
+                                         first_seen_at=collected_at, **values))
+            else:
+                for key, value in values.items():
+                    setattr(row, key, value)
+        existing_menus = {(row.std_rest_code, row.seq): row for row in (await session.scalars(
+            select(RestAreaFoodMenu).where(RestAreaFoodMenu.source == REST_AREA_FOOD_SOURCE))).all()}
+        for (code, seq), values in menu_values.items():
+            row = existing_menus.get((code, seq))
+            if row is None:
+                session.add(RestAreaFoodMenu(source=REST_AREA_FOOD_SOURCE, std_rest_code=code, seq=seq,
+                                             first_seen_at=collected_at, **values))
+            else:
+                for key, value in values.items():
+                    setattr(row, key, value)
+        await session.flush()
+        return len(code_values) + len(menu_values)

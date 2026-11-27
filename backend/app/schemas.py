@@ -1665,6 +1665,45 @@ class RestAreaFuelPriceExportPage(BaseModel):
     has_more: bool
 
 
+class ExportRestAreaFoodMenu(BaseModel):
+    seq: str = Field(description="휴게소 안에서 고유한 메뉴 순번(KREX 0502 `seq`)")
+    name: str
+    price: int | None = Field(default=None, description="원. 원천 값을 읽을 수 없으면 null")
+    is_best: bool | None = Field(default=None, description="대표(베스트푸드) `bestfoodyn`")
+    is_premium: bool | None = Field(default=None, description="프리미엄 `premiumyn`")
+    is_recommended: bool | None = Field(default=None, description="추천 `recommendyn`")
+    season: Literal["all_year", "summer", "winter"] | None = Field(
+        default=None, description="`seasonMenu` 4/S/W. 모르는 값은 null")
+    app_listed: bool | None = Field(default=None, description="원천 `app`(의미 미확인 — 걸러 쓰지 않는다)")
+    menu_updated_on: date | None = Field(default=None, description="원천 메뉴 수정일 `lastDtime`")
+
+
+class ExportRestAreaFood(BaseModel):
+    std_rest_code: str = Field(description="한국도로공사 휴게소 표준 코드(6자리, 0615 `svarCd` = 0502 `stdRestCd`). 안정 자연키")
+    source: str
+    name: str = Field(description="원천 이름. 예: `서울만남(부산)휴게소`, `김제(새만금)주유소`")
+    facility_class: Literal["rest_area", "gas_station"] | None = Field(
+        default=None, description="0615 `svarGsstClssCd`. 0502에만 있는 코드는 null")
+    direction: Literal["up", "down"] | None = Field(default=None, description="0615 `gudClssCd` 상행/하행")
+    route_code: str | None = None
+    route_name: str | None = Field(default=None, description="0615에 없으면 같은 휴게소 메뉴 행의 노선명")
+    service_area_code: str | None = Field(
+        default=None, description="다른 KREX 원천의 `serviceAreaCode`와 같은 휴게소 `A…`·주유소 `B…` 코드(일부 쉼터는 표준 코드 반복)")
+    address: str | None = None
+    phone_number: str | None = None
+    first_seen_at: datetime
+    last_seen_at: datetime
+    menus: list[ExportRestAreaFoodMenu] = Field(description="현재 집합의 메뉴(`seq` 순). 주유소·메뉴 없는 휴게소는 빈 목록")
+
+
+class RestAreaFoodExportPage(BaseModel):
+    generated_at: datetime
+    collection: ExportCollectionState
+    items: list[ExportRestAreaFood]
+    next_cursor: str | None = None
+    has_more: bool
+
+
 class ExportHighwayIncident(BaseModel):
     identity_key: str
     source: str

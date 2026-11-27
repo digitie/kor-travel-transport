@@ -28,6 +28,23 @@ int4 밖 cursor 422, snapshot 상한 초과 503 + `Retry-After`)은 본문 JSON�
 새 인증 방식이나 브라우저 토큰을 만들지 않는다. 배포 및 source flag 활성화는 운영 수집 run과
 조율하는 별도 gate이며 본 문서의 fixture 응답을 운영 검증으로 해석하면 안 된다.
 
+## 휴게소 먹거리 T1 `rest-area-food` (2026-11-27)
+
+`GET /v1/service/exports/rest-area-food`(T1 페이지 계약: `collection`/`items`/`next_cursor`/`has_more`, `limit` 기본 200)는
+한국도로공사 0615 휴게소코드정보와 0502 휴게소 푸드메뉴를 한 행(휴게소·주유소 표준 코드 하나)에 묶어 낸다.
+
+- 수집: `rest_area_food_collection_job`, 매일 03:50 KST. 0615 한 번(전체 583행) + 0502 전 페이지(99행 상한, 약 74페이지).
+  두 원천을 한 transaction으로 저장하고, 어느 한쪽이 0건이면 실패다(직전 성공 집합을 유지).
+- 현재 집합: 마지막 성공 수집이 본 행 **그대로**(다른 T1의 3일 여유 없음). 원천에서 빠진 메뉴는 다음 성공 수집에서 바로 빠진다.
+  마지막 성공이 3일을 넘으면 503 `EXPORT_SOURCE_NOT_CURRENT`.
+- item: `std_rest_code`(6자리 표준 코드, 자연키 — 0615 `svarCd` = 0502 `stdRestCd`), `name`(원천 표기 `서울만남(부산)휴게소`),
+  `facility_class`(`rest_area`/`gas_station`, 0502에만 있는 코드는 null), `direction`(`up`/`down`), `route_code`, `route_name`
+  (0615가 비우면 같은 휴게소 메뉴의 노선명), `service_area_code`(다른 KREX 원천의 `A…`/`B…`), `address`, `phone_number`,
+  `menus[]`(`seq` 숫자 순: `name`, `price`, `is_best`, `is_premium`, `is_recommended`, `season` = `all_year`/`summer`/`winter`,
+  `app_listed`, `menu_updated_on`).
+- data.go.kr 휴게소 기준정보(`rest-areas`)와의 대응은 하지 않는다. 소비자(Map)가 이름·방향으로 맞춘다
+  (2026-11-27 Map 운영 휴게소 215곳 모두 정규화 이름으로 일치).
+
 ## 실제 fixture HTTP 응답
 
 [HTTP 기록](examples/map-service-exports/http-summary.json)은 격리 PostgreSQL과 실제 TCP uvicorn에서

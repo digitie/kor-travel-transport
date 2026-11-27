@@ -760,6 +760,63 @@ class RestAreaReference(Base):
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
 
 
+class RestAreaCode(Base):
+    """한국도로공사 0615 휴게소코드정보(하이쉼마루) — 휴게소·주유소 표준 코드와 상하행.
+
+    `std_rest_code`(6자리 `svarCd`)는 0502 푸드메뉴의 `stdRestCd`와 같다. `service_area_code`는 다른 KREX
+    원천의 `serviceAreaCode`와 같은 `A…`/`B…` 코드다. 0502에만 있는 코드는 메뉴 행에서 만든 행으로 둔다
+    (`facility_class`·`direction`이 비어 있다).
+    """
+
+    __tablename__ = "rest_area_codes"
+    __table_args__ = (
+        UniqueConstraint("source", "std_rest_code", name="uq_rest_area_code"),
+        Index("ix_rest_area_codes_last_seen", "last_seen_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    std_rest_code: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str] = mapped_column(String(160))
+    facility_class: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    direction: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    route_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    route_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    service_area_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    phone_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class RestAreaFoodMenu(Base):
+    """한국도로공사 0502 휴게소 푸드메뉴현황 — 휴게소(`std_rest_code`)별 메뉴 한 행."""
+
+    __tablename__ = "rest_area_food_menus"
+    __table_args__ = (
+        UniqueConstraint("source", "std_rest_code", "seq", name="uq_rest_area_food_menu"),
+        Index("ix_rest_area_food_menus_code", "std_rest_code"),
+        Index("ix_rest_area_food_menus_last_seen", "last_seen_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    std_rest_code: Mapped[str] = mapped_column(String(20))
+    seq: Mapped[str] = mapped_column(String(20))
+    food_name: Mapped[str] = mapped_column(String(200))
+    price: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_best: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_premium: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_recommended: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    season: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    app_listed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    menu_updated_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
 class RestAreaFuelPrice(Base):
     """한국도로공사 EX `curStateStation`의 휴게소 주유소 현재 유가(휴게소별 최신 1행).
 

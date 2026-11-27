@@ -1345,7 +1345,7 @@ requires-dist = [
     { name = "python-datagokr-api", git = "https://github.com/digitie/python-datagokr-api?rev=18864a3aa3314bcd4cbefb6fabcd589c5847f750" },
     { name = "python-kasi-api", git = "https://github.com/digitie/python-kasi-api?rev=4259e574468435355be79d3fe85b394249ab1989" },
     { name = "python-krairport-api", git = "https://github.com/digitie/python-krairport-api?rev=9ea20ef40455320e4933d01aef21079c1a63ba81" },
-    { name = "python-krex-api", git = "https://github.com/digitie/python-krex-api?rev=6646be516bcb5f2f206044186066baae2f5b63c6" },
+    { name = "python-krex-api", git = "https://github.com/digitie/python-krex-api?rev=989dfebfea38c6da35c491b8d728c94a5258c3b1" },
     { name = "python-kric-api", git = "https://github.com/digitie/python-kric-api?rev=c006c8be64edfa4dc73cc3dd087c92cdeb9fba84" },
     { name = "python-krits-api", git = "https://github.com/digitie/python-krits-api?rev=417e3d5dc1a897f770e9c832eb39d8ff9c40e92a" },
     { name = "python-multipart", specifier = ">=0.0.32,<1.0" },
@@ -2290,7 +2290,7 @@ dependencies = [
 [[package]]
 name = "python-krex-api"
 version = "0.1.0"
-source = { git = "https://github.com/digitie/python-krex-api?rev=6646be516bcb5f2f206044186066baae2f5b63c6#6646be516bcb5f2f206044186066baae2f5b63c6" }
+source = { git = "https://github.com/digitie/python-krex-api?rev=989dfebfea38c6da35c491b8d728c94a5258c3b1#989dfebfea38c6da35c491b8d728c94a5258c3b1" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },

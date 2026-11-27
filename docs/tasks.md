@@ -1,3 +1,8 @@
+## 2026-11-27 — 휴게소 먹거리(REST-AREA-FOOD)
+
+- [ ] **REST-AREA-FOOD-DEPLOY / P1** — odroid 배포(migration `0051`) 뒤 `rest_area_food_collection_job`을 한 번 수동 실행하고
+  `GET /v1/service/exports/rest-area-food`가 200·표준 코드 약 585행·메뉴 약 7,291행인지 확인. Map 소비 PR 머지·배포는 그다음이다.
+
 ## 2026-11-26 — 유가 통계 장기 추이(FUEL-HISTORY-20261126)
 
 - [x] **FUEL-HISTORY / P1** — 수집 완료 시 일별 지역 통계를 좁은 표(`fuel_statistics_history`, 0049)에 같은 transaction으로 저장·영구 보존,
