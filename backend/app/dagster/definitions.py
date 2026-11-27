@@ -101,7 +101,8 @@ JOB_PRIORITIES = {
     "parking_statistics_archive_job": 0,
 }
 #: 인프라 재시도(프로세스·launcher 장애)를 허용하는 멱등 job.
-IDEMPOTENT_JOBS = frozenset({"airport_collection_job", "highway_collection_job", "rest_area_reference_collection_job"})
+IDEMPOTENT_JOBS = frozenset({"airport_collection_job", "highway_collection_job", "rest_area_reference_collection_job",
+                             "rest_area_food_collection_job"})
 
 #: 관리자 "재시도"(admin console `retry`)가 새 run에 다는 태그. 값은 재시도한 원래 run ID다.
 ADMIN_RETRY_TAG = "kortravel/admin-retry-of"
@@ -1275,9 +1276,22 @@ def collect_rest_area_fuel_prices(context) -> dict[str, Any]:
         return result
 
 
+@op
+@_redact_op_errors
+def collect_rest_area_food(context) -> dict[str, Any]:
+    with collection_owner(context.run_id, context.instance):
+        settings = _settings()
+        return asyncio.run(_run_with_session(settings, RestAreaCollectionService(settings).collect_food))
+
+
 @job(tags=_job_tags("reference", "rest_area_reference_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def rest_area_reference_collection_job() -> None:
     collect_rest_area_reference()
+
+
+@job(tags=_job_tags("reference", "rest_area_food_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
+def rest_area_food_collection_job() -> None:
+    collect_rest_area_food()
 
 
 @job(tags=_job_tags("reference", "rest_area_fuel_price_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
@@ -1850,7 +1864,8 @@ definitions = Definitions(
             # 재시도 run의 태그는 이 정책이 덮는다(common `infrastructure_retry_sensor`). job과 같은 상한을 쓴다.
             policy=_recovery_policy(retry_job.name),
         )
-        for retry_job in (airport_collection_job, highway_collection_job, rest_area_reference_collection_job)
+        for retry_job in (airport_collection_job, highway_collection_job, rest_area_reference_collection_job,
+                          rest_area_food_collection_job)
     ]],
     jobs=[
         public_parking_reference_job,
@@ -1871,6 +1886,7 @@ definitions = Definitions(
         general_rail_timetable_collection_job,
         rest_area_reference_collection_job,
         rest_area_fuel_price_collection_job,
+        rest_area_food_collection_job,
     ],
     schedules=[
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=public_parking_reference_job, cron_schedule="45 4 4 * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
@@ -1900,5 +1916,7 @@ definitions = Definitions(
         # 휴게소 기준정보는 저변동(약 200행·1회 호출)이라 하루 한 번, 유가는 4시간마다 갱신한다(ADR-013).
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=rest_area_reference_collection_job, cron_schedule="40 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=rest_area_fuel_price_collection_job, cron_schedule="25 */4 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        # 휴게소 먹거리(0615 코드 1회 + 0502 메뉴 약 74페이지)는 천천히 바뀐다. 하루 한 번이면 충분하다.
+        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=rest_area_food_collection_job, cron_schedule="50 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
     ],
 )

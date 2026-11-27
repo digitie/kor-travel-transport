@@ -56,7 +56,8 @@ def test_native_disabled_retry_sensors_target_only_three_idempotent_jobs():
     Definitions.validate_loadable(definitions)
     sensors = definitions.get_repository_def().sensor_defs
     retry_sensors = [item for item in sensors if item.name.startswith("transport_infra_retry_")]
-    expected = {"airport_collection_job", "highway_collection_job", "rest_area_reference_collection_job"}
+    expected = {"airport_collection_job", "highway_collection_job", "rest_area_reference_collection_job",
+                "rest_area_food_collection_job"}
     assert {item.name.removeprefix("transport_infra_retry_") for item in retry_sensors} == expected
     assert all(item.default_status.name == "RUNNING" for item in retry_sensors)
     assert all(item.minimum_interval_seconds == 60 for item in retry_sensors)

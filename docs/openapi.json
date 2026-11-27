@@ -2564,6 +2564,250 @@
         "title": "ExportRestArea",
         "type": "object"
       },
+      "ExportRestAreaFood": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "enum": [
+                  "up",
+                  "down"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0615 `gudClssCd` 상행/하행",
+            "title": "Direction"
+          },
+          "facility_class": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rest_area",
+                  "gas_station"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0615 `svarGsstClssCd`. 0502에만 있는 코드는 null",
+            "title": "Facility Class"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "menus": {
+            "description": "현재 집합의 메뉴(`seq` 순). 주유소·메뉴 없는 휴게소는 빈 목록",
+            "items": {
+              "$ref": "#/components/schemas/ExportRestAreaFoodMenu"
+            },
+            "title": "Menus",
+            "type": "array"
+          },
+          "name": {
+            "description": "원천 이름. 예: `서울만남(부산)휴게소`, `김제(새만금)주유소`",
+            "title": "Name",
+            "type": "string"
+          },
+          "phone_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number"
+          },
+          "route_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Code"
+          },
+          "route_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0615에 없으면 같은 휴게소 메뉴 행의 노선명",
+            "title": "Route Name"
+          },
+          "service_area_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "다른 KREX 원천의 `serviceAreaCode`와 같은 휴게소 `A…`·주유소 `B…` 코드(일부 쉼터는 표준 코드 반복)",
+            "title": "Service Area Code"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "std_rest_code": {
+            "description": "한국도로공사 휴게소 표준 코드(6자리, 0615 `svarCd` = 0502 `stdRestCd`). 안정 자연키",
+            "title": "Std Rest Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "std_rest_code",
+          "source",
+          "name",
+          "first_seen_at",
+          "last_seen_at",
+          "menus"
+        ],
+        "title": "ExportRestAreaFood",
+        "type": "object"
+      },
+      "ExportRestAreaFoodMenu": {
+        "properties": {
+          "app_listed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "원천 `app`(의미 미확인 — 걸러 쓰지 않는다)",
+            "title": "App Listed"
+          },
+          "is_best": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "대표(베스트푸드) `bestfoodyn`",
+            "title": "Is Best"
+          },
+          "is_premium": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "프리미엄 `premiumyn`",
+            "title": "Is Premium"
+          },
+          "is_recommended": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "추천 `recommendyn`",
+            "title": "Is Recommended"
+          },
+          "menu_updated_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "원천 메뉴 수정일 `lastDtime`",
+            "title": "Menu Updated On"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "원. 원천 값을 읽을 수 없으면 null",
+            "title": "Price"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "enum": [
+                  "all_year",
+                  "summer",
+                  "winter"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`seasonMenu` 4/S/W(원천 소문자 포함). 값이 없으면 null. 모르는 값이 든 행은 수집에서 빠진다",
+            "title": "Season"
+          },
+          "seq": {
+            "description": "휴게소 안에서 고유한 메뉴 순번(KREX 0502 `seq`)",
+            "title": "Seq",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "name"
+        ],
+        "title": "ExportRestAreaFoodMenu",
+        "type": "object"
+      },
       "ExportRestAreaFuelPrice": {
         "properties": {
           "address": {
@@ -10211,6 +10455,48 @@
         "title": "RestAreaExportPage",
         "type": "object"
       },
+      "RestAreaFoodExportPage": {
+        "properties": {
+          "collection": {
+            "$ref": "#/components/schemas/ExportCollectionState"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExportRestAreaFood"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "generated_at",
+          "collection",
+          "items",
+          "has_more"
+        ],
+        "title": "RestAreaFoodExportPage",
+        "type": "object"
+      },
       "RestAreaFuelPriceExportPage": {
         "properties": {
           "collection": {
@@ -14252,6 +14538,108 @@
           }
         },
         "summary": "Rail Stations",
+        "tags": [
+          "service-exports"
+        ]
+      }
+    },
+    "/v1/service/exports/rest-area-food": {
+      "get": {
+        "description": "휴게소·주유소 표준 코드(KREX 0615)와 휴게소별 메뉴(KREX 0502).\n\n한 수집이 두 원천을 한 transaction으로 바꾸므로 현재 집합은 마지막 성공 수집이 본 행 **그대로**다\n(다른 참조 데이터의 3일 여유를 두지 않는다 — 원천에서 빠진 메뉴가 며칠씩 남지 않게).",
+        "operationId": "export_rest_area_food_v1_service_exports_rest_area_food_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestAreaFoodExportPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Export Rest Area Food",
         "tags": [
           "service-exports"
         ]

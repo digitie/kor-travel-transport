@@ -626,8 +626,8 @@ def test_handler_deadline_covers_t2_t3_t4_but_not_t1(export_client) -> None:
     from app.core.export_guard import EXPORT_HANDLER_DEADLINE_SECONDS, ExportDeadlineRoute
     from app.service_exports import build_service_export_router
     assert EXPORT_HANDLER_DEADLINE_SECONDS < 30  # Map read timeout
-    t1 = {"/fuel-stations", "/rest-areas", "/rest-area-fuel-prices", "/highway-incidents/active", "/airports",
-          "/parking-lots"}
+    t1 = {"/fuel-stations", "/rest-areas", "/rest-area-fuel-prices", "/rest-area-food", "/highway-incidents/active",
+          "/airports", "/parking-lots"}
     routes = {}
 
     def walk(items):  # FastAPI 0.165는 포함한 router를 그대로(_IncludedRouter.original_router) 둔다.

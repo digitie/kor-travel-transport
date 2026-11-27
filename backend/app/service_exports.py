@@ -54,6 +54,8 @@ from app.models import (
     FuelStation,
     HighwayIncidentSnapshot,
     ParkingLot,
+    RestAreaCode,
+    RestAreaFoodMenu,
     RestAreaFuelPrice,
     RestAreaReference,
     TransportCollectionState,
@@ -66,10 +68,13 @@ from app.schemas import (
     ExportFuelStation,
     ExportHighwayIncident,
     ExportRestArea,
+    ExportRestAreaFood,
+    ExportRestAreaFoodMenu,
     ExportRestAreaFuelPrice,
     FuelStationExportPage,
     HighwayIncidentActiveSet,
     RestAreaExportPage,
+    RestAreaFoodExportPage,
     RestAreaFuelPriceExportPage,
 )
 from app.services.export_addresses import build_admin_addresses, fetch_admin_address_rows
@@ -78,7 +83,7 @@ from app.services.export_current import build_current_export_router
 from app.services.export_references import build_reference_export_router
 from app.services.export_price_history import build_price_history_router
 from app.services.parking_history_cache import accepts_gzip
-from app.services.rest_area_collection import REST_AREA_FUEL_SOURCE, REST_AREA_SOURCE
+from app.services.rest_area_collection import REST_AREA_FOOD_SOURCE, REST_AREA_FUEL_SOURCE, REST_AREA_SOURCE
 from app.services.transport_collection import (
     FUEL_FETCH_TIMEOUT_SECONDS,
     FUEL_STALE_AFTER,
@@ -103,6 +108,8 @@ REFERENCE_STALE_AFTER = {
     OPINET_SOURCE: FUEL_STALE_AFTER + timedelta(seconds=FUEL_FETCH_TIMEOUT_SECONDS),
     REST_AREA_SOURCE: timedelta(days=3),
     REST_AREA_FUEL_SOURCE: timedelta(hours=12),
+    # 휴게소 먹거리는 하루 한 번 수집한다(정기 주기의 3배).
+    REST_AREA_FOOD_SOURCE: timedelta(days=3),
 }
 #: stale 503의 `Retry-After` 힌트 계산에 쓰는 수집 한 번의 예상 수행 시간. 진행 중인 수집은 시작 + 이 시간,
 #: 아니면 다음 예정 + 이 시간 뒤에 새 성공을 기대한다(ADR-013 개정 2026-11-24). 유가는 odroid 성공 run
@@ -111,6 +118,7 @@ EXPECTED_RUN_DURATION = {
     OPINET_SOURCE: timedelta(hours=2),
     REST_AREA_SOURCE: timedelta(minutes=10),
     REST_AREA_FUEL_SOURCE: timedelta(minutes=10),
+    REST_AREA_FOOD_SOURCE: timedelta(minutes=10),
 }
 MAX_PAGE_SIZE = 1000
 #: keyset cursor는 int4 PK다. 범위 밖 값은 bind 단계에서 DataError(일반 500)가 되므로 422로 막는다(감사 T1-09).
@@ -180,6 +188,17 @@ _REST_AREA_FUEL_COLUMNS = (
     RestAreaFuelPrice.has_lpg, RestAreaFuelPrice.phone_number, RestAreaFuelPrice.address,
     RestAreaFuelPrice.gasoline_price, RestAreaFuelPrice.diesel_price, RestAreaFuelPrice.lpg_price,
     RestAreaFuelPrice.last_seen_at, _raw_text(RestAreaFuelPrice.raw_item_json),
+)
+_REST_AREA_CODE_COLUMNS = (
+    RestAreaCode.id, RestAreaCode.std_rest_code, RestAreaCode.source, RestAreaCode.name,
+    RestAreaCode.facility_class, RestAreaCode.direction, RestAreaCode.route_code, RestAreaCode.route_name,
+    RestAreaCode.service_area_code, RestAreaCode.address, RestAreaCode.phone_number, RestAreaCode.first_seen_at,
+    RestAreaCode.last_seen_at,
+)
+_REST_AREA_MENU_COLUMNS = (
+    RestAreaFoodMenu.std_rest_code, RestAreaFoodMenu.seq, RestAreaFoodMenu.food_name, RestAreaFoodMenu.price,
+    RestAreaFoodMenu.is_best, RestAreaFoodMenu.is_premium, RestAreaFoodMenu.is_recommended, RestAreaFoodMenu.season,
+    RestAreaFoodMenu.app_listed, RestAreaFoodMenu.menu_updated_on,
 )
 _INCIDENT_COLUMNS = (
     HighwayIncidentSnapshot.identity_key, HighwayIncidentSnapshot.source, HighwayIncidentSnapshot.occurred_date,
@@ -285,6 +304,44 @@ def build_service_export_router(
         await _end_snapshot(session)
         return await _render(request, session, render_limiter, partial(
             _rest_area_fuel_page, collection, page, has_more,
+        ))
+
+    @router.get("/rest-area-food", response_model=RestAreaFoodExportPage)
+    @_bounded
+    async def export_rest_area_food(
+        request: Request,
+        cursor: str | None = Query(default=None, max_length=20),
+        limit: int = Query(default=200, ge=1, le=MAX_PAGE_SIZE),
+        session: AsyncSession = Depends(get_db),
+    ) -> Response:
+        """휴게소·주유소 표준 코드(KREX 0615)와 휴게소별 메뉴(KREX 0502).
+
+        한 수집이 두 원천을 한 transaction으로 바꾸므로 현재 집합은 마지막 성공 수집이 본 행 **그대로**다
+        (다른 참조 데이터의 3일 여유를 두지 않는다 — 원천에서 빠진 메뉴가 며칠씩 남지 않게).
+        """
+        await _begin_snapshot(session)
+        state = await _state(session, REST_AREA_FOOD_SOURCE)
+        collection = _require_current(_reference_collection(REST_AREA_FOOD_SOURCE, state), state)
+        seen_from = collection.last_success_at  # _require_current를 지났으면 None이 아니다
+        rows = list((await session.execute(
+            select(*_REST_AREA_CODE_COLUMNS)
+            .where(RestAreaCode.source == REST_AREA_FOOD_SOURCE, RestAreaCode.id > _decode_cursor(cursor),
+                   RestAreaCode.last_seen_at >= seen_from)
+            .order_by(RestAreaCode.id).limit(limit + 1)
+        )).all())
+        page, has_more = rows[:limit], len(rows) > limit
+        menus: Sequence[Any] = ()
+        if page:
+            menus = (await session.execute(
+                select(*_REST_AREA_MENU_COLUMNS)
+                .where(RestAreaFoodMenu.source == REST_AREA_FOOD_SOURCE,
+                       RestAreaFoodMenu.std_rest_code.in_([row.std_rest_code for row in page]),
+                       RestAreaFoodMenu.last_seen_at >= seen_from)
+                .order_by(RestAreaFoodMenu.std_rest_code, func.length(RestAreaFoodMenu.seq), RestAreaFoodMenu.seq)
+            )).all()
+        await _end_snapshot(session)
+        return await _render(request, session, render_limiter, partial(
+            _rest_area_food_page, collection, page, has_more, menus,
         ))
 
     @router.get("/highway-incidents/active", response_model=HighwayIncidentActiveSet)
@@ -657,6 +714,29 @@ def _rest_area_fuel_page(
         lpg_price=row.lpg_price, observed_at=serialize_utc(row.last_seen_at), raw=_loads(row.raw_item_json),
     ) for row in page]
     return RestAreaFuelPriceExportPage(
+        generated_at=now_utc(), collection=collection, items=items,
+        next_cursor=str(page[-1].id) if has_more else None, has_more=has_more,
+    )
+
+
+def _rest_area_food_page(
+    collection: ExportCollectionState, page: Sequence[Any], has_more: bool, menu_rows: Sequence[Any],
+) -> RestAreaFoodExportPage:
+    menus: dict[str, list[ExportRestAreaFoodMenu]] = {}
+    for row in menu_rows:
+        menus.setdefault(row.std_rest_code, []).append(ExportRestAreaFoodMenu(
+            seq=row.seq, name=row.food_name, price=row.price, is_best=row.is_best, is_premium=row.is_premium,
+            is_recommended=row.is_recommended, season=row.season, app_listed=row.app_listed,
+            menu_updated_on=row.menu_updated_on,
+        ))
+    items = [ExportRestAreaFood(
+        std_rest_code=row.std_rest_code, source=row.source, name=row.name,
+        facility_class=row.facility_class, direction=row.direction, route_code=row.route_code,
+        route_name=row.route_name, service_area_code=row.service_area_code, address=row.address,
+        phone_number=row.phone_number, first_seen_at=serialize_utc(row.first_seen_at),
+        last_seen_at=serialize_utc(row.last_seen_at), menus=menus.get(row.std_rest_code, []),
+    ) for row in page]
+    return RestAreaFoodExportPage(
         generated_at=now_utc(), collection=collection, items=items,
         next_cursor=str(page[-1].id) if has_more else None, has_more=has_more,
     )

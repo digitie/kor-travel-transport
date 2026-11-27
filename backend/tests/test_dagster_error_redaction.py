@@ -118,6 +118,7 @@ JOB_CRASH_OPS = [
     ("kric_timetable_collection_job", "collect_kric_timetable"),
     ("rest_area_reference_collection_job", "collect_rest_area_reference"),
     ("rest_area_fuel_price_collection_job", "collect_rest_area_fuel_prices"),
+    ("rest_area_food_collection_job", "collect_rest_area_food"),
 ]
 
 

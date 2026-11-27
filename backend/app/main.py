@@ -914,6 +914,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ("/v1/service/exports/fuel-stations", "get"): (404, 503),
             ("/v1/service/exports/rest-areas", "get"): (404, 503),
             ("/v1/service/exports/rest-area-fuel-prices", "get"): (404, 503),
+            ("/v1/service/exports/rest-area-food", "get"): (404, 503),
             ("/v1/service/exports/highway-incidents/active", "get"): (404, 503),
             # 일시 DB 불가(pool·접속·PG 기동 중)는 export 경로에서 503 TRANSIENT_DB다(ADR-013 개정 2026-11-24).
             ("/v1/service/exports/airports", "get"): (404, 503),

@@ -115,6 +115,13 @@ KST 일별 범주/유종 집계 `fuel_statistics_daily`를 분리한다. 원본 
 --sql`)에만 쓴다. PostgreSQL 16·18에서 시험했다. 운영 배포는 지금처럼 온라인 migrate를 쓴다.
 회당 지역 요약 `fuel_region_summaries`는 그대로 지도용이며 이력 API로 노출하지 않는다([유가 통계](../fuel-statistics.md#장기-추이)).
 
+### 휴게소 먹거리 (`0051_rest_area_food`, 2026-11-27)
+
+- `rest_area_codes`: 한국도로공사 0615 휴게소코드정보. `(source, std_rest_code)` 고유. `facility_class`(`rest_area`/`gas_station`),
+  `direction`(`up`/`down`), `service_area_code`(`A…`/`B…`). 0502에만 있는 코드는 메뉴 행으로 만든 행이다(분류·방향 null).
+- `rest_area_food_menus`: 0502 휴게소 푸드메뉴. `(source, std_rest_code, seq)` 고유. 가격·대표/프리미엄/추천·계절·메뉴 수정일.
+- 둘 다 `last_seen_at` = 수집 시각이고, export는 마지막 성공 수집 시각 이후 본 행만 낸다.
+
 ## 핵심 테이블
 
 ### 지도 좌표·돌발 최신 조회 인덱스 (`0026_transport_map_indexes`)
