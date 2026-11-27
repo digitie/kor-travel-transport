@@ -1026,6 +1026,15 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
   .public-fuel-stats [data-slot="stat-strip"] > :nth-child(odd) { border-left: 0; padding-left: 0; }
 }
 @media (max-width: 480px) { .public-fuel-stats-chart-placeholder { min-height: var(--fuel-chart-height-mobile); } }
+/* 아주 좁은 화면(360px 미만)은 숫자가 잘리지 않게 한 줄에 하나씩 둔다. */
+@media (max-width: 22.49rem) {
+  .public-fuel-stats [data-slot="stat-strip"] { grid-template-columns: minmax(0, 1fr); }
+  .public-fuel-stats [data-slot="stat-strip"] > * { border-left: 0; padding-left: 0; }
+}
+.public-fuel-stats-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: var(--text-sm); cursor: pointer; }
+.public-fuel-stats-toggle input { width: 20px; height: 20px; accent-color: var(--brand); }
+.public-fuel-stats-notices:empty { display: none; }
+.public-fuel-stats-notices { display: grid; gap: 8px; }
 
 .public-fuel-surface .kt-map-workspace { position: absolute; inset: 0; display: block; }
 .public-fuel-surface .kt-map-workspace > [data-slot="tabs"] { position: absolute; inset: 0; display: block; }

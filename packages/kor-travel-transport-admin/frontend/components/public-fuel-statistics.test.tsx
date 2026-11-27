@@ -4,12 +4,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TransportError } from "@/lib/journey";
 
-const state = vi.hoisted(() => ({ get: vi.fn(), chart: [] as Record<string, unknown>[] }));
-vi.mock("@/lib/public-fuel-statistics-client", () => ({ statisticsGet: state.get }));
+const state = vi.hoisted(() => ({ get: vi.fn(), chart: [] as Record<string, unknown>[], labels: new Map<string, string>() }));
+vi.mock("@/lib/public-fuel-statistics-client", () => ({ statisticsGet: state.get, knownRegionLabel: (key: string) => state.labels.get(key) ?? null }));
 vi.mock("./fuel-price-chart-loader", () => ({ default: (props: Record<string, unknown>) => { state.chart.push(props); return <div data-chart={String(props.label)} />; } }));
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
 import { PublicFuelStatisticsPage } from "./public-fuel-statistics";
-import { FROM_MAP_KEY, describeStatisticsError, statisticsRetryDelay } from "@/lib/public-fuel-statistics";
+import { describeStatisticsError, statisticsRetryDelay } from "@/lib/public-fuel-statistics";
 
 const generated = "2026-11-27T00:31:44Z";
 const station = { name: "최저가 시험주유소", address: "서울 중구", longitude: 126.98, latitude: 37.56 };
@@ -36,10 +36,10 @@ let root: Root, host: HTMLDivElement;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  state.get.mockReset(); state.chart = [];
+  state.get.mockReset(); state.chart = []; state.labels.clear();
   window.history.replaceState(null, "", "/statistics");
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); sessionStorage.clear(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 async function render(query = "") {
   window.history.replaceState(null, "", `/statistics${query}`);
   await act(async () => root.render(<PublicFuelStatisticsPage />));
@@ -93,9 +93,28 @@ describe("공개 유가 지역별 통계", () => {
 
   it("고른 지역에 그 유종이 없으면 다른 지역을 보인다고 알리고 URL도 보이는 지역으로 바꾼다", async () => {
     state.get.mockImplementation(respond({ sigungu: [SIGUNGU[0], SIGUNGU[2]] }));
+    state.labels.set('["서울특별시","마포구"]', "서울 마포구");
     await render(`?scope=sigungu&region=${encodeURIComponent('["서울특별시","마포구"]')}&product=K015`);
-    expect(host.textContent).toContain("마포구에는 LPG 통계가 없어 서울 강남구 값을 보여 드립니다");
+    expect(host.querySelector('[role="status"]')?.textContent).toContain("서울 마포구에는 LPG 통계가 없어 서울 강남구 값을 보여 드립니다");
     expect(new URLSearchParams(window.location.search).get("region")).toBe('["서울특별시","강남구"]');
+  });
+
+  it("링크의 지역 이름을 모르면 URL 글자를 넣지 않고 '찾지 못해'로 알린다", async () => {
+    state.get.mockImplementation(respond());
+    await render(`?scope=sido&region=${encodeURIComponent("<b>가짜시</b>")}`);
+    expect(host.textContent).toContain("링크의 지역을 찾지 못해 서울 값을 보여 드립니다");
+    expect(host.textContent).not.toContain("가짜시");
+  });
+
+  it("고속도로로 바꾸면 없는 유종(등유)을 휘발유로 바꾸고 알린다", async () => {
+    state.get.mockImplementation(respond());
+    await render("?product=C004");
+    await act(async () => radio("고속도로").click());
+    for (let index = 0; index < 4; index++) await act(async () => { await Promise.resolve(); });
+    expect(radio("휘발유").checked).toBe(true); expect(radio("등유").disabled).toBe(true);
+    expect(host.textContent).toContain("고속도로 휴게소에는 등유 가격이 없어 휘발유(으)로 바꿨습니다");
+    expect(new URLSearchParams(window.location.search).get("product")).toBeNull();
+    expect(paths().some(path => path.includes("product_code=C004") && path.includes("highway"))).toBe(false);
   });
 
   it("고속도로: 전체 노선은 전체 범주를 먼저, 끝난 뒤 노선 목록을 읽는다", async () => {
@@ -110,10 +129,11 @@ describe("공개 유가 지역별 통계", () => {
 
   it("고속도로: 고른 노선에 그 유종이 없으면 전체 노선 값을 읽어 보인다(빈 상태로 막히지 않는다)", async () => {
     state.get.mockImplementation(respond({ highway: [item('["0010"]', "경부선")] }));
+    state.labels.set('["0140"]', "밀양울산선");
     await render(`?scope=highway&region=${encodeURIComponent('["0140"]')}&product=K015`);
     expect(paths()).toContain("fuel/statistics?scope=highways&product_code=K015&include_history=false");
     expect(host.querySelector("h2")?.textContent).toBe("고속도로 전체 · LPG 현재 가격");
-    expect(host.textContent).toContain("선택한 노선에는 LPG 통계가 없어 고속도로 전체 값을 보여 드립니다");
+    expect(host.textContent).toContain("밀양울산선에는 LPG 통계가 없어 고속도로 전체 값을 보여 드립니다");
     expect(select("노선 선택").value).toBe("all");
     expect(new URLSearchParams(window.location.search).has("region")).toBe(false);
   });
@@ -127,11 +147,15 @@ describe("공개 유가 지역별 통계", () => {
     await render("?scope=highway");
     expect(host.textContent).toContain("휴게소 위치 좌표가 없어 지도 링크는 없습니다");
     expect(host.textContent).toContain("같은 최저가 2곳 보기");
+    expect(host.textContent).toContain("원천 입력 오류일 수 있습니다");
     expect(host.textContent).toContain("평균보다 30% 넘게 낮음 · 입력 오류일 수 있음");
     expect(host.textContent).toContain("최저·최고 1건은 입력 오류로 보고");
-    expect(host.textContent).not.toContain("184 원/L26.10.29");
-    const points = (state.chart.at(-1)!.series as { points: { minimum: number | null }[] }[])[0].points;
-    expect(points[0].minimum).toBeNull();
+    // 기본은 평균 선만(최저·최고 없음). 켜면 믿을 만한 최저·최고만 그린다.
+    const pointsOf = () => (state.chart.at(-1)!.series as { points: { minimum: number | null }[] }[])[0].points;
+    expect(pointsOf().every(point => point.minimum === null)).toBe(true);
+    const toggle = [...host.querySelectorAll<HTMLInputElement>("input[type=checkbox]")].find(input => input.parentElement?.textContent?.includes("최저·최고도 함께"))!;
+    await act(async () => toggle.click());
+    expect(pointsOf()[0].minimum).toBeNull(); expect(pointsOf()[1].minimum).toBe(1700);
   });
 
   it("반영 대기·오래된 통계를 알린다", async () => {
@@ -181,20 +205,37 @@ describe("공개 유가 지역별 통계", () => {
     expect(host.textContent).toContain("1,853.72");
   });
 
-  it("지도에서 왔으면 '유가 지도'가 뒤로 가고, 아니면 지도를 새로 연다", async () => {
+  it("지도에서 왔으면(from=map) '유가 지도'가 뒤로 가고 표시는 주소에서 지운다, 아니면 지도를 새로 연다", async () => {
+    state.get.mockImplementation(respond());
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
+    await render();
+    const plain = new MouseEvent("click", { bubbles: true, cancelable: true });
+    [...host.querySelectorAll("a")].find(node => node.textContent === "유가 지도")!.dispatchEvent(plain);
+    expect(plain.defaultPrevented).toBe(false);
+    await act(async () => root.unmount()); root = createRoot(host);
+    await render("?from=map&product=D047");
+    expect(window.location.search).toBe("?product=D047");
+    const fromMap = new MouseEvent("click", { bubbles: true, cancelable: true });
+    [...host.querySelectorAll("a")].find(node => node.textContent === "유가 지도")!.dispatchEvent(fromMap);
+    expect(fromMap.defaultPrevented).toBe(true); expect(back).toHaveBeenCalledOnce();
+  });
+
+  it("오래 열어 둔 화면은 다시 읽되, 그동안 직전 값을 지우지 않는다", async () => {
+    vi.useFakeTimers();
     state.get.mockImplementation(respond());
     await render();
-    const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
-    const link = [...host.querySelectorAll("a")].find(node => node.textContent === "유가 지도")!;
-    const first = new MouseEvent("click", { bubbles: true, cancelable: true });
-    link.dispatchEvent(first);
-    expect(first.defaultPrevented).toBe(false);
-    sessionStorage.setItem(FROM_MAP_KEY, "1");
-    window.history.pushState(null, "", window.location.href);
-    const second = new MouseEvent("click", { bubbles: true, cancelable: true });
-    link.dispatchEvent(second);
-    expect(second.defaultPrevented).toBe(true); expect(back).toHaveBeenCalledOnce();
-    expect(sessionStorage.getItem(FROM_MAP_KEY)).toBeNull();
+    const calls = state.get.mock.calls.length;
+    let release: (value: unknown) => void = () => undefined;
+    state.get.mockImplementation((path: string) => new Promise(resolve => { release = () => resolve(respond()(path)); }));
+    await act(async () => { vi.advanceTimersByTime(11 * 60_000); });
+    expect(state.get.mock.calls.length).toBeGreaterThan(calls);
+    expect(host.textContent).toContain("1,853.72");
+    expect(host.querySelector('[aria-busy="true"]')).toBeNull();
+    await act(async () => { release(null); });
+  });
+
+  it("200인데 JSON이 아닌 응답은 형식 오류로 알린다", () => {
+    expect(describeStatisticsError(new SyntaxError("Unexpected token <")).message).toContain("형식");
   });
 });
 

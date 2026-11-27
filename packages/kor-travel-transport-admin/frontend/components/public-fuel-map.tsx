@@ -9,7 +9,7 @@ import { TransportMap } from "@/components/transport-map";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { FUEL_CHART_ORDER } from "@/lib/fuel-chart-model";
-import { FROM_MAP_KEY } from "@/lib/public-fuel-statistics";
+import { FROM_MAP_PARAM } from "@/lib/public-fuel-statistics";
 import { publicFuelGet } from "@/lib/public-fuel";
 import {
   LOCATE_MESSAGES, LOCATE_WATCHDOG_MS, RETRYABLE_LOCATE_FAILURES, isLocateFailure, requestUserPosition, type LocateFailure,
@@ -71,9 +71,10 @@ function parseProductPreferences(value: string | null): string[] {
   return [];
 }
 
+/** `from=map`: 통계 화면의 "유가 지도"가 새 지도를 쌓지 않고 뒤로 가게 한다(화면이 첫 렌더에 읽고 주소에서 지운다). */
 function statisticsHref(products: string[]) {
   const product = FUEL_CHART_ORDER.find(code => products.includes(code));
-  return product && product !== "B027" ? `/statistics?${new URLSearchParams({ product })}` : "/statistics";
+  return `/statistics?${new URLSearchParams({ ...(product && product !== "B027" ? { product } : {}), [FROM_MAP_PARAM]: "map" })}`;
 }
 
 export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boolean }) {
@@ -209,8 +210,7 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
           <LocateFixed aria-hidden="true" size={18} />
         </Button>
         {/* 지역별 통계로 가는 공개 화면의 유일한 입구. 고른 유종이 있으면 그 유종으로 연다. */}
-        <Link className={buttonVariants({ variant: "outline" })} href={statisticsHref(products)} aria-label="지역별 유가 통계"
-          onClick={() => { try { window.sessionStorage.setItem(FROM_MAP_KEY, "1"); } catch { /* 저장소를 못 쓰면 돌아갈 때 지도를 새로 연다. */ } }}>
+        <Link className={buttonVariants({ variant: "outline" })} href={statisticsHref(products)} aria-label="지역별 유가 통계">
           <ChartLine aria-hidden="true" size={18} /><span aria-hidden="true">통계</span>
         </Link>
       </div>

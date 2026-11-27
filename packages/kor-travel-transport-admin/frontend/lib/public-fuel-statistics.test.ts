@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  currentScope, historyPath, kstDay, listScope, missingRegionName, parseStatisticsView, plausiblePoints, publicMapHref, regionOptions, resolveRegion, sigunguGroups, statisticsPath,
+  currentScope, historyPath, kstDay, listScope, regionSubstitution, fitProductToArea, parseStatisticsView, plausiblePoints, publicMapHref, regionOptions, resolveRegion, sigunguGroups, statisticsPath,
   statisticsAgeHours, statisticsViewQuery, trendSummary, type PublicFuelMetrics, type PublicFuelTrendPoint,
 } from "./public-fuel-statistics";
 
@@ -86,12 +86,17 @@ describe("이상값·안내", () => {
     expect(points.map(row => [row.minimum_price, row.maximum_price])).toEqual([[null, 1990], [1500, null], [1540, 2549]]);
     expect(trendSummary([point("2026-11-01", 1830, 184, 1990), point("2026-11-02", 1830, 1700, 1990)])?.lowest?.price).toBe(1700);
   });
-  it("요청한 지역이 응답에 없으면 그 이름을 돌려준다", () => {
-    expect(missingRegionName({ area: "sigungu", region: '["서울특별시","마포구"]' }, '["서울특별시","강남구"]')).toBe("마포구");
-    expect(missingRegionName({ area: "sido", region: '["세종특별자치시"]' }, '["서울특별시"]')).toBe("세종특별자치시");
-    expect(missingRegionName({ area: "highway", region: '["0140"]' }, "all")).toBe("선택한 노선");
-    expect(missingRegionName({ area: "sigungu", region: "" }, '["서울특별시","강남구"]')).toBeNull();
-    expect(missingRegionName({ area: "sido", region: '["서울특별시"]' }, '["서울특별시"]')).toBeNull();
+  it("요청한 지역이 응답에 없으면 앞서 받은 이름만 쓰고, 모르면 이름 없이 알린다", () => {
+    expect(regionSubstitution({ area: "sigungu", region: '["서울특별시","마포구"]' }, '["서울특별시","강남구"]', "서울 마포구")).toEqual({ name: "서울 마포구" });
+    expect(regionSubstitution({ area: "sido", region: "<b>가짜</b>" }, '["서울특별시"]', null)).toEqual({ name: null });
+    expect(regionSubstitution({ area: "highway", region: '["7001"]' }, "all", "노선 미제공")).toEqual({ name: "노선 정보가 없는 휴게소" });
+    expect(regionSubstitution({ area: "sigungu", region: "" }, '["서울특별시","강남구"]')).toBeNull();
+    expect(regionSubstitution({ area: "sido", region: '["서울특별시"]' }, '["서울특별시"]')).toBeNull();
+  });
+  it("고속도로에 없는 유종은 휘발유로 바꾸고 바꾼 유종을 돌려준다", () => {
+    expect(fitProductToArea({ area: "highway", region: "", product: "C004", period: "30" })).toEqual({ view: { area: "highway", region: "", product: "B027", period: "30" }, replaced: "C004" });
+    expect(fitProductToArea({ area: "highway", region: "", product: "K015", period: "30" }).replaced).toBeNull();
+    expect(fitProductToArea({ area: "sido", region: "", product: "C004", period: "30" }).replaced).toBeNull();
   });
   it("현재 값은 30일 이력 없이 읽고, 노선 미제공 묶음은 풀어 쓴 이름으로 맨 뒤에 둔다", () => {
     expect(statisticsPath("sigungu", "B027")).toBe("fuel/statistics?scope=sigungu&product_code=B027&include_history=false");

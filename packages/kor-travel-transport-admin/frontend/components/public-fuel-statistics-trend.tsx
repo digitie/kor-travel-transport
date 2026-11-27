@@ -49,10 +49,18 @@ function TrendBody({ trend, period, label, requestedFrom }: { trend: PublicFuelT
   const span = trend.from_day && trend.to_day ? (Date.parse(trend.to_day) - Date.parse(trend.from_day)) / 86_400_000 : 0;
   // 점이 많으면 세로선이 면처럼 겹친다. 그때는 최저·최고를 점선으로 그린다(관리 통계 화면과 같은 기준).
   const rangeAsLines = points.length > 40;
-  const series = useMemo(() => [{ product: points[0]?.product_code ?? "B027", points: plausible.points.map(point => ({ time: point.day, average: point.average_price, minimum: point.minimum_price, maximum: point.maximum_price, generated_at: point.generated_at })) }], [points, plausible]);
+  // 기본은 평균 선만 그린다. 최저·최고를 같이 그리면 y축이 그 폭(전국 휘발유는 1,600~2,600원)으로 넓어져 평균 변화가 평평해 보인다.
+  const [showRange, setShowRange] = useState(false);
+  const rangeId = useId();
+  const series = useMemo(() => [{ product: points[0]?.product_code ?? "B027", points: plausible.points.map(point => ({ time: point.day, average: point.average_price,
+    minimum: showRange ? point.minimum_price : null, maximum: showRange ? point.maximum_price : null, generated_at: point.generated_at })) }], [points, plausible, showRange]);
   return <>
     <TrendSummaryStrip points={points} period={period} daily={trend.bucket === "day"} />
-    <TrendNotes trend={trend} points={points} requestedFrom={requestedFrom} rangeAsLines={rangeAsLines} excluded={plausible.excluded} />
+    <TrendNotes trend={trend} points={points} requestedFrom={requestedFrom} rangeAsLines={rangeAsLines} excluded={plausible.excluded} showRange={showRange} />
+    <label className="public-fuel-stats-toggle" htmlFor={rangeId}>
+      <input id={rangeId} type="checkbox" checked={showRange} onChange={event => setShowRange(event.target.checked)} />
+      그래프에 그날의 최저·최고도 함께 보기
+    </label>
     <FuelPriceChart label={`${label} ${periodHeading[period]} 평균·최저·최고 가격`} series={series} maxGapDays={bucketGapDays[trend.bucket]} longRange={span > 120} rangeAsLines={rangeAsLines} />
     <TrendTable points={points} daily={trend.bucket === "day"} />
   </>;
@@ -75,7 +83,7 @@ function TrendSummaryStrip({ points, period, daily }: { points: PublicFuelTrendP
   ]} />;
 }
 
-function TrendNotes({ trend, points, requestedFrom, rangeAsLines, excluded }: { trend: PublicFuelTrend; points: PublicFuelTrendPoint[]; requestedFrom: string | null; rangeAsLines: boolean; excluded: number }) {
+function TrendNotes({ trend, points, requestedFrom, rangeAsLines, excluded, showRange }: { trend: PublicFuelTrend; points: PublicFuelTrendPoint[]; requestedFrom: string | null; rangeAsLines: boolean; excluded: number; showRange: boolean }) {
   const dayCount = points.reduce((sum, point) => sum + Math.max(1, point.day_count || 1), 0);
   const range = trend.from_day && trend.to_day ? ` · ${trend.from_day} ~ ${trend.to_day}` : "";
   // 응답의 from_day는 "이 기간 안의 첫 기록"이다. 그 전 기록이 없다는 뜻은 아니므로 그렇게만 말한다.
@@ -84,9 +92,9 @@ function TrendNotes({ trend, points, requestedFrom, rangeAsLines, excluded }: { 
   return <>
     <p className="public-fuel-stats-meta">{bucketNote[trend.bucket]}{range} · 기록 {dayCount.toLocaleString("ko-KR")}일</p>
     {later ? <p className="public-fuel-stats-meta">이 기간의 첫 기록은 {trend.from_day}입니다. 그 앞 날짜는 기록이 없어 비워 둡니다.</p> : null}
-    <p className="public-fuel-stats-meta">{rangeAsLines ? "실선: 평균 · 같은 색 점선: 그날의 최저·최고" : "선: 평균 · 세로선 양 끝: 최저·최고"} (원/L)</p>
-    {missingExtremes ? <p className="public-fuel-stats-meta">일부 날짜의 최저·최고가는 제공되지 않았습니다. 평균가로 대신 채우지 않습니다.</p> : null}
-    {excluded ? <p className="public-fuel-stats-meta">평균과 크게 동떨어진 최저·최고 {excluded}건은 입력 오류로 보고 그래프와 기간 최저·최고에서 뺐습니다(아래 표에는 그대로 있습니다).</p> : null}
+    <p className="public-fuel-stats-meta">{!showRange ? "선: 평균" : rangeAsLines ? "실선: 평균 · 같은 색 점선: 그날의 최저·최고" : "선: 평균 · 세로선 양 끝: 최저·최고"} (원/L)</p>
+    {missingExtremes && showRange ? <p className="public-fuel-stats-meta">일부 날짜의 최저·최고가는 제공되지 않았습니다. 평균가로 대신 채우지 않습니다.</p> : null}
+    {excluded ? <p className="public-fuel-stats-meta">평균과 크게 동떨어진 최저·최고 {excluded}건은 입력 오류로 보고 기간 최저·최고와 그래프에서 뺐습니다(아래 표에는 그대로 있습니다).</p> : null}
   </>;
 }
 

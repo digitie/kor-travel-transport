@@ -66,6 +66,8 @@ for (const width of [390, 1440]) {
     await page.getByRole("radio", { name: "1년" }).check();
     await expect(page.getByRole("heading", { name: "최근 1년 휘발유 평균 가격 변화" })).toBeVisible();
     await expect.poll(() => requests.at(-1)?.get("from")).toBe("2025-11-28");
+    await expect(page.getByText("선: 평균 (원/L)")).toBeVisible();
+    await page.getByLabel("그래프에 그날의 최저·최고도 함께 보기").check();
     await expect(page.getByText("실선: 평균 · 같은 색 점선")).toBeVisible();
     await page.getByRole("radio", { name: "전체" }).check();
     await expect.poll(() => requests.at(-1)?.get("bucket")).toBe("auto");
@@ -122,12 +124,15 @@ for (const width of [390, 1440]) {
   });
 }
 
-test("고속도로에 없는 유종은 빈 상태로 안내한다", async ({ page }) => {
+test("고속도로에 없는 유종(고급유)은 휘발유로 바꾸고 알린다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await routeFuel(page);
   await page.goto("/statistics?scope=highway&product=B034");
-  await expect(page.getByText("이 범위에는 고급유 통계가 없습니다")).toBeVisible();
+  await expect(page.getByText("고속도로 휴게소에는 고급유 가격이 없어 휘발유(으)로 바꿨습니다")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "고속도로 전체 · 휘발유 현재 가격" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "휘발유" })).toBeChecked();
   await expect(page.getByLabel("노선 선택")).toHaveValue("all");
+  await expect(page).not.toHaveURL(/product=/);
 });
 
 test("공개 지도에서 지역별 통계로 가고 다시 지도로 돌아온다", async ({ page }) => {
@@ -194,6 +199,6 @@ test("고속도로에서 고른 노선에 그 유종이 없으면 전체 노선 
   await routeFuel(page);
   await page.goto(`/statistics?scope=highway&region=${encodeURIComponent('["0140"]')}&product=K015`);
   await expect(page.getByRole("heading", { name: "고속도로 전체 · LPG 현재 가격" })).toBeVisible();
-  await expect(page.getByText("선택한 노선에는 LPG 통계가 없어 고속도로 전체 값을 보여 드립니다")).toBeVisible();
+  await expect(page.getByText("링크의 지역을 찾지 못해 고속도로 전체 값을 보여 드립니다")).toBeVisible();
   await expect(page.getByRole("radio", { name: "고급유" })).toBeDisabled();
 });

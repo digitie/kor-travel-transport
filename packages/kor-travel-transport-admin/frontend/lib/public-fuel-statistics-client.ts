@@ -17,6 +17,17 @@ const PATH = /^fuel\/(statistics|statistics\/history)\?/;
 
 export function clearStatisticsCache() { cache.clear(); }
 
+/** 앞서 받은 통계 응답(메모리)에서 범주 key의 표시 이름을 찾는다. 없는 지역 안내가 URL 글자 대신 이 이름만 쓴다. */
+export function knownRegionLabel(scopeKey: string): string | null {
+  for (const { data } of cache.values()) {
+    const items = (data as { items?: unknown } | null)?.items;
+    if (!Array.isArray(items)) continue;
+    const found = items.find((item: { scope_key?: unknown; label?: unknown }) => item?.scope_key === scopeKey && typeof item.label === "string") as { label: string } | undefined;
+    if (found) return found.label;
+  }
+  return null;
+}
+
 export async function statisticsGet(path: string, signal: AbortSignal, { maxAgeMs, force = false, now = Date.now }: { maxAgeMs: number; force?: boolean; now?: () => number }): Promise<unknown> {
   if (!PATH.test(path)) throw new TransportError("허용되지 않은 유가 조회입니다.", 404, 0);
   const stored = cache.get(path);

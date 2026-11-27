@@ -23,8 +23,11 @@ export const ALL_ROUTES = "all";
 const MAX_REGION_LENGTH = 512;
 
 export const formatPrice = (value: number) => value.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
-/** 지도의 통계 아이콘이 남기는 표시(sessionStorage). 있으면 "유가 지도"가 새 지도를 여는 대신 뒤로 가 지도 화면(위치·선택)을 그대로 돌려준다. */
-export const FROM_MAP_KEY = "transport.public-fuel.statistics-from-map";
+/**
+ * 지도의 통계 단추가 붙이는 query(`from=map`). 이 주소로 열린 화면의 "유가 지도"는 새 지도를 쌓지 않고 뒤로 가 지도 화면(위치·선택)을
+ * 그대로 돌려준다. 화면은 첫 렌더에 읽고 주소에서 지운다 — 새로고침·다른 경로로 다시 연 화면은 지도에서 온 것이 아니다.
+ */
+export const FROM_MAP_PARAM = "from";
 
 export const DEFAULT_VIEW: PublicFuelStatisticsView = { area: "nationwide", region: "", product: "B027", period: "30" };
 
@@ -45,6 +48,14 @@ export function parseStatisticsView(search: SearchInput, fallbackProduct?: strin
     product: validProduct(product) ?? validProduct(fallbackProduct) ?? DEFAULT_VIEW.product,
     period: PUBLIC_FUEL_PERIODS.some(([value]) => value === period) ? period as PublicFuelPeriod : DEFAULT_VIEW.period,
   };
+}
+
+/**
+ * 범위에 없는 유종을 맞춘다. 고속도로 휴게소에는 고급유·등유가 없어 휘발유로 바꾸고, 바꾼 유종을 돌려준다(화면이 알린다).
+ */
+export function fitProductToArea(view: PublicFuelStatisticsView): { view: PublicFuelStatisticsView; replaced: string | null } {
+  if (view.area !== "highway" || HIGHWAY_PRODUCTS.includes(view.product)) return { view, replaced: null };
+  return { view: { ...view, product: "B027" }, replaced: view.product };
 }
 
 /** 화면 상태 → URL query(기본값은 생략해 짧게 둔다). */
@@ -120,13 +131,17 @@ function parseKey(key: string): string[] {
 export type RegionOption = { key: string; label: string };
 export type SidoGroup = { sido: string; label: string; sigungu: RegionOption[] };
 
-/** 원천이 노선을 주지 않은 휴게소 묶음의 이름. 목록 맨 뒤에 풀어 쓴 이름으로 둔다. */
+/** 원천이 노선을 주지 않은 휴게소 묶음의 이름. 화면에는 풀어 쓴 이름으로 보이고 목록 맨 뒤에 둔다. */
 const UNKNOWN_ROUTE_LABEL = "노선 미제공";
+const UNKNOWN_ROUTE_DISPLAY = "노선 정보가 없는 휴게소";
+export function displayRegionLabel(label: string) {
+  return label === UNKNOWN_ROUTE_LABEL ? UNKNOWN_ROUTE_DISPLAY : label;
+}
 /** 시도·고속도로 노선 선택지(이름순, "노선 미제공"은 맨 뒤). */
 export function regionOptions(items: PublicFuelMetrics[]): RegionOption[] {
   return [...new Map(items.map(item => [item.scope_key, {
-    key: item.scope_key, label: item.label === UNKNOWN_ROUTE_LABEL ? "노선 정보가 없는 휴게소" : item.label,
-  }])).values()].sort((a, b) => Number(a.label === "노선 정보가 없는 휴게소") - Number(b.label === "노선 정보가 없는 휴게소") || collator.compare(a.label, b.label));
+    key: item.scope_key, label: displayRegionLabel(item.label),
+  }])).values()].sort((a, b) => Number(a.label === UNKNOWN_ROUTE_DISPLAY) - Number(b.label === UNKNOWN_ROUTE_DISPLAY) || collator.compare(a.label, b.label));
 }
 
 /**
@@ -220,15 +235,12 @@ export function trendSummary(points: PublicFuelTrendPoint[]): TrendSummary | nul
 }
 
 /**
- * 요청한 지역이 이번 응답에 없어 다른 지역을 보일 때 안내할 이름(예: 유종을 바꿨더니 그 시군구에 LPG 주유소가 없음).
- * 요청이 없었거나 그대로 보이면 null.
+ * 요청한 지역이 이번 응답에 없어 다른 지역을 보이는지. 이름은 앞서 받은 응답에서 찾은 표시 이름만 쓴다(`knownLabel`) —
+ * URL의 글자를 그대로 안내에 넣지 않는다. 이름을 모르면(잘못된·오래된 링크) `name: null`이다. 그대로 보이면 null.
  */
-export function missingRegionName(view: Pick<PublicFuelStatisticsView, "area" | "region">, resolved: string | null) {
+export function regionSubstitution(view: Pick<PublicFuelStatisticsView, "area" | "region">, resolved: string | null, knownLabel?: string | null) {
   if (!resolved || !view.region || view.region === ALL_ROUTES || view.area === "nationwide" || view.region === resolved) return null;
-  const parts = parseKey(view.region);
-  if (view.area === "sigungu") return parts[1] ?? "선택한 시군구";
-  if (view.area === "sido") return parts[0] ?? "선택한 시도";
-  return "선택한 노선";
+  return { name: knownLabel ? displayRegionLabel(knownLabel) : null };
 }
 
 /** 통계 세대가 이만큼 오래되면 "갱신 지연"을 알린다(오피넷 하루 3회·도로공사 매시 공개보다 넉넉히). */
@@ -284,7 +296,8 @@ export function describeStatisticsError(reason: unknown): StatisticsLoadError {
   if (reason instanceof DOMException && reason.name === "TimeoutError") {
     return { message: "통계 조회가 제시간에 끝나지 않았습니다. 잠시 후 다시 조회해 주세요.", retryAfter: MIN_BUSY_WAIT_SECONDS };
   }
-  if (reason instanceof ZodError) return { message: "받은 통계 형식이 올바르지 않습니다. 잠시 후 다시 조회해 주세요.", retryAfter: 0 };
+  // 200인데 JSON이 아닌 본문(중간 장비의 HTML 등)도 형식 오류다.
+  if (reason instanceof ZodError || reason instanceof SyntaxError) return { message: "받은 통계 형식이 올바르지 않습니다. 잠시 후 다시 조회해 주세요.", retryAfter: 0 };
   if (!(reason instanceof TransportError)) return { message: "유가 통계를 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 조회해 주세요.", retryAfter: 0 };
   const korean = reason.message !== GENERIC_FUEL_ERROR && /[가-힣]/.test(reason.message) ? reason.message : null;
   if (BUSY_STATUSES.has(reason.status)) {
