@@ -60,6 +60,16 @@ function getStoredProducts() {
   catch { return null; }
 }
 
+function canWriteStorage() {
+  if (typeof window === "undefined") return true;
+  try {
+    const probe = `${PRODUCT_STORAGE_KEY}.probe`;
+    window.localStorage.setItem(probe, "1");
+    window.localStorage.removeItem(probe);
+    return true;
+  } catch { return false; }
+}
+
 function parseProductPreferences(value: string | null): string[] {
   if (value === null) return [];
   try {
@@ -92,6 +102,8 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
   const urlProduct = mapProductFromSearch(useSearchParams());
   const [dismissedUrlProduct, setDismissedUrlProduct] = useState<string | null>(null);
   const linkedProduct = urlProduct && urlProduct !== dismissedUrlProduct ? urlProduct : null;
+  // 링크 유종 안내가 "바꾸면 저장합니다"라고 말해도 되는지(저장이 막힌 브라우저면 이번 화면에서만 바뀐다). 안내는 팝오버를 연 뒤에만 그린다.
+  const [storageWritable] = useState(canWriteStorage);
   const products = useMemo(() => temporaryProducts ?? (linkedProduct ? [linkedProduct] : parseProductPreferences(storedProducts)),
     [temporaryProducts, linkedProduct, storedProducts]);
   // 필터는 이 브라우저에 저장한다(저장이 막히면 이번 화면에서만 유지). 서버가 적용한다.
@@ -214,7 +226,7 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
       products, onProductsChange, refreshEnabled, filterQuery, filters, onFiltersChange,
       selectedRegion, onClearRegion: () => setSelectedRegion(undefined),
       linkedProduct: linkedProduct && !temporaryProducts
-        ? { code: linkedProduct, saved: parseProductPreferences(storedProducts), onUseSaved: dropLinkedProduct } : undefined,
+        ? { code: linkedProduct, saved: storedProducts === null ? null : parseProductPreferences(storedProducts), canSave: storageWritable, onUseSaved: dropLinkedProduct } : undefined,
       onOpenRegion: (current, element, center) => {
         rememberOpener(element); setRegionCurrent(current); setRegionCenter(center); setRegionOpen(true);
       },

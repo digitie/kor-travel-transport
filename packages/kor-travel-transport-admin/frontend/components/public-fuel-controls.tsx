@@ -147,8 +147,21 @@ const PRODUCT_CHOICES = FUEL_CHART_ORDER.map(code => ({ code, label: fuelProduct
  * 통계 화면 링크(`?product=`)로 연 유종. 이 지도에만 쓰고 저장한 선택은 그대로다. saved는 이 브라우저에 저장한 선택([]=전체 유종),
  * onUseSaved는 링크 유종을 버리고 저장한 선택으로 돌아간다(저장 값은 바꾸지 않는다).
  */
-export type PublicFuelLinkedProduct = { code: string; saved: string[]; onUseSaved: () => void };
+export type PublicFuelLinkedProduct = {
+  code: string;
+  /** 이 브라우저에 저장한 선택. null이면 아직 저장한 적이 없다(지도 기본: 전체 유종). */
+  saved: string[] | null;
+  /** 유종 선택을 저장할 수 있는가(저장이 막힌 브라우저면 이번 화면에서만 바뀐다). */
+  canSave: boolean;
+  onUseSaved: () => void;
+};
 const productListText = (products: string[]) => products.length ? products.map(fuelProductLabel).join(", ") : "전체 유종";
+/** 조사 "로/으로": 마지막 글자에 받침(ㄹ 제외)이 있으면 "으로". 한글이 아니면(LPG=엘피지) "로". */
+function withRo(word: string) {
+  const code = word.charCodeAt(word.length - 1) - 0xac00;
+  const final = code >= 0 && code < 11172 ? code % 28 : 0;
+  return `${word}${final && final !== 8 ? "으로" : "로"}`;
+}
 
 /**
  * 맨 위 유종·필터 다중 선택. 예전 필터 버튼·서랍의 내용(유종, 지도 최저가, 주유소 조건·품질인증, 상표, 초기화)을
@@ -163,21 +176,29 @@ export function PublicFuelFilterMenu({ products, onProductsChange, filters = DEF
   const [open, setOpen] = useState(false);
   const count = onFiltersChange ? activeFilterCount(filters, products) : 0;
   const productText = productListText(products);
+  const noteId = useId();
   return <Popover open={open} onOpenChange={setOpen} modal>
     <PopoverTrigger asChild>
       <button type="button" className="public-fuel-filter-trigger"
-        aria-label={`유종·필터: ${productText}${linked ? " (통계 링크로 연 유종)" : ""}${count ? `, 조건 ${count}개 적용 중` : ""}`}
+        aria-label={`유종·필터: ${productText}${linked ? " (통계 화면에서 연 유종)" : ""}${count ? `, 조건 ${count}개 적용 중` : ""}`}
         data-linked={linked ? "true" : undefined}>
-        <SlidersHorizontal aria-hidden="true" size={16} className="public-fuel-filter-trigger-icon" />
+        {/* 통계에서 연 유종이면 맨 앞 필터 아이콘 자리에 "통계" 표시를 둔다(320px에서도 유종 이름이 잘리지 않게 폭을 늘리지 않는다). */}
+        {linked ? <span className="public-fuel-filter-linked-mark" aria-hidden="true">통계</span>
+          : <SlidersHorizontal aria-hidden="true" size={16} className="public-fuel-filter-trigger-icon" />}
         <span className="public-fuel-filter-trigger-value" aria-hidden="true">{productText}</span>
-        {linked ? <span className="public-fuel-filter-linked-mark" aria-hidden="true">링크</span> : null}
         {count ? <span className="public-fuel-filter-count" aria-hidden="true">{count}</span> : null}
         <ChevronDown aria-hidden="true" size={16} className="public-fuel-filter-trigger-chevron" />
       </button>
     </PopoverTrigger>
-    <PopoverContent align="start" collisionPadding={8} aria-label="유종·필터" className="public-fuel-filter-menu">
+    {/* 링크 유종이면 안내를 대화상자 설명으로 읽히고, 첫 초점은 안내 단추가 아니라 첫 유종 선택에 둔다(연타로 잘못 누르지 않게). */}
+    <PopoverContent align="start" collisionPadding={8} aria-label="유종·필터" className="public-fuel-filter-menu"
+      aria-describedby={linked ? noteId : undefined}
+      onOpenAutoFocus={linked ? event => {
+        event.preventDefault();
+        (event.currentTarget as HTMLElement | null)?.querySelector<HTMLInputElement>(".fuel-filter-form input")?.focus();
+      } : undefined}>
       {/* 돌아가면 안내가 사라지므로(누른 단추도 사라진다) 팝오버를 닫아 초점을 트리거로 돌린다. */}
-      {linked ? <LinkedProductNote linked={linked} onDone={() => setOpen(false)} /> : null}
+      {linked ? <LinkedProductNote id={noteId} linked={linked} onDone={() => setOpen(false)} /> : null}
       <FuelFilterForm products={products} onProductsChange={onProductsChange} filters={filters} onFiltersChange={onFiltersChange}
         onClose={() => setOpen(false)} />
     </PopoverContent>
@@ -185,11 +206,16 @@ export function PublicFuelFilterMenu({ products, onProductsChange, filters = DEF
 }
 
 /** 링크 유종 안내. 여기서 유종을 바꾸면 그 선택을 저장한다는 것과, 저장한 선택으로 돌아가는 단추를 함께 보인다. */
-function LinkedProductNote({ linked, onDone }: { linked: PublicFuelLinkedProduct; onDone: () => void }) {
+function LinkedProductNote({ id, linked, onDone }: { id: string; linked: PublicFuelLinkedProduct; onDone: () => void }) {
+  const opened = `통계 화면에서 고른 ${withRo(fuelProductLabel(linked.code))} 열었습니다.`;
+  const saved = linked.saved === null ? null : productListText(linked.saved);
+  const rest = !linked.canSave ? "이 브라우저는 유종 선택을 저장할 수 없어, 아래에서 바꾸면 이번 화면에서만 바뀝니다."
+    : saved === null ? "아래에서 유종을 고르면 그 선택을 이 브라우저에 저장합니다."
+    : `저장한 유종(${saved})은 그대로이며, 아래에서 유종을 바꾸면 그 선택을 저장합니다.`;
   return <div className="fuel-filter-linked">
-    <p>통계 화면에서 고른 {fuelProductLabel(linked.code)}(으)로 열었습니다. 저장한 유종({productListText(linked.saved)})은 그대로이며,
-      아래에서 유종을 바꾸면 그 선택을 저장합니다.</p>
-    <Button type="button" variant="outline" size="sm" onClick={() => { linked.onUseSaved(); onDone(); }}>저장한 유종으로 보기</Button>
+    <p id={id}>{opened} {rest}</p>
+    <Button type="button" variant="outline" size="sm" onClick={() => { linked.onUseSaved(); onDone(); }}>
+      {saved === null ? "전체 유종 보기" : "저장한 유종으로 보기"}</Button>
   </div>;
 }
 

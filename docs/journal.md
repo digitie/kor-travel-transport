@@ -25,6 +25,15 @@
     때를 못 맞춰 늘 통과(→ 지우고 위 타일 실패 시험으로 대신), 지도 키 없음 문구 떼기 미검증(→ vitest), 라우터가 늦게 따라오는 순간의
     `dismissedUrlProduct` 미검증(→ 늦게 갱신되는 useSearchParams 모의 vitest).
   - CI react-doctor: useSearchParams Suspense(→ page에 Suspense), MapQueryStatus 복잡도(→ `basemapNotices`로 분리).
+- 재리뷰(같은 두 페르소나, P0·P1 없음, P2 모두 반영): 320px에서 "통계" 표시+조건 수가 유종 이름을 자름(새 e2e가 잡음 → 표시가 맨 앞 필터 아이콘 자리를 대신), 고속도로라 바꾼 휘발유를 고른 유종으로 넘김(→ 바꾸면 고른 것이 아님), 고른 휘발유가
+  새로고침에 사라짐(→ 고르면 휘발유도 주소에 남김), 팝오버 첫 초점이 안내 단추라 안내를 건너뜀(→ `aria-describedby`·첫 초점은 첫 유종),
+  저장한 적 없음·저장 불가에서 틀린 안내(→ 문구 분기), "링크"·"(으)로" 문구(→ "통계"·받침 계산), 320px 표시+조건 수 e2e, 타일 실패 e2e를
+  키 빌드 기준 "지도 타일 오류" 정확 일치로, "저장한 유종으로 보기" e2e를 저장 이름 정확 일치로. 지도 → 통계 뒤 앞으로 가기에서 `from=map`이
+  지워져 있어 "유가 지도"가 새 지도를 여는 것은 #301 재리뷰의 결정(표시는 첫 렌더에 읽고 지움 — 외부 사이트로 뒤로 가지 않게)이라 두었다.
+- 검증: vitest(Windows Node 25에서 `fuel-price-distribution` "오전/AM" 1건은 main과 같은 ICU 차이), lint, type-check, react-doctor, build.
+  격리 e2e(더미 VWorld 키 빌드, `--hostname localhost`) 공개 유가 6개 파일 320·375·390·1440px 전체 통과, 부하(10 workers × 3 fully-parallel)
+  수정 전 2건 실패 → 1차 수정 뒤 222/222. 이후 같은 부하 재실행의 실패는 다른 에이전트 작업으로 CPU 93%인 때 시간 초과·context 정리
+  초과였고 서버 로그에 오류가 없었다(4 workers·repeat 6 재실행 통과).
 
 ## 2026-11-27 — 유가 장기 추이 보류 P2 정리(FUEL-HISTORY-P2)
 

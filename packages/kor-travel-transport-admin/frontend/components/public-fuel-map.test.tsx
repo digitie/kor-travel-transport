@@ -258,14 +258,14 @@ it("uses the link fuel even when the browser blocks storage, and a later choice 
   } finally { setItem.mockRestore(); }
 });
 
-type LinkedControls = { products: string[]; onProductsChange: (value: string[]) => void; linkedProduct?: { code: string; saved: string[]; onUseSaved: () => void } };
+type LinkedControls = { products: string[]; onProductsChange: (value: string[]) => void; linkedProduct?: { code: string; saved: string[] | null; canSave: boolean; onUseSaved: () => void } };
 it("tells the selector which fuel came from the link and can return to the saved selection without saving", async () => {
   const key = "transport.public-fuel.products";
   localStorage.setItem(key, JSON.stringify(["B027", "D047"]));
   window.history.replaceState(null, "", "/?longitude=127.1&latitude=37.5&product=K015");
   await render();
   const controls = () => state.props.publicFuel as LinkedControls;
-  expect(controls().linkedProduct).toMatchObject({ code: "K015", saved: ["B027", "D047"] });
+  expect(controls().linkedProduct).toMatchObject({ code: "K015", saved: ["B027", "D047"], canSave: true });
   await act(async () => controls().linkedProduct!.onUseSaved());
   expect(controls().products).toEqual(["B027", "D047"]);
   expect(controls().linkedProduct).toBeUndefined();
@@ -283,4 +283,16 @@ it("does not flip back to the link fuel while the router still reports the old a
   // 라우터는 아직 ?product=K015를 돌려주지만 화면은 고른 유종이다.
   expect(controls().products).toEqual(["D047"]);
   expect(controls().linkedProduct).toBeUndefined();
+});
+
+it("tells the note when nothing was saved yet and when storage is blocked", async () => {
+  window.history.replaceState(null, "", "/?product=D047");
+  await render();
+  expect((state.props.publicFuel as LinkedControls).linkedProduct).toMatchObject({ code: "D047", saved: null, canSave: true });
+  await act(async () => root.unmount()); root = createRoot(host);
+  const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+  try {
+    await render();
+    expect((state.props.publicFuel as LinkedControls).linkedProduct).toMatchObject({ code: "D047", canSave: false });
+  } finally { setItem.mockRestore(); }
 });

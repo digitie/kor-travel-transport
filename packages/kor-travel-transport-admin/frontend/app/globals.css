@@ -1206,8 +1206,9 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 }
 /* 통계 링크(?product=)로 연 유종: 트리거의 작은 "링크" 표시와 팝오버 맨 위 안내(저장한 유종으로 돌아가기). */
 .public-fuel-filter-linked-mark {
-  flex: none; padding: 0 6px; border: 1px solid var(--brand); border-radius: 9999px; color: var(--brand); font-size: 11px; font-weight: 600; line-height: 18px;
+  flex: none; padding: 0 5px; border: 1px solid var(--brand); border-radius: 9999px; color: var(--brand); font-size: 11px; font-weight: 600; line-height: 18px;
 }
+.public-fuel-filter-trigger[data-linked] { gap: 4px; }
 .fuel-filter-linked { display: grid; gap: 8px; padding: 8px 4px; border-bottom: 1px solid var(--line); font-size: var(--text-sm); }
 .fuel-filter-linked p { color: var(--text-secondary); }
 .fuel-filter-linked > button { justify-self: start; min-height: 44px; }

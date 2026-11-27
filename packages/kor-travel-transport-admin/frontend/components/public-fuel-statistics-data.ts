@@ -78,8 +78,8 @@ function useStatisticsResource<T>(path: string | null, reload: number, schema: S
  * 지역을 쓴다 — 유종을 바꿔 다른 지역으로 바뀌었으면 링크도 그 지역이다. Next가 `history.replaceState`를 라우터 상태와 맞춘다.
  * 지도에서 온 표시(`from=map`)는 첫 렌더에 읽고 여기서 지운다.
  */
-function useViewInUrl(view: PublicFuelStatisticsView) {
-  const query = statisticsViewQuery(view);
+function useViewInUrl(view: PublicFuelStatisticsView, keepProduct: boolean) {
+  const query = statisticsViewQuery(view, { keepProduct });
   useEffect(() => {
     try {
       const next = `${window.location.pathname}${query ? `?${query}` : ""}`;
@@ -106,8 +106,8 @@ function useRefreshWhenStale(loadedAt: number | undefined, refresh: () => void) 
 function initialState(search: URLSearchParams) {
   const fitted = fitProductToArea(parseStatisticsView(search));
   return { view: fitted.view, replacedProduct: fitted.replaced, fromMap: search.get(FROM_MAP_PARAM) === "map",
-    // 링크가 유종을 정했는가(`product`가 아는 코드). 기본값 휘발유를 사용자가 고른 것처럼 지도에 넘기지 않으려고 따로 둔다.
-    productChosen: mapProductFromSearch(search) !== null };
+    // 링크가 유종을 정했는가(`product`가 아는 코드). 기본값 휘발유나 고속도로라 바꾼 휘발유를 사용자가 고른 것처럼 지도에 넘기지 않는다.
+    productChosen: mapProductFromSearch(search) !== null && !fitted.replaced };
 }
 
 /** 카드에 보일 범주. 전국·고속도로 전체는 유일한 범주, 그 밖은 응답에 맞춘 지역. 표시 이름은 풀어 쓴다. */
@@ -144,11 +144,13 @@ export function usePublicFuelStatistics() {
   const to = kstDay(current.data?.generated_at);
   // 추이는 목록이 끝난 뒤 읽는다(고속도로 전체 노선에서도 한 번에 한 요청). 현재 값을 다시 읽으면(listReload) 추이도 한 번 다시 읽는다.
   const trend = useStatisticsResource<PublicFuelTrend>(trendPath(view, scope, selected?.scope_key, to, list.pending), listReload * 100_000 + trendReload, trendSchema);
-  useViewInUrl({ ...view, region: region ?? view.region });
+  useViewInUrl({ ...view, region: region ?? view.region }, productChosen);
   useRefreshWhenStale(current.at, () => setListReload(value => value + 1));
   const update = (patch: Partial<PublicFuelStatisticsView>) => {
     const fitted = fitProductToArea({ ...view, ...patch });
-    if (patch.product !== undefined) setProductChosen(true);
+    // 고속도로라 유종을 바꿨으면 보이는 유종(휘발유)은 고른 것이 아니다.
+    if (fitted.replaced) setProductChosen(false);
+    else if (patch.product !== undefined) setProductChosen(true);
     setReplacedProduct(fitted.replaced);
     setView(fitted.view);
   };

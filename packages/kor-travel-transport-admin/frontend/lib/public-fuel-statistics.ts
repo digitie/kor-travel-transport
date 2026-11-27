@@ -58,12 +58,15 @@ export function fitProductToArea(view: PublicFuelStatisticsView): { view: Public
   return { view: { ...view, product: "B027" }, replaced: view.product };
 }
 
-/** 화면 상태 → URL query(기본값은 생략해 짧게 둔다). */
-export function statisticsViewQuery(view: PublicFuelStatisticsView) {
+/**
+ * 화면 상태 → URL query(기본값은 생략해 짧게 둔다). keepProduct면 기본 유종(휘발유)도 남긴다 — 사용자가 고른 휘발유가 새로고침·
+ * 앞으로 가기 뒤에도 "고른 유종"으로 남아 지도 링크에 실린다.
+ */
+export function statisticsViewQuery(view: PublicFuelStatisticsView, { keepProduct = false }: { keepProduct?: boolean } = {}) {
   const search = new URLSearchParams();
   if (view.area !== DEFAULT_VIEW.area) search.set("scope", view.area);
   if (view.region && view.region !== ALL_ROUTES && view.area !== "nationwide") search.set("region", view.region);
-  if (view.product !== DEFAULT_VIEW.product) search.set("product", view.product);
+  if (keepProduct || view.product !== DEFAULT_VIEW.product) search.set("product", view.product);
   if (view.period !== DEFAULT_VIEW.period) search.set("period", view.period);
   return search.toString();
 }

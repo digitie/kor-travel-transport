@@ -114,9 +114,9 @@ for (const width of [375, 1440]) {
     await page.goto("/");
     const summary = summaryOf(page);
     await expect(summary.locator('dl[aria-label="휘발유"]')).toContainText("1,700");
-    // 키로 빌드했으면 첫 idle 뒤 "지도 타일 오류", 키 없이 빌드했으면 처음부터 "지도 키 없음"이다. 어느 쪽이든 "· 목록 보기"는 없다.
+    // 격리 e2e는 VWorld 키 빌드가 기준이다(testing.md). 타일이 모두 실패하면 첫 idle 뒤 "지도 타일 오류"만 — "· 목록 보기"는 없다.
     const notice = page.locator(".map-feedback [role=alert]");
-    await expect(notice).toHaveText(/^지도 (타일 오류|키 없음|표시 불가)$/, { timeout: 15_000 });
+    await expect(notice).toHaveText("지도 타일 오류", { timeout: 15_000 });
     // 알림은 요약 위 줄에 있고 요약은 화면 안에 남는다(알림이 생기면 요약이 그만큼 내려간다 — 새 안내라 자리를 미리 비우지 않는다).
     const [noticeBox, summaryBox] = [(await notice.boundingBox())!, (await summary.boundingBox())!];
     expect(noticeBox.y + noticeBox.height).toBeLessThanOrEqual(summaryBox.y);

@@ -114,8 +114,19 @@ describe("공개 유가 지역별 통계", () => {
     for (let index = 0; index < 4; index++) await act(async () => { await Promise.resolve(); });
     expect(radio("휘발유").checked).toBe(true); expect(radio("등유").disabled).toBe(true);
     expect(host.textContent).toContain("고속도로 휴게소에는 등유 가격이 없어 휘발유(으)로 바꿨습니다");
+    // 바꾼 휘발유는 고른 유종이 아니다: 주소에 남기지 않고, 지도는 저장한 선택 그대로 연다.
     expect(new URLSearchParams(window.location.search).get("product")).toBeNull();
+    expect([...host.querySelectorAll("a")].find(node => node.textContent === "유가 지도")!.getAttribute("href")).toBe("/");
     expect(paths().some(path => path.includes("product_code=C004") && path.includes("highway"))).toBe(false);
+  });
+
+  it("고속도로에 없는 유종 링크(?scope=highway&product=C004)는 바꾼 휘발유를 고른 유종으로 지도에 넘기지 않는다", async () => {
+    state.get.mockImplementation(respond());
+    await render("?scope=highway&product=C004");
+    expect(host.textContent).toContain("고속도로 휴게소에는 등유 가격이 없어 휘발유(으)로 바꿨습니다");
+    expect([...host.querySelectorAll("a")].find(node => node.textContent === "유가 지도")!.getAttribute("href")).toBe("/");
+    await act(async () => radio("LPG").click());
+    expect([...host.querySelectorAll("a")].find(node => node.textContent === "유가 지도")!.getAttribute("href")).toBe("/?product=K015");
   });
 
   it("고속도로: 전체 노선은 전체 범주를 먼저, 끝난 뒤 노선 목록을 읽는다", async () => {
@@ -218,6 +229,8 @@ describe("공개 유가 지역별 통계", () => {
     expect(mapLink().getAttribute("href")).toBe("/?product=D047");
     await act(async () => radio("휘발유").click());
     expect(mapLink().getAttribute("href")).toBe("/?product=B027");
+    // 고른 휘발유는 주소에도 남아 새로고침·앞으로 가기 뒤에도 고른 유종이다(기본값이라도).
+    expect(new URLSearchParams(window.location.search).get("product")).toBe("B027");
     mapLink().dispatchEvent(plain);
     expect(plain.defaultPrevented).toBe(false);
     await act(async () => root.unmount()); root = createRoot(host);
