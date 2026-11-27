@@ -116,18 +116,20 @@ def test_rest_area_fuel_prices_outside_storable_range_are_stored_as_missing(tmp_
                 item("A", 1700, STATISTICS_PRICE_LIMIT - 1, None),
                 item("B", STATISTICS_PRICE_LIMIT, 2**31, 0),
                 item("C", -5, True, 1100),
+                item("D", -(2**31) - 1, -(2**31), None),
             ), stamp)
             await session.commit()
             rows = {row.service_area_code: (row.gasoline_price, row.diesel_price, row.lpg_price, row.raw_item_json["gasoline"])
                     for row in await session.scalars(select(RestAreaFuelPrice))}
-        assert stored == 3
+        assert stored == 4
         assert rows == {"A": (1700, STATISTICS_PRICE_LIMIT - 1, None, 1700),
                         "B": (None, None, 0, STATISTICS_PRICE_LIMIT),
-                        "C": (-5, None, 1100, -5)}
+                        "C": (-5, None, 1100, -5),
+                        "D": (None, -(2**31), None, -(2**31) - 1)}
         await engine.dispose()
 
     with caplog.at_level("WARNING", logger="app.services.rest_area_collection"):
         asyncio.run(run())
     messages = [record.getMessage() for record in caplog.records]
     assert sum("rest_area_fuel_price_out_of_range" in message for message in messages) == 1
-    assert any("rest_area_fuel_prices_out_of_range count=3" in message for message in messages)
+    assert any("rest_area_fuel_prices_out_of_range count=4" in message for message in messages)

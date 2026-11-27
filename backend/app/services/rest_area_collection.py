@@ -215,14 +215,14 @@ class RestAreaCollectionService:
         rejected = 0
 
         def price(code: str, product: str, value: Any) -> int | None:
-            # 저장 경계 검사(공급자 파싱은 krex 몫, ADR-004): 정수가 아니거나 1억 이상(통계 NUMERIC(10,2)·INTEGER 2^31 밖)인 값만
+            # 저장 경계 검사(공급자 파싱은 krex 몫, ADR-004): 정수가 아니거나 1억 이상(통계 NUMERIC(10,2) 밖)·-2^31 미만(INTEGER 밖)인 값만
             # 미제공(null)으로 둔다. 그런 값이 한 건이라도 오면 예전에는 수집 또는 통계 공개 transaction 전체가 실패했다. 0·음수는
             # 예전처럼 그대로 저장한다(공급자가 "판매 안 함"을 0으로 줄 수 있고 export 계약을 바꾸지 않는다; 통계는 0 이하를 뺀다).
             # 원문은 raw_item_json에 남는다.
             nonlocal rejected
             if value is None:
                 return None
-            if isinstance(value, bool) or not isinstance(value, int) or value >= STATISTICS_PRICE_LIMIT:
+            if isinstance(value, bool) or not isinstance(value, int) or not -(2**31) <= value < STATISTICS_PRICE_LIMIT:
                 rejected += 1
                 if rejected == 1:
                     logger.warning("rest_area_fuel_price_out_of_range station_key=%s product=%s", code, product)
