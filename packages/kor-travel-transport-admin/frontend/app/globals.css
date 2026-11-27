@@ -1204,6 +1204,13 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
   display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px;
   border-radius: 9999px; background: var(--brand); color: var(--brand-foreground, var(--card)); font-size: 11px; font-weight: 700;
 }
+/* 통계 링크(?product=)로 연 유종: 트리거의 작은 "링크" 표시와 팝오버 맨 위 안내(저장한 유종으로 돌아가기). */
+.public-fuel-filter-linked-mark {
+  flex: none; padding: 0 6px; border: 1px solid var(--brand); border-radius: 9999px; color: var(--brand); font-size: 11px; font-weight: 600; line-height: 18px;
+}
+.fuel-filter-linked { display: grid; gap: 8px; padding: 8px 4px; border-bottom: 1px solid var(--line); font-size: var(--text-sm); }
+.fuel-filter-linked p { color: var(--text-secondary); }
+.fuel-filter-linked > button { justify-self: start; min-height: 44px; }
 .fuel-region-picker { width: min(30rem, calc(100vw - 24px)); max-width: none; max-height: calc(100dvh - 24px); padding: 16px; display: flex; flex-direction: column; }
 .fuel-region-picker-body { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 .fuel-region-picker-body h2 { font-size: var(--text-md); font-weight: 650; }

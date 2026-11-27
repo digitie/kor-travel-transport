@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { PublicFuelMap } from "@/components/public-fuel-map";
 import { publicFuelRefreshConfiguration } from "@/lib/public-fuel-proxy";
@@ -11,5 +12,6 @@ export const metadata: Metadata = {
 };
 export default function PublicFuelPage() {
   if (process.env.TRANSPORT_UI_MODE !== "fuel") notFound();
-  return <PublicFuelMap refreshEnabled={Boolean(publicFuelRefreshConfiguration())} />;
+  // 지도는 주소의 유종(`?product=`)을 useSearchParams로 읽는다. 요청마다 그리는 화면(force-dynamic)이라 서버 렌더에서 멈추지 않는다.
+  return <Suspense fallback={null}><PublicFuelMap refreshEnabled={Boolean(publicFuelRefreshConfiguration())} /></Suspense>;
 }

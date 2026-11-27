@@ -130,15 +130,18 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
       setTemporaryFilters(value);
     }
   }
+  // 링크 유종을 버린다(주소의 product만 지우고 좌표는 남긴다). Next가 replaceState를 라우터 상태와 맞춘다.
+  function dropLinkedProduct() {
+    if (!linkedProduct) return;
+    setDismissedUrlProduct(linkedProduct);
+    try {
+      const next = new URL(window.location.href);
+      next.searchParams.delete(MAP_PRODUCT_PARAM);
+      window.history.replaceState(null, "", `${next.pathname}${next.search}${next.hash}`);
+    } catch { /* 주소를 바꿀 수 없어도 이 화면의 선택은 위 상태로 따른다. */ }
+  }
   function onProductsChange(value: string[]) {
-    if (linkedProduct) {
-      setDismissedUrlProduct(linkedProduct);
-      try {
-        const next = new URL(window.location.href);
-        next.searchParams.delete(MAP_PRODUCT_PARAM);
-        window.history.replaceState(null, "", `${next.pathname}${next.search}${next.hash}`);
-      } catch { /* 주소를 바꿀 수 없어도 이 화면의 선택은 위 상태로 따른다. */ }
-    }
+    dropLinkedProduct();
     try {
       window.localStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(value));
       setTemporaryProducts(undefined);
@@ -210,6 +213,8 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
     <TransportMap mode="fuel" load={loadFuel} mapOnly publicFuel={{
       products, onProductsChange, refreshEnabled, filterQuery, filters, onFiltersChange,
       selectedRegion, onClearRegion: () => setSelectedRegion(undefined),
+      linkedProduct: linkedProduct && !temporaryProducts
+        ? { code: linkedProduct, saved: parseProductPreferences(storedProducts), onUseSaved: dropLinkedProduct } : undefined,
       onOpenRegion: (current, element, center) => {
         rememberOpener(element); setRegionCurrent(current); setRegionCenter(center); setRegionOpen(true);
       },

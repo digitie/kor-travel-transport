@@ -33,7 +33,7 @@ export function PublicFuelStatisticsPage() {
   const settled = selected && !current.pending && !current.error;
   return <main className="public-fuel-stats" aria-labelledby="public-fuel-stats-title">
     <header className="public-fuel-stats-header">
-      <MapBackLink fromMap={state.fromMap} product={view.product} />
+      <MapBackLink fromMap={state.fromMap} product={state.productChosen ? view.product : null} />
       <div>
         <h1 id="public-fuel-stats-title">지역별 유가 통계</h1>
         <p>전국·시도·시군구·고속도로의 평균·최저·최고 가격과 기간별 변화</p>
@@ -62,10 +62,11 @@ export function PublicFuelStatisticsPage() {
 }
 
 /**
- * 지도의 통계 단추로 연 화면(`from=map`, 첫 렌더에 읽음)이면 뒤로 가기(지도 위치·선택 유지), 아니면 지금 보는 유종으로 지도를 새로 연다
- * (`?product=`, 저장한 유종 선택은 바꾸지 않는다). 새 탭·수정 키 누름은 브라우저 기본 동작(새 지도)에 맡긴다.
+ * 지도의 통계 단추로 연 화면(`from=map`, 첫 렌더에 읽음)이면 뒤로 가기(지도 위치·선택 유지 — 통계에서 유종을 바꿨어도 지도는 떠날 때 그대로다),
+ * 아니면 지도를 새로 연다. 새로 열 때는 링크가 정했거나 여기서 고른 유종을 싣고(`?product=`, 저장한 선택은 바꾸지 않는다), 기본 휘발유만
+ * 본 화면이면 싣지 않는다(저장한 선택 그대로). 새 탭·수정 키 누름은 브라우저 기본 동작(새 지도)에 맡긴다.
  */
-function MapBackLink({ fromMap, product }: { fromMap: boolean; product: string }) {
+function MapBackLink({ fromMap, product }: { fromMap: boolean; product: string | null }) {
   return <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={publicMapHomeHref(product)} onClick={event => {
     if (!fromMap || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();

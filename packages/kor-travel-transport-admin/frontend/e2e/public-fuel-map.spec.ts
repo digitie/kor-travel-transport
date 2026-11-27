@@ -103,7 +103,25 @@ for (const width of [375, 1440]) {
     expect(Math.abs(settled.y - waiting.y)).toBeLessThanOrEqual(1);
     await expect(summary).not.toContainText("다시 조회 중");
     await expect(page.getByRole("alert").filter({ hasText: "조회 실패" })).toHaveCount(0);
-    await expect(page.getByRole("alert").filter({ hasText: "지도 타일 오류" })).toHaveCount(0);
+  });
+}
+
+for (const width of [375, 1440]) {
+  test(`${width}px 배경지도를 못 그리면 요약 위에 한 줄로 알리고 없는 목록 보기로 안내하지 않는다`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width < 1000 ? 812 : 900 });
+    // isolatePublicFuel이 성공시키는 타일을 이 시험에서만 모두 실패시킨다(나중에 등록한 route가 먼저).
+    await page.route("https://api.vworld.kr/req/wmts/**", route => route.abort());
+    await page.goto("/");
+    const summary = summaryOf(page);
+    await expect(summary.locator('dl[aria-label="휘발유"]')).toContainText("1,700");
+    // 키로 빌드했으면 첫 idle 뒤 "지도 타일 오류", 키 없이 빌드했으면 처음부터 "지도 키 없음"이다. 어느 쪽이든 "· 목록 보기"는 없다.
+    const notice = page.locator(".map-feedback [role=alert]");
+    await expect(notice).toHaveText(/^지도 (타일 오류|키 없음|표시 불가)$/, { timeout: 15_000 });
+    // 알림은 요약 위 줄에 있고 요약은 화면 안에 남는다(알림이 생기면 요약이 그만큼 내려간다 — 새 안내라 자리를 미리 비우지 않는다).
+    const [noticeBox, summaryBox] = [(await notice.boundingBox())!, (await summary.boundingBox())!];
+    expect(noticeBox.y + noticeBox.height).toBeLessThanOrEqual(summaryBox.y);
+    expect(summaryBox.x + summaryBox.width).toBeLessThanOrEqual(width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
 

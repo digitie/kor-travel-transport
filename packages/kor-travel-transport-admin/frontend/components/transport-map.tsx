@@ -15,7 +15,7 @@ import type { FuelAreaChoice } from "@/components/public-fuel-controls";
 import type { FuelCenterSigungu, FuelViewportSigungu } from "@/lib/fuel-price-distribution";
 import { MAP_FALLBACK_IMAGE } from "@/lib/map-fallback";
 import { cn } from "@/lib/utils";
-import { CameraRequest, ClusterBubble, MapMarkerButton, MapUnavailable, MarkerBadge, OverlapPopup, useVWorldBasemapHealth, ZoomButtons, type CameraTarget } from "./map-overlays";
+import { CameraRequest, ClusterBubble, MAP_LIST_HINT, MapMarkerButton, MapUnavailable, MarkerBadge, OverlapPopup, useVWorldBasemapHealth, ZoomButtons, type CameraTarget } from "./map-overlays";
 import { PlaceIcon } from "./journey-controls";
 import { FuelCertificationMarks } from "./fuel-certification";
 import { fuelCertifications } from "@/lib/fuel-certification";
@@ -49,7 +49,7 @@ type PublicFuelControls = {
   filterQuery?: string;
   /** 지역 이동 열기. center는 지금 지도 중심 [경도, 위도](지역 칩이 없을 때 대화상자가 미리 고를 시군구를 찾는다). */
   onOpenRegion?: (current?: FuelAreaChoice, opener?: HTMLElement | null, center?: [number, number]) => void;
-} & Pick<PublicFuelSummary, "filters" | "onFiltersChange" | "selectedRegion" | "onClearRegion">;
+} & Pick<PublicFuelSummary, "filters" | "onFiltersChange" | "selectedRegion" | "onClearRegion" | "linkedProduct">;
 
 type PublicFuelSummary = NonNullable<Parameters<typeof FuelViewportSummary>[0]["publicFuel"]>;
 
@@ -193,6 +193,7 @@ function publicFuelActions({
     onFiltersChange: controls.onFiltersChange ? values => { clearSelection(); controls.onFiltersChange?.(values); } : undefined,
     selectedRegion: controls.selectedRegion,
     onClearRegion: controls.onClearRegion,
+    linkedProduct: controls.linkedProduct ? { ...controls.linkedProduct, onUseSaved: () => { clearSelection(); controls.linkedProduct?.onUseSaved(); } } : undefined,
     onOpenRegion: controls.onOpenRegion ? (region, opener) => controls.onOpenRegion?.(region, opener, mapCenter) : undefined,
   };
   return { summary, detail: { onRefresh: refreshStation, refreshing, products, filterQuery: controls.filterQuery } };
@@ -902,7 +903,12 @@ function MapInspectorHeading({ current }: { current: NonNullable<ReturnType<type
 }
 
 
-const LIST_HINT = / · 목록 보기$/;
+/** 배경지도 알림 문구. 목록 보기가 없는 화면(공개 유가 지도, mapOnly)에서는 없는 목록으로 안내하지 않는다. */
+function basemapNotices(tileFailed: boolean | undefined, unavailable: string | null | undefined, listAvailable: boolean) {
+  const withoutListHint = (text: string) => listAvailable || !text.endsWith(MAP_LIST_HINT) ? text : text.slice(0, -MAP_LIST_HINT.length);
+  return [tileFailed ? `지도 타일 오류${MAP_LIST_HINT}` : null, unavailable ?? null].filter((text): text is string => Boolean(text)).map(withoutListHint);
+}
+
 function MapQueryStatus({ feedback, failed, failureNotice, setReload, basemap, view, mapUnavailableMessage, fuelStatistics = false, listAvailable = true }: Pick<ReturnType<typeof useTransportMap>, "failed" | "failureNotice" | "setReload" | "basemap" | "view" | "mapUnavailableMessage"> & Pick<NonNullable<Parameters<typeof TransportMap>[0]>, "feedback"> & { fuelStatistics?: boolean; listAvailable?: boolean }) {
   // 혼잡·시한 실패는 서버 안내(범위를 좁히라는 등)를 함께 보이고, Retry-After가 지나기 전에는 다시 조회를 막는다.
   const retryReady = useRetryReady(failed.length ? failureNotice?.retryAt : undefined);
@@ -912,8 +918,6 @@ function MapQueryStatus({ feedback, failed, failureNotice, setReload, basemap, v
         목록 보기는 범위 통계를 묻지 않으므로 말하지 않는다. 버튼은 알림 밖에 둬서 "잠시 후 다시 조회" → "다시 조회"로 바뀔 때
         알림 전체가 다시 읽히지 않게 한다. */}
     {failed.length ? <div className="map-failure error"><p role="alert">{failed.map(placeKindLabel).join("·")}{fuelStatistics && view === "map" && failed.includes("fuel_station") ? "·범위 통계" : ""} 조회 실패{failureNotice ? ` · ${failureNotice.message}` : ""}</p> <Button variant="outline" type="button" disabled={!retryReady} onClick={() => setReload((value) => value + 1)}>{retryReady ? "다시 조회" : "잠시 후 다시 조회"}</Button></div> : null}
-    {/* 목록 보기가 없는 화면(공개 유가 지도, mapOnly)에서는 없는 목록으로 안내하지 않는다. */}
-    {basemap.basemapFailed && view === "map" ? <p className="error" role="alert">{listAvailable ? "지도 타일 오류 · 목록 보기" : "지도 타일 오류"}</p> : null}
-    {mapUnavailableMessage && view === "map" ? <p className="error" role="alert">{listAvailable ? mapUnavailableMessage : mapUnavailableMessage.replace(LIST_HINT, "")}</p> : null}
+    {view === "map" ? basemapNotices(basemap.basemapFailed, mapUnavailableMessage, listAvailable).map(text => <p key={text} className="error" role="alert">{text}</p>) : null}
   </>);
 }

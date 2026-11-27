@@ -7,12 +7,14 @@ vi.mock("./transport-map", () => ({ TransportMap: (props: Record<string, unknown
 vi.mock("@/components/map-overlays", () => ({ CameraRequest: () => null, FitBoundsRequest: () => null, UserLocationMarker: () => null }));
 vi.mock("@/lib/public-fuel", () => ({ publicFuelGet: state.get }));
 // 지도 화면은 주소의 유종(`product`)을 Next 라우터로 읽는다. 시험에서는 지금 주소를 그대로 돌려준다.
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
+// nav.search를 정하면 라우터가 주소 변경을 아직 따라오지 않은 순간처럼 그 값을 계속 돌려준다.
+const nav = vi.hoisted(() => ({ search: undefined as string | undefined }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(nav.search ?? window.location.search) }));
 vi.mock("@/components/public-fuel-controls", () => ({ FuelRegionPicker: (props: Record<string, unknown>) => { state.picker = props; return null; } }));
 import { PublicFuelMap } from "./public-fuel-map";
 let root: Root, host: HTMLDivElement;
 beforeEach(() => { vi.useFakeTimers(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); host = document.createElement("div"); document.body.append(host); root = createRoot(host); state.get.mockReset(); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); window.history.replaceState(null, "", "/"); localStorage.removeItem("transport.public-fuel.products"); localStorage.removeItem("transport.public-fuel.filters"); vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); window.history.replaceState(null, "", "/"); nav.search = undefined; localStorage.removeItem("transport.public-fuel.products"); localStorage.removeItem("transport.public-fuel.filters"); vi.useRealTimers(); vi.unstubAllGlobals(); });
 // layers = <><CameraRequest target /><UserLocationMarker position /><FitBoundsRequest target /></>
 const layerProps = () => (state.props.layers as ReactElement<{ children: ReactElement<{ target?: unknown; position?: unknown }>[] }>).props.children.map(child => child.props);
 const cameraTarget = () => layerProps()[0].target;
@@ -254,4 +256,31 @@ it("uses the link fuel even when the browser blocks storage, and a later choice 
     expect(controls().products).toEqual([]);
     expect(window.location.search).toBe("");
   } finally { setItem.mockRestore(); }
+});
+
+type LinkedControls = { products: string[]; onProductsChange: (value: string[]) => void; linkedProduct?: { code: string; saved: string[]; onUseSaved: () => void } };
+it("tells the selector which fuel came from the link and can return to the saved selection without saving", async () => {
+  const key = "transport.public-fuel.products";
+  localStorage.setItem(key, JSON.stringify(["B027", "D047"]));
+  window.history.replaceState(null, "", "/?longitude=127.1&latitude=37.5&product=K015");
+  await render();
+  const controls = () => state.props.publicFuel as LinkedControls;
+  expect(controls().linkedProduct).toMatchObject({ code: "K015", saved: ["B027", "D047"] });
+  await act(async () => controls().linkedProduct!.onUseSaved());
+  expect(controls().products).toEqual(["B027", "D047"]);
+  expect(controls().linkedProduct).toBeUndefined();
+  expect(JSON.parse(localStorage.getItem(key)!)).toEqual(["B027", "D047"]);
+  expect(window.location.search).toBe("?longitude=127.1&latitude=37.5");
+});
+it("does not flip back to the link fuel while the router still reports the old address", async () => {
+  localStorage.setItem("transport.public-fuel.products", JSON.stringify(["B027"]));
+  window.history.replaceState(null, "", "/?product=K015");
+  nav.search = "?product=K015";
+  await render();
+  const controls = () => state.props.publicFuel as LinkedControls;
+  expect(controls().products).toEqual(["K015"]);
+  await act(async () => controls().onProductsChange(["D047"]));
+  // 라우터는 아직 ?product=K015를 돌려주지만 화면은 고른 유종이다.
+  expect(controls().products).toEqual(["D047"]);
+  expect(controls().linkedProduct).toBeUndefined();
 });

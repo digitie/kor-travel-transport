@@ -15,7 +15,7 @@ import FuelPriceChart from "./fuel-price-chart-loader";
 import { FUEL_CHART_ORDER, fuelStationHref, type FuelChartStation } from "@/lib/fuel-chart-model";
 import { StatStrip } from "./stat-strip";
 import { FuelRegionStats } from "./fuel-price-distribution";
-import { PublicFuelFilterMenu, PublicFuelRegionButton, type FuelAreaChoice, type FuelSelectedRegion } from "./public-fuel-controls";
+import { PublicFuelFilterMenu, PublicFuelRegionButton, type FuelAreaChoice, type FuelSelectedRegion, type PublicFuelLinkedProduct } from "./public-fuel-controls";
 import { displayedRegion, type FuelCenterSigungu, type FuelRegionChip, type FuelViewportSigungu } from "@/lib/fuel-price-distribution";
 import type { PublicFuelFilters } from "@/lib/public-fuel-filters";
 import { Button } from "./ui/button";
@@ -171,6 +171,8 @@ type FuelViewportSummaryProps = {
     selectedRegion?: FuelSelectedRegion;
     onClearRegion?: () => void;
     onOpenRegion?: (current?: FuelAreaChoice, opener?: HTMLElement | null) => void;
+    /** 통계 화면 링크(`?product=`)로 연 유종. 유종·필터 선택이 안내와 "저장한 유종으로 보기"를 보인다. */
+    linkedProduct?: PublicFuelLinkedProduct;
     load?: <T>(path: string, signal?: AbortSignal) => Promise<T>;
   };
 };
@@ -233,11 +235,11 @@ function PublicFuelSummaryHeader({
   controls: NonNullable<FuelViewportSummaryProps["publicFuel"]>;
   region: FuelRegionChip | null; regionButton: RefObject<HTMLButtonElement | null>;
 }) {
-  const { products, onProductsChange, filters, onFiltersChange, onOpenRegion } = controls;
+  const { products, onProductsChange, filters, onFiltersChange, onOpenRegion, linkedProduct } = controls;
   return <header className="public-fuel-summary-header">
     {onOpenRegion ? <PublicFuelRegionButton buttonRef={regionButton} onOpen={opener => onOpenRegion(region ?? undefined, opener)} /> : null}
     <div className="public-fuel-summary-products">
-      <PublicFuelFilterMenu products={products} onProductsChange={onProductsChange} filters={filters} onFiltersChange={onFiltersChange} />
+      <PublicFuelFilterMenu products={products} onProductsChange={onProductsChange} filters={filters} onFiltersChange={onFiltersChange} linked={linkedProduct} />
     </div>
     <PublicFuelPriceButton state={priceState} lastRefreshedAt={lastRefreshedAt} onRefresh={controls.onRefresh}
       refreshing={controls.refreshing} blocked={controls.refreshBlocked} />

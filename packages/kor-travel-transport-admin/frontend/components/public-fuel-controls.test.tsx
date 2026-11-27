@@ -184,3 +184,22 @@ test("관리 화면 범위 요약에는 지역·유종·필터 선택이 없고,
   // 지역 아이콘이 유종·필터보다 앞(맨 위 줄 첫 칸)에 온다.
   expect(markup.indexOf("public-fuel-region-button")).toBeLessThan(markup.indexOf("public-fuel-filter-trigger"));
 });
+
+test("통계 링크로 연 유종은 트리거에 '링크'로 표시하고, 팝오버가 저장 안내와 '저장한 유종으로 보기'를 보인다", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  const onUseSaved = vi.fn(); const onProductsChange = vi.fn();
+  const { container } = await mount(<PublicFuelFilterMenu products={["K015"]} onProductsChange={onProductsChange}
+    linked={{ code: "K015", saved: ["B027", "D047"], onUseSaved }} />);
+  const trigger = container.querySelector<HTMLButtonElement>(".public-fuel-filter-trigger")!;
+  expect(trigger.getAttribute("aria-label")).toBe("유종·필터: LPG (통계 링크로 연 유종)");
+  expect(trigger.querySelector(".public-fuel-filter-linked-mark")?.textContent).toBe("링크");
+  await act(async () => trigger.click());
+  const menu = document.querySelector('[role="dialog"]')!;
+  expect(menu.textContent).toContain("통계 화면에서 고른 LPG(으)로 열었습니다. 저장한 유종(휘발유, 경유)은 그대로이며");
+  expect(menu.textContent).toContain("유종을 바꾸면 그 선택을 저장합니다");
+  await act(async () => button("저장한 유종으로 보기").click());
+  expect(onUseSaved).toHaveBeenCalledOnce();
+  expect(onProductsChange).not.toHaveBeenCalled();
+  // 누른 단추가 사라지므로 팝오버를 닫아 초점을 트리거로 돌린다.
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+});

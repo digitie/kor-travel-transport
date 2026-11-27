@@ -20,8 +20,9 @@
   (키 없이 빌드하면 "지도 키 없음"이 처음부터 있어 통과). `e2e/public-fuel-isolation.ts`가 타일만 성공 이미지로 채운다. 부하 중
   public-fuel-ui2 "가격 아이콘 하나"의 34.5px도 같은 원인이었고, 공개 지도 알림의 없는 "· 목록 보기" 안내를 지웠다
   ([testing.md](runbooks/testing.md#공개-유가-격리-e2e-e2e_public_fueltrue)).
-- [x] **FUEL-PUBLIC-MAP-PRODUCT-LINK / P2** — 2026-11-27 통계 화면 "지도에서 보기"·"유가 지도"가 보던 유종으로 지도를 연다(`/?product=`).
-  저장한 유종 선택은 덮어쓰지 않고, 지도에서 유종을 고르면 저장하고 주소의 `product`를 지운다([공개 유가 서비스](design/2026-11-20-public-fuel-service.md#지역별-유가-통계-statistics)).
+- [x] **FUEL-PUBLIC-MAP-PRODUCT-LINK / P2** — 2026-11-27 통계 화면 "지도에서 보기"(그 가격의 유종)·"유가 지도"(링크가 정했거나 고른 유종)가
+  그 유종으로 지도를 연다(`/?product=`). 저장한 유종 선택은 덮어쓰지 않고(트리거 "링크" 표시·"저장한 유종으로 보기"), 지도에서 유종을 고르면
+  저장하고 주소의 `product`를 지운다([공개 유가 서비스](design/2026-11-20-public-fuel-service.md#지역별-유가-통계-statistics)).
 - [ ] **FUEL-HISTORY-PUBLIC-UI-VERIFY / P2** — fuel web 이미지 배포 뒤 https://fuel.digitie.mywire.org/statistics 를 390·1440px에서 열어
   전국·시군구·고속도로 LPG와 1년·전체 추이가 보이는지, 지도 아이콘·"지도에서 보기"가 지도로 돌아가는지(통계에서 고른 유종으로 열리는지) 확인.
 

@@ -10,7 +10,7 @@ vi.mock("vworld-map-web", () => ({
   ClusterLayer: () => null,
 }));
 vi.mock("./map-overlays", () => ({
-  CameraRequest: () => null, ClusterBubble: () => null, MapMarkerButton: () => null,
+  MAP_LIST_HINT: " · 목록 보기", CameraRequest: () => null, ClusterBubble: () => null, MapMarkerButton: () => null,
   MapUnavailable: () => null, MarkerBadge: () => null, OverlapPopup: () => null,
   ZoomButtons: () => null, vworldApiKey: () => "",
   useVWorldBasemapHealth: () => ({ basemapFailed: false }),

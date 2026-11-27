@@ -211,13 +211,15 @@ test("통계에서 고른 유종으로 지도를 연다 — 저장한 유종 선
   await page.getByRole("link", { name: "지도에서 보기" }).click();
   await expect(page).toHaveURL(/longitude=126.978.*product=K015/);
   const combo = page.getByRole("region", { name: "현재 지도 범위 유가 통계" }).getByRole("button", { name: /^유종·필터/ });
-  await expect(combo).toHaveAccessibleName("유종·필터: LPG");
+  await expect(combo).toHaveAccessibleName("유종·필터: LPG (통계 링크로 연 유종)");
   await expect.poll(() => products.at(-1)).toBe("K015");
   expect(await page.evaluate(() => localStorage.getItem("transport.public-fuel.products"))).toBe(JSON.stringify(["B027"]));
   // 지도의 통계 단추도 그 유종으로 연다.
   await expect(page.getByRole("link", { name: "지역별 유가 통계" })).toHaveAttribute("href", "/statistics?product=K015&from=map");
-  // 지도에서 고르면 저장하고 주소의 유종은 지운다(좌표는 남는다). 새로고침해도 고른 유종이다.
+  // 유종·필터를 열면 링크 유종이라는 것과 저장한 유종(휘발유)을 알린다.
   await combo.click();
+  await expect(page.getByRole("dialog", { name: "유종·필터" })).toContainText("통계 화면에서 고른 LPG(으)로 열었습니다. 저장한 유종(휘발유)은 그대로");
+  // 지도에서 고르면 저장하고 주소의 유종은 지운다(좌표는 남는다). 새로고침해도 고른 유종이다.
   await page.getByRole("dialog", { name: "유종·필터" }).getByRole("checkbox", { name: "경유", exact: true }).check();
   await page.keyboard.press("Escape");
   await expect(page).not.toHaveURL(/product=/);
@@ -228,7 +230,18 @@ test("통계에서 고른 유종으로 지도를 연다 — 저장한 유종 선
   await page.goto("/statistics?product=D047");
   await page.getByRole("link", { name: "유가 지도" }).click();
   await expect(page).toHaveURL(/\/\?product=D047$/);
-  await expect(combo).toHaveAccessibleName("유종·필터: 경유");
+  await expect(combo).toHaveAccessibleName("유종·필터: 경유 (통계 링크로 연 유종)");
+  // "저장한 유종으로 보기"는 저장 값을 바꾸지 않고 저장한 선택으로 돌아가며 주소의 유종을 지운다.
+  await combo.click();
+  await page.getByRole("dialog", { name: "유종·필터" }).getByRole("button", { name: "저장한 유종으로 보기" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("dialog", { name: "유종·필터" })).toHaveCount(0);
+  await expect(combo).toBeFocused();
+  await expect(combo).toHaveAccessibleName(/^유종·필터: .*경유/);
+  await expect(combo).not.toHaveAccessibleName(/통계 링크/);
+  // 기본 휘발유만 본 통계 화면의 "유가 지도"는 유종을 싣지 않는다(저장한 선택 그대로).
+  await page.goto("/statistics");
+  await expect(page.getByRole("link", { name: "유가 지도" })).toHaveAttribute("href", "/");
 });
 
 test("고속도로에서 고른 노선에 그 유종이 없으면 전체 노선 값을 보이고 알린다", async ({ page }) => {

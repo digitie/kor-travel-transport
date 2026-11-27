@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { knownRegionLabel, statisticsGet } from "@/lib/public-fuel-statistics-client";
 import {
-  ALL_ROUTES, FROM_MAP_PARAM, currentScope, describeStatisticsError, displayRegionLabel, fitProductToArea, historyPath, kstDay, listScope,
+  ALL_ROUTES, FROM_MAP_PARAM, currentScope, describeStatisticsError, displayRegionLabel, fitProductToArea, historyPath, kstDay, listScope, mapProductFromSearch,
   parseStatisticsView, regionSubstitution, resolveRegion, statisticsPath, statisticsRetryDelay, statisticsSchema, statisticsViewQuery, trendSchema,
   type PublicFuelStatistics, type PublicFuelStatisticsView, type PublicFuelTrend, type StatisticsLoadError,
 } from "@/lib/public-fuel-statistics";
@@ -105,7 +105,9 @@ function useRefreshWhenStale(loadedAt: number | undefined, refresh: () => void) 
 
 function initialState(search: URLSearchParams) {
   const fitted = fitProductToArea(parseStatisticsView(search));
-  return { view: fitted.view, replacedProduct: fitted.replaced, fromMap: search.get(FROM_MAP_PARAM) === "map" };
+  return { view: fitted.view, replacedProduct: fitted.replaced, fromMap: search.get(FROM_MAP_PARAM) === "map",
+    // 링크가 유종을 정했는가(`product`가 아는 코드). 기본값 휘발유를 사용자가 고른 것처럼 지도에 넘기지 않으려고 따로 둔다.
+    productChosen: mapProductFromSearch(search) !== null };
 }
 
 /** 카드에 보일 범주. 전국·고속도로 전체는 유일한 범주, 그 밖은 응답에 맞춘 지역. 표시 이름은 풀어 쓴다. */
@@ -123,6 +125,8 @@ export function usePublicFuelStatistics() {
   const [view, setView] = useState(initial.view);
   // 고속도로로 바꾸며 없는 유종(고급유·등유)을 휘발유로 바꿨으면 그 유종. 유종·범위를 다시 고르면 지운다.
   const [replacedProduct, setReplacedProduct] = useState(initial.replacedProduct);
+  // 유종을 링크가 정했거나 이 화면에서 골랐는가. 아니면(기본 휘발유) 새로 여는 지도는 저장한 유종 선택을 그대로 쓴다.
+  const [productChosen, setProductChosen] = useState(initial.productChosen);
   // 현재 값(목록·전체 노선)과 추이는 따로 다시 조회한다. 추이만 실패했을 때 146KB 목록을 다시 받지 않는다.
   const [listReload, setListReload] = useState(0);
   const [trendReload, setTrendReload] = useState(0);
@@ -144,12 +148,13 @@ export function usePublicFuelStatistics() {
   useRefreshWhenStale(current.at, () => setListReload(value => value + 1));
   const update = (patch: Partial<PublicFuelStatisticsView>) => {
     const fitted = fitProductToArea({ ...view, ...patch });
+    if (patch.product !== undefined) setProductChosen(true);
     setReplacedProduct(fitted.replaced);
     setView(fitted.view);
   };
   const substitution = selected && !current.pending ? regionSubstitution(view, region, knownRegionLabel(view.region)) : null;
   return {
-    view, update, list, current, selected, region, scope, trend, to, substitution, replacedProduct, fromMap: initial.fromMap,
+    view, update, list, current, selected, region, scope, trend, to, substitution, replacedProduct, fromMap: initial.fromMap, productChosen,
     retryCurrent: () => setListReload(value => value + 1), retryTrend: () => setTrendReload(value => value + 1),
   };
 }

@@ -212,13 +212,19 @@ describe("공개 유가 지역별 통계", () => {
     await render();
     const plain = new MouseEvent("click", { bubbles: true, cancelable: true });
     const mapLink = () => [...host.querySelectorAll("a")].find(node => node.textContent === "유가 지도")!;
-    // 지도를 새로 열 때는 보던 유종으로 연다.
+    // 기본 휘발유만 본 화면은 유종을 싣지 않는다(지도는 저장한 선택 그대로). 유종을 고르면 그 유종으로 연다.
+    expect(mapLink().getAttribute("href")).toBe("/");
+    await act(async () => radio("경유").click());
+    expect(mapLink().getAttribute("href")).toBe("/?product=D047");
+    await act(async () => radio("휘발유").click());
     expect(mapLink().getAttribute("href")).toBe("/?product=B027");
     mapLink().dispatchEvent(plain);
     expect(plain.defaultPrevented).toBe(false);
     await act(async () => root.unmount()); root = createRoot(host);
     await render("?from=map&product=D047");
     expect(window.location.search).toBe("?product=D047");
+    // 수정 키로 새 탭에 열 때의 주소는 링크가 정한 유종을 싣는다.
+    expect([...host.querySelectorAll("a")].find(node => node.textContent === "유가 지도")!.getAttribute("href")).toBe("/?product=D047");
     const fromMap = new MouseEvent("click", { bubbles: true, cancelable: true });
     [...host.querySelectorAll("a")].find(node => node.textContent === "유가 지도")!.dispatchEvent(fromMap);
     expect(fromMap.defaultPrevented).toBe(true); expect(back).toHaveBeenCalledOnce();
