@@ -34,13 +34,7 @@ def upgrade() -> None:
         op.create_index(NAME, TABLE, COLUMNS, if_not_exists=True)
         return
     if op.get_context().as_sql:
-        # 오프라인 `alembic upgrade --sql`: 연결이 없어 indisvalid를 읽을 수 없다. 스크립트는 DB가 down_revision에
-        # 있다고 가정하므로 남은 인덱스는 실패한 CONCURRENTLY의 invalid 잔재뿐이다. 지우고 다시 만든다(둘 다 쓰기를
-        # 막지 않는다). 이미 유효한 인덱스가 있으면 한 번 다시 만든다. autocommit_block은 COMMIT 뒤에 이 두 문장을
-        # transaction 밖에서 내고 BEGIN으로 돌아간다(CONCURRENTLY는 transaction 안에서 실행할 수 없다).
-        with op.get_context().autocommit_block():
-            op.drop_index(NAME, table_name=TABLE, postgresql_concurrently=True, if_exists=True)
-            op.create_index(NAME, TABLE, COLUMNS, postgresql_concurrently=True)
+        _offline_upgrade()
         return
     with op.get_context().autocommit_block():
         is_valid = op.get_bind().scalar(sa.text(
@@ -51,6 +45,33 @@ def upgrade() -> None:
         if is_valid is False:
             op.drop_index(NAME, table_name=TABLE, postgresql_concurrently=True, if_exists=True)
         op.create_index(NAME, TABLE, COLUMNS, postgresql_concurrently=True, if_not_exists=True)
+
+
+def _offline_upgrade() -> None:
+    """오프라인 `alembic upgrade --sql`: 연결이 없어 indisvalid를 미리 읽을 수 없으므로 판단을 SQL 안에 둔다.
+
+    1. (migration transaction 안) 실패한 CONCURRENTLY의 invalid 잔재면 `<이름>_invalid`로 이름만 바꾼다. 이름 바꾸기는
+       SHARE UPDATE EXCLUSIVE(PostgreSQL 12+)라 읽기·쓰기를 막지 않는다. 유효한 인덱스는 그대로 둔다(다시 만들지 않아 느린 계획
+       구간이 없다).
+    2. (COMMIT 뒤 transaction 밖) 잔재를 `DROP INDEX CONCURRENTLY IF EXISTS`, `CREATE INDEX CONCURRENTLY IF NOT EXISTS`.
+    3. (다시 BEGIN 안) 인덱스가 없거나 invalid면 예외로 그 transaction을 중단해 `alembic_version`을 올리지 않는다.
+       `psql`은 기본(`ON_ERROR_STOP=off`)이면 2의 실패 뒤에도 다음 문장을 계속 실행하므로 이 확인이 버전 전진을 막는다.
+       실행은 `psql -v ON_ERROR_STOP=1 -f`를 쓴다.
+    """
+    old = f"{NAME}_invalid"
+    op.execute(
+        f"DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_index WHERE indexrelid = pg_catalog.to_regclass('{NAME}') "
+        f"AND NOT indisvalid) THEN IF pg_catalog.to_regclass('{old}') IS NOT NULL THEN RAISE EXCEPTION "
+        f"'{old} 가 이미 있다. DROP INDEX CONCURRENTLY {old} 뒤 다시 실행'; END IF; "
+        f"ALTER INDEX {NAME} RENAME TO {old}; END IF; END $$"
+    )
+    with op.get_context().autocommit_block():
+        op.drop_index(old, table_name=TABLE, postgresql_concurrently=True, if_exists=True)
+        op.create_index(NAME, TABLE, COLUMNS, postgresql_concurrently=True, if_not_exists=True)
+    op.execute(
+        f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_index WHERE indexrelid = pg_catalog.to_regclass('{NAME}') "
+        f"AND indisvalid) THEN RAISE EXCEPTION '{NAME} 인덱스가 없거나 invalid라 버전을 올리지 않는다'; END IF; END $$"
+    )
 
 
 def downgrade() -> None:

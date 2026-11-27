@@ -14,4 +14,9 @@ test("버킷 기간 문구는 범위·기록 일수를 쓰고 일 단위 점에�
   expect(fuelSpanText({ first_day: "2026-01-07", last_day: "2026-01-07", day_count: 1 })).toBe("2026-01-07 KST · 기록 1일");
   expect(fuelSpanText(null)).toBeNull();
   expect(fuelSpanText(undefined)).toBeNull();
+  // 부분·잘못된 span은 문구 없이 null(차트 formatter·렌더가 던지지 않는다).
+  for (const span of [{ first_day: "2026-01-01", last_day: "2026-01-02" }, { first_day: "2026-01-01", last_day: "2026-01-02", day_count: null },
+    { first_day: "2026-01-01", last_day: null, day_count: 2 }, { first_day: "2026-01-01", last_day: "2026-01-02", day_count: 1.5 },
+    { first_day: "2026-01-01", last_day: "2026-01-02", day_count: 0 }, { first_day: "01/01", last_day: "2026-01-02", day_count: 2 }])
+    expect(fuelSpanText(span as never)).toBeNull();
 });

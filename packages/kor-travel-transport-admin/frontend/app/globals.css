@@ -805,7 +805,7 @@
 .parking-admin .kt-map-filter-field select, .parking-admin .kt-map-filter-bar button, .parking-admin .input, .parking-admin .button, .parking-admin .daily-date-toggle, .parking-admin .toggle-check, .parking-admin [data-slot="tabs-trigger"] { min-height: 44px; }
 .parking-admin [data-slot="tabs-list"] { height: auto; }
 .fuel-stat-filters select, .fuel-stat-filters .fuel-stat-refresh { min-height: 44px; }
-.fuel-stat-table [data-slot="pager"] button { min-height: 44px; }
+.fuel-trend-table [data-slot="pager"] button { min-height: 44px; }
 }
 @media (max-width: 48rem) {
 .parking-admin .fee-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -918,6 +918,7 @@
 .fuel-stat-table th, .fuel-stat-table td { text-align: left; padding: .6rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .fuel-stat-table caption { text-align: left; padding-block: .6rem; }
 .fuel-stat-table button { text-decoration: underline; text-underline-offset: .2rem; }
+.fuel-trend-table-pager { padding-block: .25rem; }
 .operations-table { width: 100%; border-collapse: collapse; text-align: left; font-size: var(--text-kt-xs); }
 .operations-table th { color: var(--kt-text-secondary); font-weight: 500; }
 .operations-table th, .operations-table td { border-bottom: 1px solid var(--kt-border); padding: .625rem .5rem; white-space: nowrap; }

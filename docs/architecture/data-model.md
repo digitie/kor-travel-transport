@@ -105,12 +105,14 @@ KST 일별 범주/유종 집계 `fuel_statistics_daily`를 분리한다. 원본 
 `ix_fuel_statistics_daily_current (source, scope, day, product_code)`(0050, CONCURRENTLY)는 통계 페이지의 "공개 세대 날짜의
 모든 범주" 읽기용이다. 기본키는 scope_key가 day보다 앞이라 범주가 많은 시군구에서 모든 날짜의 색인 항목을 범주마다 다시
 찾았다(운영 2~3초의 추정 원인). `fuel_statistics_history`에도 그날 행 교체용 `ix_fuel_statistics_history_day (source, day)`가 있다.
-0047·0050은 오프라인 `alembic upgrade --sql`도 지원한다(2026-11-27). 연결이 없어 `indisvalid`를 읽지 못하므로 스크립트가 `COMMIT` 뒤
-transaction 밖에서 `DROP INDEX CONCURRENTLY IF EXISTS` → `CREATE INDEX CONCURRENTLY`를 내고 `BEGIN`으로 돌아가 버전을 올린다.
-스크립트는 DB가 직전 revision에 있다고 가정하므로 남은 인덱스는 실패한 CONCURRENTLY의 invalid 잔재뿐이고 올바른 정의로 바뀐다(이미 유효한
-인덱스가 있으면 한 번 다시 만든다, 쓰기는 막지 않는다). `psql -f`처럼 문장을 하나씩 보내는 도구로 실행한다. 그 전 CONCURRENTLY
-migration은 오프라인을 지원하지 않으므로(0015·0018·0021은 명시적으로 거절, 0022·0026은 연결을 읽는다) 오프라인 스크립트는 0026 뒤에서
-시작하는 범위(`alembic upgrade 0026_transport_map_indexes:head --sql` 이후)에만 쓴다. 운영 배포는 지금처럼 온라인 migrate를 쓴다.
+0047·0050은 오프라인 `alembic upgrade --sql`도 지원한다(2026-11-27). 연결이 없어 `indisvalid`를 미리 읽지 못하므로 판단을 SQL에 둔다:
+(1) migration transaction 안의 `DO` 블록이 invalid 잔재만 `<이름>_invalid`로 이름을 바꾼다(SHARE UPDATE EXCLUSIVE, 읽기·쓰기를 막지
+않는다; 유효한 인덱스는 그대로 둬 다시 만들지 않는다), (2) `COMMIT` 뒤 transaction 밖에서 `DROP INDEX CONCURRENTLY IF EXISTS <이름>_invalid`
+→ `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, (3) 다시 `BEGIN` 안의 `DO` 블록이 유효한 인덱스가 없으면 예외를 내 같은 transaction의
+`alembic_version` UPDATE를 막는다. 반드시 **`psql -v ON_ERROR_STOP=1 -f`**로 실행한다(기본 `ON_ERROR_STOP=off`면 (2)가 실패해도 다음
+문장이 이어진다 — 그때도 (3)이 버전 전진은 막는다). 그 전 CONCURRENTLY migration은 오프라인을 지원하지 않으므로(0015·0018·0021은
+명시적으로 거절, 0026은 연결을 읽는다) 오프라인 스크립트는 0026 뒤에서 시작하는 범위(`alembic upgrade 0026_transport_map_indexes:head
+--sql`)에만 쓴다. PostgreSQL 16·18에서 시험했다. 운영 배포는 지금처럼 온라인 migrate를 쓴다.
 회당 지역 요약 `fuel_region_summaries`는 그대로 지도용이며 이력 API로 노출하지 않는다([유가 통계](../fuel-statistics.md#장기-추이)).
 
 ## 핵심 테이블

@@ -563,15 +563,25 @@ test("전체는 auto 버킷으로 읽고 주 단위 평균의 뜻·기록 일수
 test("장기 추이 실패는 30일 통계를 지우지 않고 그 자리에서 알린다", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const get = vi.spyOn(journey, "transportGet").mockImplementation(async (path: string) => {
-    if (path.startsWith("transport/fuel/statistics/history")) throw new Error("network");
+    if (path.startsWith("transport/fuel/statistics/history")) {
+      if (failures-- > 0) throw new Error("network");
+      return { bucket: "day", from_day: "2026-11-26", to_day: "2026-11-26", label: "전국", generated_at: page.generated_at, points: [trendPoint("2026-11-26", 1700)] };
+    }
     return page;
   });
+  let failures = 1;
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   try {
     await act(async () => root.render(<FuelStatisticsPage />));
     await choosePeriod(container, "90");
     expect(container.querySelector(".fuel-long-trend [role=alert]")?.textContent).toBe("장기 추이를 불러오지 못했습니다.");
     expect(container.querySelector(".fuel-cheapest-tables")).not.toBeNull();
+    // 이 영역만 다시 읽는다(페이지 통계는 다시 요청하지 않는다).
+    const calls = get.mock.calls.length;
+    await act(async () => container.querySelector<HTMLButtonElement>(".fuel-long-trend-retry")!.click());
+    expect(get.mock.calls.slice(calls).map(([path]) => String(path).split("?")[0])).toEqual(["transport/fuel/statistics/history"]);
+    expect(container.querySelector(".fuel-long-trend [role=alert]")).toBeNull();
+    expect(container.querySelector('table[aria-label="최근 90일 유가 일별 관측값"]')).not.toBeNull();
   } finally { await act(async () => root.unmount()); container.remove(); get.mockRestore(); }
 });
 
@@ -597,7 +607,8 @@ test("1년·모든 유종 추이 표는 60행씩 쪽으로 나누고 표준 page
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const products = ["B027", "D047", "B034", "K015", "C004"];
   const days = Array.from({ length: 365 }, (_, i) => new Date(Date.UTC(2025, 10, 27 + i)).toISOString().slice(0, 10));
-  const points = days.flatMap(day => products.map(product_code => trendPoint(day, 1700, { product_code })));
+  // API 순서(유종 → 날짜 오름차순). 표는 최신 날짜부터(같은 날은 유종 순) 보인다.
+  const points = products.flatMap(product_code => days.map(day => trendPoint(day, 1700, { product_code })));
   const trend = { bucket: "day" as const, from_day: days[0], to_day: days.at(-1)!, label: "전국", generated_at: page.generated_at, points };
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   try {
@@ -607,17 +618,31 @@ test("1년·모든 유종 추이 표는 60행씩 쪽으로 나누고 표준 page
     const table = () => container.querySelector('table[aria-label^="최근 1년 유가 일별 관측값"]')!;
     expect(table().getAttribute("aria-label")).toBe(`최근 1년 유가 일별 관측값 1/${pages}쪽`);
     expect(table().querySelectorAll("tbody tr")).toHaveLength(TREND_TABLE_PAGE_SIZE);
-    expect(container.querySelector("summary")?.textContent).toBe("일별 가격 표 · 1,825행");
+    const firstRow = () => [...table().querySelectorAll("tbody tr")[0].querySelectorAll("td")].slice(0, 2).map(cell => cell.textContent);
+    expect(firstRow()).toEqual([days.at(-1), "휘발유"]);
+    expect([...table().querySelectorAll("tbody tr")].slice(0, 5).map(row => row.querySelectorAll("td")[1].textContent)).toEqual(["휘발유", "경유", "고급유", "LPG", "등유"]);
+    expect(container.querySelector("summary")?.textContent).toBe("일별 가격 표 · 1,825건");
+    // pager는 표 위, 가로 스크롤 영역(.fuel-stat-table) 밖이다.
+    expect(container.querySelector(".fuel-stat-table nav")).toBeNull();
+    expect(container.querySelector(".fuel-trend-table-pager")!.compareDocumentPosition(table()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const nav = container.querySelector('nav[aria-label="일별 가격 표 pagination"]')!;
     expect(nav.textContent).toContain(`페이지 1 / ${pages}`);
     expect(container.querySelector<HTMLButtonElement>('button[aria-label="일별 가격 표 이전 페이지"]')!.disabled).toBe(true);
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="일별 가격 표 다음 페이지"]')!.click());
     expect(table().getAttribute("aria-label")).toBe(`최근 1년 유가 일별 관측값 2/${pages}쪽`);
-    expect(container.querySelector(".fuel-trend-table-range")?.textContent).toBe(`일별 가격 표 2/${pages}쪽 · 전체 1,825행 중 61–120행`);
-    expect(table().textContent).toContain(points[TREND_TABLE_PAGE_SIZE].day);
-    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="일별 가격 표 마지막 페이지"]')!.click());
+    expect(container.querySelector(".fuel-trend-table-pager [role=status]")?.textContent).toBe(`일별 가격 표 2/${pages}쪽 · 61–120번째 / 총 1,825건`);
+    expect(firstRow()).toEqual([days.at(-13), "휘발유"]);
+    // 마지막 쪽으로 가면 누른 버튼이 disabled가 된다. 초점은 body로 떨어지지 않고 같은 pager의 첫 페이지 버튼으로 옮긴다.
+    const last = container.querySelector<HTMLButtonElement>('button[aria-label="일별 가격 표 마지막 페이지"]')!;
+    last.focus();
+    await act(async () => last.click());
     expect(table().querySelectorAll("tbody tr")).toHaveLength(points.length - (pages - 1) * TREND_TABLE_PAGE_SIZE);
+    expect(firstRow()[0]).toBe(days[4]);
     expect(container.querySelector<HTMLButtonElement>('button[aria-label="일별 가격 표 다음 페이지"]')!.disabled).toBe(true);
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("일별 가격 표 첫 페이지");
+    const first = document.activeElement as HTMLButtonElement;
+    await act(async () => first.click());
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("일별 가격 표 다음 페이지");
     // 새 응답(다른 기간·새로고침)은 첫 쪽부터 본다.
     await act(async () => root.render(<FuelLongTrend period="365" trend={{ ...trend, generated_at: "2026-11-27T00:17:00Z" }} />));
     expect(table().getAttribute("aria-label")).toBe(`최근 1년 유가 일별 관측값 1/${pages}쪽`);

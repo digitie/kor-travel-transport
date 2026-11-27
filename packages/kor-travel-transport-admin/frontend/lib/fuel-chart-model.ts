@@ -10,9 +10,13 @@ export function fuelChartTime(value: string | number) {
   const instant = typeof value === "number" ? value : fuelInstant(value);
   return Number.isFinite(instant) ? new Date(instant + 9 * 3600000).toISOString().slice(0, 16).replace("T", " ") : "시각 미제공";
 }
-/** 버킷 점의 기간·기록 일수(툴팁·키보드 안내). 예: `2026-01-05 → 2026-01-11 KST · 기록 7일`. */
+/** 버킷 점의 기간·기록 일수(툴팁·키보드 안내). 예: `2026-01-05 → 2026-01-11 KST · 기록 7일`.
+ * 일 단위 점에는 span을 주지 않는다(주면 `… KST · 기록 1일`·"마지막 기록일 수집"으로 바뀐다). 필드가 빠지거나 형식이 다르면
+ * null(차트는 예전처럼 날짜를 보인다) — 부분 응답이 formatter·렌더를 깨지 않게 한다. */
 export function fuelSpanText(span?: FuelChartSpan | null) {
-  if (!span) return null;
+  const day = /^\d{4}-\d{2}-\d{2}$/;
+  if (!span || typeof span.first_day !== "string" || typeof span.last_day !== "string" || !day.test(span.first_day)
+    || !day.test(span.last_day) || !Number.isInteger(span.day_count) || span.day_count < 1) return null;
   const range = span.first_day === span.last_day ? span.first_day : `${span.first_day} → ${span.last_day}`;
   return `${range} KST · 기록 ${span.day_count.toLocaleString("ko-KR")}일`;
 }

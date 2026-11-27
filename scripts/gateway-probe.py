@@ -55,11 +55,11 @@ NGINX_IMAGE = NGINX_TAG + "@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17
 EXPORT_CONN_LIMIT = 6
 FUEL_BFF_CONN_LIMIT = 16
 FUEL_DIRECT_CONN_LIMIT = 8
-# 장기 유가 추이 동시 상한(12307 BFF·직접 호출, 12301 listener 전체). template과 같은 값이어야 한다.
+# 장기 유가 추이 동시 상한(12307은 BFF·직접 호출 합계 한 key, 12301은 listener 전체). template·backend와 같은 값이어야 한다.
 HISTORY = "/v1/transport/fuel/statistics/history"
-FUEL_HISTORY_BFF_CONN_LIMIT = 8
-FUEL_HISTORY_DIRECT_CONN_LIMIT = 4
+FUEL_HISTORY_CONN_LIMIT = 4
 ADMIN_HISTORY_CONN_LIMIT = 4
+HISTORY_ETAG = 'W/"probe-history"'
 # 1년·모든 유종(약 1,825점) 비압축 약 0.42MB, 상한 5유종×400점 약 0.46MB.
 HISTORY_BODY = 470_000
 FUEL_MEMORY = "64m"
@@ -141,6 +141,13 @@ class Stub(BaseHTTPRequestHandler):
             headers["X-Limit-Applied"] = params["limit"]
             # backend CORS가 Expose를 보내게 바뀌어도 12307이 숨겨 한 줄만 나가는지 본다.
             headers["Access-Control-Expose-Headers"] = "X-Upstream-Only"
+        if parts.path == HISTORY and self.headers.get("If-None-Match") == HISTORY_ETAG:
+            # backend처럼 같은 ETag면 본문 없는 304(ETag·Cache-Control 포함)다.
+            self.send_response(304)
+            self.send_header("ETag", HISTORY_ETAG)
+            self.send_header("Cache-Control", "private, no-cache")
+            self.end_headers()
+            return
         if parts.path.endswith("/backend-busy") or params.get("status") == "503":
             status, headers["Retry-After"] = 503, "60"
         elif params.get("status") == "429":
@@ -388,10 +395,16 @@ def history_busy_ok(gw: Gateway, label: str, headers: dict, body: bytes, cors: b
           (headers, body[:300]))
 
 
-def check_history_cap(gw: Gateway, label: str, limit: int, source: str = BFF_ADDR, cors: bool = False) -> None:
-    """추이 동시 limit+1건 → 200 limit건·429 1건(gateway 거절)."""
+def check_history_cap(gw: Gateway, label: str, limit: int, sources: tuple[str, ...] = (BFF_ADDR,),
+                      cors: bool = False) -> None:
+    """추이 동시 limit+1건(주소를 번갈아) → 200 limit건·429 1건(gateway 거절). 주소가 여러 개여도 한 상한이다."""
     headers = [("Origin", FUEL_ORIGIN)] if cors else None
-    results = concurrent(gw.port, f"{HISTORY}?slow=1", limit + 1, headers, source)
+    with ThreadPoolExecutor(max_workers=limit + 1) as pool:
+        futures = []
+        for index in range(limit + 1):
+            futures.append(pool.submit(request, gw.port, f"{HISTORY}?slow=1", headers, "GET", sources[index % len(sources)]))
+            time.sleep(0.02)
+        results = [future.result() for future in futures]
     statuses = sorted(status for status, _, _ in results)
     check(f"{gw.name}: 추이 {label} 동시 {limit + 1}건 → 200 {limit}건·429 1건", statuses == [200] * limit + [429],
           statuses)
@@ -528,27 +541,59 @@ def probe_fuel(gw: Gateway) -> None:
     status, _, _ = request(gw.port, HISTORY, [("Origin", "https://evil.example"),
                                               ("Access-Control-Request-Method", "GET")], method="OPTIONS")
     check("fuel: 추이 다른 origin preflight 403", status == 403, status)
-    status, _, body = request(gw.port, HISTORY, method="HEAD")
-    check("fuel: 추이 HEAD 200(본문 없음)", status == 200 and body == b"", status)
+    before = RECORDER.count()
+    status, headers, _ = request(gw.port, HISTORY + "?scope=nationwide", method="HEAD")
+    check("fuel: 추이 HEAD 200 — upstream은 GET reader를 받는다(proxy_method GET, stub은 do_GET만 있다)",
+          status == 200 and RECORDER.count() == before + 1 and RECORDER.last()["path"] == HISTORY
+          and headers.get("content-type") == ["application/json"], (status, headers))
+    status, headers, body = request(gw.port, HISTORY, [("Origin", FUEL_ORIGIN), ("Accept-Encoding", "gzip"),
+                                                       ("If-None-Match", HISTORY_ETAG)])
+    exposed = (headers.get("access-control-expose-headers") or [""])[0]
+    check("fuel: 추이 If-None-Match 304는 gzip 요청에도 그대로 전달(ETag·CORS·Expose ETag, 본문 없음)",
+          status == 304 and headers.get("etag") == [HISTORY_ETAG] and body == b""
+          and headers.get("access-control-allow-origin") == [FUEL_ORIGIN] and "ETag" in exposed, (status, headers))
     check_history_body(gw, ("identity", "gzip"))
-    for label, source, limit in (("BFF(127.0.0.1)", BFF_ADDR, FUEL_HISTORY_BFF_CONN_LIMIT),
-                                 ("직접 호출(127.0.0.2)", DIRECT_ADDR, FUEL_HISTORY_DIRECT_CONN_LIMIT)):
-        check_history_cap(gw, label, limit, source, cors=True)
+    # BFF(127.0.0.1)와 직접 호출(127.0.0.2)을 섞어도 합계 한 상한이다(공개 BFF도 누구나 부를 수 있다).
+    check_history_cap(gw, "BFF·직접 호출 합계", FUEL_HISTORY_CONN_LIMIT, (BFF_ADDR, DIRECT_ADDR), cors=True)
     status, headers, body = request(gw.port, f"{HISTORY}?status=429", origin_history)
     check("fuel: backend 추이 429는 바꾸지 않고 전달(Retry-After 7, stub 본문, CORS)",
           status == 429 and headers.get("retry-after") == ["7"] and b'"stub": true' in body
           and headers.get("access-control-allow-origin") == [FUEL_ORIGIN], (status, headers))
-    with ThreadPoolExecutor(max_workers=FUEL_HISTORY_BFF_CONN_LIMIT + FUEL_HISTORY_DIRECT_CONN_LIMIT) as pool:
-        holders = [pool.submit(request, gw.port, f"{HISTORY}?slow=1", None, "GET", source)
-                   for source, count in ((BFF_ADDR, FUEL_HISTORY_BFF_CONN_LIMIT),
-                                         (DIRECT_ADDR, FUEL_HISTORY_DIRECT_CONN_LIMIT)) for _ in range(count)]
+    with ThreadPoolExecutor(max_workers=FUEL_HISTORY_CONN_LIMIT) as pool:
+        holders = [pool.submit(request, gw.port, f"{HISTORY}?slow=1", None, "GET", DIRECT_ADDR)
+                   for _ in range(FUEL_HISTORY_CONN_LIMIT)]
         time.sleep(1.0)
-        check("fuel: 추이 BFF 몫이 찬 동안 다음 BFF 추이 429", request(gw.port, HISTORY)[0] == 429)
-        check("fuel: 추이 두 몫이 찬 동안 BFF places 200", request(gw.port, places)[0] == 200)
-        check("fuel: 추이 두 몫이 찬 동안 직접 호출 places 200", request(gw.port, places, source=DIRECT_ADDR)[0] == 200)
-        check("fuel: 추이 두 몫이 찬 동안 statistics 200", request(gw.port, "/v1/transport/fuel/statistics")[0] == 200)
+        check("fuel: 직접 호출이 추이 상한을 채운 동안 BFF 추이도 429(합계 한 상한)", request(gw.port, HISTORY)[0] == 429)
+        check("fuel: 추이 상한이 찬 동안 BFF places 200", request(gw.port, places)[0] == 200)
+        check("fuel: 추이 상한이 찬 동안 직접 호출 places 200", request(gw.port, places, source=DIRECT_ADDR)[0] == 200)
+        check("fuel: 추이 상한이 찬 동안 statistics 200", request(gw.port, "/v1/transport/fuel/statistics")[0] == 200)
         held = [future.result()[0] for future in holders]
-    check("fuel: 추이 두 몫을 채운 연결 모두 200", held == [200] * len(held), held)
+    check("fuel: 추이 상한을 채운 연결 모두 200", held == [200] * len(held), held)
+
+    # 읽지 않는 직접 호출: 본문(3MB, gzip으로도 거의 줄지 않음)이 gateway 버퍼와 송신 socket 버퍼보다 커서 자리를 쥔다.
+    # send_timeout(10초) 뒤 끊겨 자리가 풀리고, 그동안 64MiB 안이다(실제 추이 본문은 0.46MB 이하라 보통은 곧바로 풀린다).
+    stalled = []
+    for _ in range(FUEL_HISTORY_CONN_LIMIT):
+        sock = socket.socket()
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+        sock.bind((DIRECT_ADDR, 0))
+        sock.connect(("127.0.0.1", gw.port))
+        sock.sendall(f"GET {HISTORY}?big=3000000 HTTP/1.1\r\nHost: probe\r\nAccept-Encoding: gzip\r\n\r\n".encode())
+        stalled.append(sock)
+    stalled_at = time.time()
+    time.sleep(1.5)
+    check(f"fuel: 읽지 않는 추이 {FUEL_HISTORY_CONN_LIMIT}건이 상한을 채움 → 다음 추이 429", request(gw.port, HISTORY)[0] == 429)
+    check("fuel: 읽지 않는 추이 연결이 있어도 places 200", request(gw.port, places)[0] == 200)
+    print(f"INFO fuel: 읽지 않는 추이 {FUEL_HISTORY_CONN_LIMIT}건 동안 memory {gw.memory_now()}", flush=True)
+    freed = None
+    while time.time() - stalled_at < 25:
+        if request(gw.port, HISTORY)[0] == 200:
+            freed = time.time() - stalled_at
+            break
+        time.sleep(0.5)
+    check("fuel: 읽지 않는 추이 연결은 send_timeout(10초) 뒤 끊겨 자리가 풀림(8~16초)", freed is not None and 8 <= freed <= 16, freed)
+    for sock in stalled:
+        sock.close()
     check_history_log(gw, 3)
 
     origin = [("Origin", FUEL_ORIGIN)]

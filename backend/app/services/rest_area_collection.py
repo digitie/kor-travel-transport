@@ -12,10 +12,11 @@
 
 from __future__ import annotations
 
-from app.services.fuel_statistics import cleanup_fuel_statistics, try_publish_fuel_statistics
+from app.services.fuel_statistics import STATISTICS_PRICE_LIMIT, cleanup_fuel_statistics, try_publish_fuel_statistics
 
 import asyncio
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -37,6 +38,8 @@ from app.services.transport_collection import (
     _plain_json,
     get_or_create_state,
 )
+
+logger = logging.getLogger(__name__)
 
 REST_AREA_SOURCE = "krex_rest_area"
 REST_AREA_FUEL_SOURCE = "krex_rest_area_fuel"
@@ -209,6 +212,21 @@ class RestAreaCollectionService:
     ) -> int:
         stored = 0
         seen: set[str] = set()
+        rejected = 0
+
+        def price(code: str, product: str, value: Any) -> int | None:
+            # 저장 경계 검사(공급자 파싱은 krex 몫, ADR-004): INTEGER 열·통계 NUMERIC(10,2) 밖이거나 0 이하인 값은
+            # 미제공(null)으로 둔다. 1억 이상이 한 건이라도 오면 예전에는 수집(INTEGER 2^31 초과) 또는 통계 공개
+            # (NUMERIC(10,2) 1억 이상) transaction 전체가 실패했다. 원문은 raw_item_json에 남는다.
+            nonlocal rejected
+            if value is None:
+                return None
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 < value < STATISTICS_PRICE_LIMIT:
+                rejected += 1
+                if rejected == 1:
+                    logger.warning("rest_area_fuel_price_out_of_range station_key=%s product=%s", code, product)
+                return None
+            return value
         for item in items:
             code = (item.service_area_code or "").strip()
             if not code or code in seen:
@@ -224,9 +242,9 @@ class RestAreaCollectionService:
                 "has_lpg": item.has_lpg,
                 "phone_number": item.phone_number,
                 "address": item.address,
-                "gasoline_price": item.gasoline_price,
-                "diesel_price": item.diesel_price,
-                "lpg_price": item.lpg_price,
+                "gasoline_price": price(code, "B027", item.gasoline_price),
+                "diesel_price": price(code, "D047", item.diesel_price),
+                "lpg_price": price(code, "K015", item.lpg_price),
                 "last_seen_at": collected_at,
                 "raw_item_json": _plain_json(dict(item.raw)),
             }
@@ -241,5 +259,7 @@ class RestAreaCollectionService:
                 for key, value in values.items():
                     setattr(row, key, value)
             stored += 1
+        if rejected:
+            logger.warning("rest_area_fuel_prices_out_of_range count=%d limit=%d", rejected, STATISTICS_PRICE_LIMIT)
         await session.flush()
         return stored

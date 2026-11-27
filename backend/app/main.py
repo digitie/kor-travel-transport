@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.services.fuel_regions import regional_fuel_prices
 
 from app.services.fuel_statistics import (
-    FuelHistoryRequestError, fuel_statistics_history, fuel_statistics_page, viewport_fuel_statistics,
+    FUEL_HISTORY_MAX_RUNNING, FUEL_HISTORY_RETRY_AFTER_SECONDS, FuelHistoryRequestError, fuel_statistics_history, fuel_statistics_page, viewport_fuel_statistics,
     with_publication_status,
 )
 
@@ -723,6 +723,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     # 대량 marker JSON 변환은 두 건만 병행하고 event loop를 직접 막지 않는다.
     app.state.fuel_map_limiter = CapacityLimiter(2)
+    # 장기 유가 추이 동시 실행 수(PR #302). 기다리지 않고 넘치면 429 + Retry-After 2다. gateway(12301·12307) 상한과 같은 값이며
+    # gateway를 지나지 않는 관리 BFF·공개 BFF가 한꺼번에 불러도 DB 풀을 이 경로가 다 쓰지 않는다.
+    app.state.fuel_history_running = 0
     @app.exception_handler(HTTPException)
     async def problem_json_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
         # RFC 7807 (ADR-005): every error response uses the same shape,
@@ -1485,7 +1488,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await fuel_statistics_page(session, scope, product_code, scope_key, include_history)
 
     @router.get("/transport/fuel/statistics/history", response_model=FuelStatisticsTrendResponse,
-                responses={304: {"description": "If-None-Match와 같은 ETag"}, 422: {}})
+                responses={304: {"description": "If-None-Match와 같은 ETag"}, 422: {},
+                           429: {"description": "동시 조회 상한(4)을 넘었다. Retry-After 2초 뒤 다시 요청"}})
     async def transport_fuel_statistics_history(
         request: Request,
         scope: str = Query(default="nationwide", pattern="^(nationwide|sido|sigungu|highways|highway|highway_direction)$"),
@@ -1506,10 +1510,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         공개 통계 세대보다 새 날짜는 내지 않는다. 응답은 weak ETag와 `Cache-Control: private, no-cache`를 붙이고
         If-None-Match가 같으면 304다(공개 유가·관리 BFF는 no-store로 다시 쓰므로 304는 gateway 직접 호출에만 해당한다).
         """
+        if request.app.state.fuel_history_running >= FUEL_HISTORY_MAX_RUNNING:
+            raise HTTPException(429, "유가 추이 조회가 혼잡합니다. 잠시 후 다시 시도하세요.",
+                                headers={"Retry-After": str(FUEL_HISTORY_RETRY_AFTER_SECONDS)})
+        request.app.state.fuel_history_running += 1
         try:
             result = await fuel_statistics_history(session, scope, scope_key, product_code, from_day, to_day, bucket)
         except FuelHistoryRequestError as exc:
             raise HTTPException(422, str(exc)) from None
+        finally:
+            request.app.state.fuel_history_running -= 1
         await session.rollback()
         payload = FuelStatisticsTrendResponse.model_validate(result).model_dump(mode="json")
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()

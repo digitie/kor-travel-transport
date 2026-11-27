@@ -131,15 +131,17 @@ def test_gateway_requires_consumer_allowlist_for_service_exports() -> None:
     gateway = (_GATEWAY_ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text(encoding="utf-8")
     # 운영 소비자 전용 경로만 예외이며, 공개 프록시는 계속 service 경로를 전달하지 않는다.
     locations = re.findall(r"^    location (.+?) \{", gateway, re.MULTILINE)
-    assert len(locations) == 8
+    assert len(locations) == 10
     assert locations[0] == "= /health"
     # 공개 장소 조회는 limit 상한을 고정하는 정확 일치 location이 정규식보다 먼저 선택된다.
     assert locations[1] == "= /v1/transport/features/places"
     assert locations[2].startswith("~ ^/v1/transport/")
     assert locations[2].endswith("$")
-    assert locations[3] == "~ ^/v1/transport/rail/general/(catalog|stations|timetable|guide)$"
+    # 장기 유가 추이는 동시 상한이 있는 정확 일치 location과 그 거절 전용 named location이다.
+    assert locations[3:5] == ["= /v1/transport/fuel/statistics/history", "@transport_fuel_history_busy"]
+    assert locations[5] == "~ ^/v1/transport/rail/general/(catalog|stations|timetable|guide)$"
     # @transport_export_busy는 export limit_conn 거절 전용 named location(외부 URI로 선택되지 않는다).
-    assert locations[4:] == ["^~ /v1/service/exports/", "@transport_export_busy", "= /mcp", "/"]
+    assert locations[6:] == ["^~ /v1/service/exports/", "@transport_export_busy", "= /mcp", "/"]
     export = gateway.split("    location ^~ /v1/service/exports/ {", 1)[1].split("\n    }", 1)[0]
     assert "include /etc/nginx/transport-export-allow.conf;" in export
     assert "limit_except GET { deny all; }" in export

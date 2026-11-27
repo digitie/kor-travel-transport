@@ -88,3 +88,46 @@ def test_rest_area_collection_is_disabled_without_explicit_setting(tmp_path: Pat
         await engine.dispose()
 
     asyncio.run(run())
+
+
+def test_rest_area_fuel_prices_outside_storable_range_are_stored_as_missing(tmp_path: Path, caplog) -> None:
+    """저장 경계 검사(PR #302): INTEGER·통계 NUMERIC(10,2) 밖이거나 0 이하인 휴게소 가격은 미제공(null)으로 둔다.
+
+    예전에는 2^31 이상이면 수집 transaction이, 1억 이상이면 통계 공개 transaction이 실패했다."""
+    from datetime import datetime, timezone
+
+    from app.models import RestAreaFuelPrice
+    from app.services.fuel_statistics import STATISTICS_PRICE_LIMIT
+
+    settings = _settings(tmp_path)
+    engine, session_factory = create_engine_and_session_factory(settings.database_url)
+    stamp = datetime(2026, 11, 27, 3, tzinfo=timezone.utc)
+
+    def item(code: str, gasoline, diesel, lpg):
+        return SimpleNamespace(service_area_code=code, service_area_code2=None, service_area_name=code, route_code="0010",
+            route_name="경부선", direction="상행", oil_company=None, has_lpg=lpg is not None, phone_number=None, address=None,
+            gasoline_price=gasoline, diesel_price=diesel, lpg_price=lpg, raw={"code": code, "gasoline": gasoline})
+
+    async def run() -> None:
+        await init_database(engine)
+        service = RestAreaCollectionService(settings)
+        async with session_factory() as session:
+            stored = await service._store_fuel_prices(session, (
+                item("A", 1700, STATISTICS_PRICE_LIMIT - 1, None),
+                item("B", STATISTICS_PRICE_LIMIT, 2**31, 0),
+                item("C", -5, True, 1100),
+            ), stamp)
+            await session.commit()
+            rows = {row.service_area_code: (row.gasoline_price, row.diesel_price, row.lpg_price, row.raw_item_json["gasoline"])
+                    for row in await session.scalars(select(RestAreaFuelPrice))}
+        assert stored == 3
+        assert rows == {"A": (1700, STATISTICS_PRICE_LIMIT - 1, None, 1700),
+                        "B": (None, None, None, STATISTICS_PRICE_LIMIT),
+                        "C": (None, None, 1100, -5)}
+        await engine.dispose()
+
+    with caplog.at_level("WARNING", logger="app.services.rest_area_collection"):
+        asyncio.run(run())
+    messages = [record.getMessage() for record in caplog.records]
+    assert sum("rest_area_fuel_price_out_of_range" in message for message in messages) == 1
+    assert any("rest_area_fuel_prices_out_of_range count=5" in message for message in messages)

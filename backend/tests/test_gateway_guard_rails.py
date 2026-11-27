@@ -263,16 +263,23 @@ def _per_request(block: str) -> int:
 
 
 def test_public_fuel_history_has_its_own_concurrency_cap_on_both_gateways():
-    """장기 유가 추이(PR #300 Popper#10): 두 공개 gateway 모두 동시 상한·429 problem+json·버퍼 상한을 둔다."""
-    # 12307: places와 같은 BFF·직접 호출 key, 다른 zone.
+    """장기 유가 추이(PR #300 Popper#10): 두 공개 gateway 모두 동시 상한·429 problem+json·버퍼 상한을 둔다.
+
+    12307은 BFF·직접 호출을 한 key로 센다(공개 BFF도 누구나 부를 수 있어 둘로 나누면 외부 호출자가 두 몫을 다 쓴다, PR #302).
+    상한은 backend 동시 실행 상한과 같다."""
+    from app.services.fuel_statistics import FUEL_HISTORY_MAX_RUNNING, FUEL_HISTORY_RETRY_AFTER_SECONDS
+
     fuel = _text(FUEL)
     block = _block(fuel, f"    location = {HISTORY}")
-    assert "limit_conn_zone $fuel_places_bff_slot zone=fuel_history_bff:1m;" in fuel
-    assert "limit_conn_zone $fuel_places_direct_slot zone=fuel_history_direct:1m;" in fuel
-    bff = int(re.search(r"limit_conn fuel_history_bff (\d+);", block).group(1))
-    direct = int(re.search(r"limit_conn fuel_history_direct (\d+);", block).group(1))
+    slot = fuel.split("map $server_port $fuel_history_slot {", 1)[1].split("\n}", 1)[0]
+    assert slot.strip() == "default history;"
+    assert "limit_conn_zone $fuel_history_slot zone=fuel_history:1m;" in fuel
+    limit = int(re.search(r"limit_conn fuel_history (\d+);", block).group(1))
+    assert len(re.findall(r"limit_conn fuel_history", block)) == 1
+    assert limit == FUEL_HISTORY_MAX_RUNNING
     assert "fuel_places" not in block  # 지도 몫을 쓰지 않는다.
     for directive in ("proxy_max_temp_file_size 0;", "send_timeout 10s;", "limit_conn_status 429;",
+                      "keepalive_timeout 5s;", "reset_timedout_connection on;",
                       "limit_conn_log_level warn;", "error_page 429 = @fuel_history_busy;",
                       "if ($fuel_preflight = 2) { return 403; }", "if ($fuel_preflight = 1) { return 204; }",
                       "proxy_pass http://127.0.0.1:12302;"):
@@ -285,12 +292,13 @@ def test_public_fuel_history_has_its_own_concurrency_cap_on_both_gateways():
     places_gzipped = places_identity + (1 << 17) + (1 << 17) + 8 * 1024 + 32 * 4 * 1024
     places_total = (int(re.search(r"limit_conn fuel_places_bff (\d+);", places).group(1)) * places_identity
                     + int(re.search(r"limit_conn fuel_places_direct (\d+);", places).group(1)) * places_gzipped)
-    history_total = bff * identity + direct * gzipped
-    # places 두 몫과 추이 두 몫을 모두 채워도 64MiB fuel gateway의 1/3 이하다.
+    # 추이는 최악(모두 gzip 직접 호출)에 송신 socket 버퍼(sndbuf 256k → 커널 약 512KiB)까지 더해 센다.
+    history_total = limit * (gzipped + 512 * 1024)
+    assert identity < gzipped
+    # places 두 몫과 추이 몫을 모두 채워도 64MiB fuel gateway의 1/3 이하다.
     assert places_total + history_total <= 64 * 1024 * 1024 // 3
-    assert bff > direct > 0
     busy = _block(fuel, "    location @fuel_history_busy")
-    assert "add_header Retry-After 2 always;" in busy and "default_type application/problem+json;" in busy
+    assert f"add_header Retry-After {FUEL_HISTORY_RETRY_AFTER_SECONDS} always;" in busy and "default_type application/problem+json;" in busy
     problem = _returned_json(busy, 429)
     assert set(problem) == {"type", "title", "status", "detail", "instance"}
     assert problem["status"] == 429 and problem["instance"] == HISTORY and re.search(r"[가-힣]", problem["detail"])
@@ -303,13 +311,17 @@ def test_public_fuel_history_has_its_own_concurrency_cap_on_both_gateways():
     # 12301: 직접 호출뿐이라 listener 전체 한 key. 다른 공개 읽기 location과 같은 header·timeout.
     admin = _text(ADMIN)
     block = _block(admin, f"    location = {HISTORY}")
-    assert "limit_conn_zone $transport_export_slot zone=transport_fuel_history:1m;" in admin
+    # export map과 다른 변수다(한쪽 key를 바꿔도 다른 상한이 바뀌지 않는다).
+    slot = admin.split("map $server_port $transport_fuel_history_slot {", 1)[1].split("\n}", 1)[0]
+    assert slot.strip() == "default history;"
+    assert "limit_conn_zone $transport_fuel_history_slot zone=transport_fuel_history:1m;" in admin
     limit = int(re.search(r"limit_conn transport_fuel_history (\d+);", block).group(1))
-    assert 0 < limit and limit * (_per_request(block) + 4 * 1024) <= 2 * 1024 * 1024
+    assert limit == FUEL_HISTORY_MAX_RUNNING and limit * (_per_request(block) + 4 * 1024 + 512 * 1024) <= 4 * 1024 * 1024
     for directive in ("limit_except GET { deny all; }", "proxy_pass http://127.0.0.1:12302;",
                       "proxy_hide_header Server-Timing;", "proxy_set_header Host 127.0.0.1;",
                       "proxy_set_header X-Transport-Listener public;", "proxy_read_timeout 30s;",
                       "proxy_max_temp_file_size 0;", "send_timeout 10s;", "limit_conn_status 429;",
+                      "keepalive_timeout 5s;", "reset_timedout_connection on;",
                       "limit_conn_log_level warn;", "error_page 429 = @transport_fuel_history_busy;"):
         assert directive in block, directive
     assert "transport_export " not in block  # export 몫을 쓰지 않는다.
