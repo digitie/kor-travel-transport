@@ -14589,6 +14589,16 @@
             },
             "description": "Successful Response"
           },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
           "422": {
             "content": {
               "application/problem+json": {
@@ -14608,6 +14618,25 @@
               }
             },
             "description": "애플리케이션 오류"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다",
+            "headers": {
+              "Retry-After": {
+                "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Export Rest Area Food",

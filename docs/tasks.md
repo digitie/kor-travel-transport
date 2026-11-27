@@ -2,6 +2,7 @@
 
 - [ ] **REST-AREA-FOOD-DEPLOY / P1** — odroid 배포(migration `0051`) 뒤 `rest_area_food_collection_job`을 한 번 수동 실행하고
   `GET /v1/service/exports/rest-area-food`가 200·표준 코드 약 585행·메뉴 약 7,291행인지 확인. Map 소비 PR 머지·배포는 그다음이다.
+  그 뒤에만 `app/deploy/export_smoke.py` T1_ROUTES에 `/rest-area-food`를 넣는다(첫 성공 전에는 EXPORT_NO_HISTORY 503으로 smoke가 실패).
 
 ## 2026-11-26 — 유가 통계 장기 추이(FUEL-HISTORY-20261126)
 
