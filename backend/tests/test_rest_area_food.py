@@ -234,3 +234,16 @@ def test_a_shrunk_food_set_fails_and_keeps_the_last_set(export_client: TestClien
     fake.menus = menus[:48]  # 80%는 받는다
     _run(export_client, service.collect_food)
     assert len(export_client.get(PATH, headers=HEADERS).json()["items"][0]["menus"]) == 48
+
+
+def test_the_shrink_guard_releases_after_36_hours(export_client: TestClient) -> None:
+    """원천이 정당하게 줄면 하루 실패한 뒤 다음날 받는다 — 3일 stale(503)로 굳지 않는다."""
+    menus = [_menu("000001", str(seq), f"메뉴{seq}", 1000) for seq in range(1, 61)]
+    fake = FakeKrex([_code("000001", "서울만남(부산)휴게소")], menus)
+    service = _service(export_client, fake)
+    _run(export_client, service.collect_food)
+    _run(export_client, lambda session: _set_state(
+        session, REST_AREA_FOOD_SOURCE, last_success_at=now_utc() - timedelta(hours=37)))
+    fake.menus = menus[:20]
+    _run(export_client, service.collect_food)
+    assert len(export_client.get(PATH, headers=HEADERS).json()["items"][0]["menus"]) == 20

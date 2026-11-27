@@ -18,6 +18,7 @@ from __future__ import annotations
 from app.services.fuel_statistics import STATISTICS_PRICE_LIMIT, cleanup_fuel_statistics, try_publish_fuel_statistics
 
 import asyncio
+from datetime import timedelta
 import json
 import logging
 from collections.abc import Awaitable, Callable
@@ -29,7 +30,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.time_utils import now_utc
+from app.core.time_utils import now_utc, serialize_utc
 from app.models import (
     CollectionRun,
     RawApiResponse,
@@ -63,6 +64,9 @@ FOOD_MAX_INVALID_RATIO = 0.01
 FOOD_MIN_KEEP_RATIO = {"codes": 0.9, "menus": 0.8}
 #: 직전 집합이 이보다 작으면 비율 하한을 보지 않는다(운영은 코드 약 585·메뉴 약 7,300행).
 FOOD_KEEP_RATIO_BASELINE = 50
+#: 마지막 성공이 이보다 오래면 비율 하한을 보지 않는다 — 원천이 정당하게 크게 줄었을 때 매일 실패로 굳지 않고
+#: 다음날(약 48시간 뒤) 수집이 새 집합을 받는다. export stale(3일)보다 먼저 풀린다.
+FOOD_KEEP_RATIO_MAX_AGE = timedelta(hours=36)
 _FACILITY_CLASSES = {"0": "rest_area", "1": "gas_station"}
 _DIRECTIONS = {"0": "up", "1": "down"}
 _SEASONS = {"4": "all_year", "S": "summer", "W": "winter"}
@@ -176,7 +180,7 @@ class RestAreaCollectionService:
             return {"status": "skipped", "reason": "KEX_EX_API_KEY is required"}
 
         async def fetch(client: KrexClient) -> tuple[Any, ...]:
-            # 0615는 페이지 인자를 무시하고 전체를 한 번에 준다.
+            # 0615는 페이지 인자를 무시하고 전체를 한 번에 준다. `count`가 없는 응답은 완결을 알 수 없어 실패다(의도).
             codes, invalid_codes = await _collect_food_pages(
                 lambda page_no: client.restarea.service_area_codes(),
                 "python-krex-api:restarea.service_area_codes", max_pages=1,
@@ -445,6 +449,9 @@ class RestAreaCollectionService:
         if state.last_success_at is None:
             return
         seen_from = state.last_success_at
+        if now_utc() - serialize_utc(seen_from) > FOOD_KEEP_RATIO_MAX_AGE:
+            logger.warning("rest_area_food_shrink_guard_released last_success_at=%s", seen_from)
+            return
         previous = {
             "codes": await session.scalar(select(func.count()).select_from(RestAreaCode).where(
                 RestAreaCode.source == REST_AREA_FOOD_SOURCE, RestAreaCode.last_seen_at >= seen_from)) or 0,
