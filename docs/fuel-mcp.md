@@ -112,6 +112,14 @@ DB에서 bbox로 후보를 제한하고 대권 직선거리로 반경을 판정�
 | C004 | 등유 | 원/L |
 | K015 | LPG | 원/L |
 
+## MCP Apps 지도·목록 UI
+
+`render_fuel_widget`은 query 없이 위치 동의 화면부터 열거나 주어진 좌표로 주변 유가 지도·목록을 연다. 위치가 없으면 `reason=location_required`·빈 결과를 반환하고 DB/제공자를 호출하지 않는다. `ui://transport-fuel/v1.html`은 같은 서비스 인증 경로의 MCP 리소스다. 브라우저에 서비스 토큰이나 지도 키를 넘기지 않는다.
+
+`list_nearby_fuel_stations`는 같은 좌표·반경·유종과 `sort_by=price|distance`, 기본/최대20의 `limit_per_product`를 받는다. `ranked_stations`, `ranking_truncated`를 추가하지만 평균·최저·동률 수는 전체 반경 모집단이다. 기존 두 데이터 도구의 의미는 바꾸지 않는다.
+
+앱 전용 `query_fuel_widget`은 같은 조회를 수행하며 위젯을 다시 마운트하지 않는다. 렌더링 도구에만 UI URI를 연결한다. [빌드·상태·지도·기존 개인 중계 호환](reports/2026-11-28-fuel-mcp-app-ui.md).
+
 ## 성공 세대·미제공 의미
 
 반경은 `FuelStatisticsState`가 가리키는 완결된 `FuelStatisticsPoint` 세대를,
