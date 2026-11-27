@@ -7,7 +7,7 @@ const fixture = vi.hoisted(() => ({ ready: new Set<string>(), get: vi.fn(), layo
 vi.mock("maplibre-gl", () => ({ setWorkerUrl: vi.fn() }));
 vi.mock("vworld-map-web", () => ({ VWorldMapView: ({ children }: { children: ReactNode }) => <div>{children}</div>, ClusterLayer: () => null }));
 vi.mock("./map-overlays", () => ({
-  CameraRequest: () => null, ClusterBubble: () => null, MapUnavailable: () => null,
+  MAP_LIST_HINT: " · 목록 보기", CameraRequest: () => null, ClusterBubble: () => null, MapUnavailable: () => null,
   MarkerBadge: () => null, OverlapPopup: () => null, ZoomButtons: () => null,
   useVWorldBasemapHealth: () => ({ basemapFailed: false }),
   // A retained native marker host can exist before/after its React portal children.

@@ -9,21 +9,27 @@ import { publicFuelGet } from "@/lib/public-fuel";
 const toastCalls = vi.hoisted(() => ({ success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() }));
 vi.mock("sonner", () => ({ toast: toastCalls }));
 
-const mapState = vi.hoisted(() => ({ longitude: 128.53, latitude: 37.6, zoom: 12.5 }));
+const mapState = vi.hoisted(() => ({ longitude: 128.53, latitude: 37.6, zoom: 12.5, unavailable: false }));
 vi.mock("maplibre-gl", () => ({ setWorkerUrl: vi.fn() }));
 vi.mock("vworld-map-web", async () => {
   const React = await import("react");
   return {
-    VWorldMapView: ({ children, onLoad, onMoveEnd, center, zoom }: { children: React.ReactNode; onLoad: (map: unknown) => void; onMoveEnd: (event: unknown) => void; center: number[]; zoom: number }) => {
+    VWorldMapView: ({ children, onLoad, onMoveEnd, center, zoom, fallback }: { children: React.ReactNode; onLoad: (map: unknown) => void; onMoveEnd: (event: unknown) => void; center: number[]; zoom: number; fallback?: (info: unknown) => React.ReactNode }) => {
       const map = React.useMemo(() => ({ getBounds: () => ({ getWest: () => 124, getSouth: () => 32, getEast: () => 132, getNorth: () => 39 }), getZoom: () => mapState.zoom, getCenter: () => ({ lng: mapState.longitude, lat: mapState.latitude }) }), []);
-      React.useEffect(() => { onLoad(map); }, [map, onLoad]);
+      const unavailable = mapState.unavailable && fallback;
+      React.useEffect(() => { if (!unavailable) onLoad(map); }, [map, onLoad, unavailable]);
+      if (unavailable) return <>{fallback({ reason: "missing-api-key" })}</>;
       return <div data-testid="fixture-map" data-center={center.join(",")} data-zoom={zoom}><button onClick={() => onMoveEnd({ target: map })}>지도 이동 모의</button>{children}</div>;
     },
     ClusterLayer: ({ points, renderMarker }: { points: { id: string }[]; renderMarker: (point: unknown) => React.ReactNode }) => <>{points.map((point) => <React.Fragment key={point.id}>{renderMarker(point)}</React.Fragment>)}</>,
   };
 });
+const basemapHealth = vi.hoisted(() => ({ value: {} as { basemapFailed?: boolean } }));
 vi.mock("./map-overlays", () => ({
-  vworldApiKey: () => undefined, useVWorldBasemapHealth: () => ({}), ZoomButtons: () => null, CameraRequest: ({ target }: { target?: unknown }) => <span data-camera-request={JSON.stringify(target)} />, MarkerBadge: () => null, ClusterBubble: () => null, MapUnavailable: () => null, OverlapPopup: () => null,
+  MAP_LIST_HINT: " · 목록 보기", vworldApiKey: () => undefined, useVWorldBasemapHealth: () => basemapHealth.value, ZoomButtons: () => null, CameraRequest: ({ target }: { target?: unknown }) => <span data-camera-request={JSON.stringify(target)} />, MarkerBadge: () => null, ClusterBubble: () => null, MapUnavailable: ({ onMessage }: { onMessage?: (message: string | null) => void }) => {
+    useEffect(() => { onMessage?.("지도 키 없음 · 목록 보기"); return () => onMessage?.(null); }, [onMessage]);
+    return null;
+  }, OverlapPopup: () => null,
   MapMarkerButton: ({ ariaLabel, onClick, children, className }: { ariaLabel: string; onClick: () => void; children: React.ReactNode; className?: string }) => <button className={className} aria-label={ariaLabel} onClick={onClick}>{children}</button>,
 }));
 vi.mock("./filter-combobox", () => ({ FilterCombobox: ({ options, value, onChange, placeholder }: { options: {value:string;label:string}[]; value:string[]; onChange:(value:string[])=>void; placeholder:string }) => <select aria-label={placeholder} value={value[0] ?? ""} onChange={event=>onChange(event.target.value ? [event.target.value] : [])}><option value="">전체</option>{options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select> }));
@@ -753,4 +759,41 @@ test("재조회 뒤에도 실패하면 '다시 조회 중…'을 지우고 실�
     expect(visibleAlerts(host)).toHaveLength(1);
     expect(visibleAlerts(host)[0]).toContain("혼잡합니다");
   });
+});
+
+test("목록 보기가 없는 공개 유가 지도는 타일 오류 알림에서 '목록 보기'로 안내하지 않는다(관리 지도는 그대로)", async () => {
+  basemapHealth.value = { basemapFailed: true };
+  vi.mocked(fetch).mockImplementation(async () => Response.json({ items: [], total: 0, truncated: false, clustered: false, clusters: [] }));
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<TransportMap mode="fuel" mapOnly publicFuel={{ products: [], onProductsChange: vi.fn() }} />));
+    const alerts = () => [...host.querySelectorAll('[role="alert"]')].map(node => node.textContent);
+    expect(alerts()).toContain("지도 타일 오류");
+    expect(alerts().join(" ")).not.toContain("목록 보기");
+    await act(async () => root.render(<TransportMap mode="fuel" />));
+    expect(alerts()).toContain("지도 타일 오류 · 목록 보기");
+  } finally {
+    basemapHealth.value = {};
+    await act(async () => root.unmount()); host.remove();
+  }
+});
+
+test("목록 보기가 없는 공개 유가 지도는 지도 키 없음 안내에서도 '목록 보기'를 떼고, 관리 지도는 그대로 둔다", async () => {
+  mapState.unavailable = true;
+  vi.mocked(fetch).mockImplementation(async () => Response.json({ items: [], total: 0, truncated: false, clustered: false, clusters: [] }));
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    const alerts = () => [...host.querySelectorAll('[role="alert"]')].map(node => node.textContent);
+    await act(async () => root.render(<TransportMap mode="fuel" mapOnly publicFuel={{ products: [], onProductsChange: vi.fn() }} />));
+    expect(alerts()).toContain("지도 키 없음");
+    expect(alerts().join(" ")).not.toContain("목록 보기");
+    await act(async () => root.unmount());
+    const admin = createRoot(host);
+    await act(async () => admin.render(<TransportMap mode="fuel" />));
+    expect(alerts()).toContain("지도 키 없음 · 목록 보기");
+    await act(async () => admin.unmount());
+  } finally {
+    mapState.unavailable = false;
+    host.remove();
+  }
 });

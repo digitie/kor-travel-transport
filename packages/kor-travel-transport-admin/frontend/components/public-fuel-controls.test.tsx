@@ -184,3 +184,39 @@ test("관리 화면 범위 요약에는 지역·유종·필터 선택이 없고,
   // 지역 아이콘이 유종·필터보다 앞(맨 위 줄 첫 칸)에 온다.
   expect(markup.indexOf("public-fuel-region-button")).toBeLessThan(markup.indexOf("public-fuel-filter-trigger"));
 });
+
+test("통계 링크로 연 유종은 트리거에 '통계'로 표시하고, 팝오버가 저장 안내와 '저장한 유종으로 보기'를 보인다", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  const onUseSaved = vi.fn(); const onProductsChange = vi.fn();
+  const { container } = await mount(<PublicFuelFilterMenu products={["K015"]} onProductsChange={onProductsChange}
+    linked={{ code: "K015", saved: ["B027", "D047"], canSave: true, onUseSaved }} />);
+  const trigger = container.querySelector<HTMLButtonElement>(".public-fuel-filter-trigger")!;
+  expect(trigger.getAttribute("aria-label")).toBe("유종·필터: LPG (통계 화면에서 연 유종)");
+  expect(trigger.querySelector(".public-fuel-filter-linked-mark")?.textContent).toBe("통계");
+  await act(async () => trigger.click());
+  const menu = document.querySelector('[role="dialog"]')!;
+  expect(menu.textContent).toContain("통계 화면에서 고른 LPG로 열었습니다. 저장한 유종(휘발유, 경유)은 그대로이며");
+  expect(menu.textContent).toContain("유종을 바꾸면 그 선택을 저장합니다");
+  // 안내는 대화상자 설명으로 읽히고, 첫 초점은 안내 단추가 아니라 첫 유종 선택이다.
+  const note = document.getElementById(menu.getAttribute("aria-describedby")!);
+  expect(note?.textContent).toContain("통계 화면에서 고른 LPG로 열었습니다");
+  expect(document.activeElement).toBe(labelInput("전체 유종"));
+  await act(async () => button("저장한 유종으로 보기").click());
+  expect(onUseSaved).toHaveBeenCalledOnce();
+  expect(onProductsChange).not.toHaveBeenCalled();
+  // 누른 단추가 사라지므로 팝오버를 닫아 초점을 트리거로 돌린다.
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+});
+
+test.each([
+  [{ saved: null, canSave: true }, "통계 화면에서 고른 경유로 열었습니다. 아래에서 유종을 고르면 그 선택을 이 브라우저에 저장합니다.", "전체 유종 보기"],
+  [{ saved: ["B027"], canSave: false }, "통계 화면에서 고른 경유로 열었습니다. 이 브라우저는 유종 선택을 저장할 수 없어, 아래에서 바꾸면 이번 화면에서만 바뀝니다.", "저장한 유종으로 보기"],
+] as const)("링크 유종 안내는 저장한 적 없음·저장 불가를 사실대로 말한다 %#", async (state, text, action) => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  const { container } = await mount(<PublicFuelFilterMenu products={["D047"]} onProductsChange={vi.fn()}
+    linked={{ code: "D047", saved: state.saved === null ? null : [...state.saved], canSave: state.canSave, onUseSaved: vi.fn() }} />);
+  await act(async () => container.querySelector<HTMLButtonElement>(".public-fuel-filter-trigger")!.click());
+  const menu = document.querySelector('[role="dialog"]')!;
+  expect(menu.querySelector(".fuel-filter-linked p")?.textContent).toBe(text);
+  expect(button(action)).toBeTruthy();
+});

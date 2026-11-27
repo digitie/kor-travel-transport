@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Request, type Route } from "@playwright/test";
+import { isolatePublicFuel } from "./public-fuel-isolation";
 
 // 공개 유가(TRANSPORT_UI_MODE=fuel) 맨 위 줄(지역 아이콘 + 유종·필터 한 곳 선택, 필터 버튼·서랍 없음)과 지역 칩 하나
 // (고른 지역, 고르기 전에는 지도 중심 시군구, 중심을 모르면 화면에서 주유소가 가장 많은 시군구).
@@ -31,7 +32,7 @@ const placeRequests: URL[] = [];
 test.beforeEach(async ({ page }) => {
   test.skip(process.env.E2E_PUBLIC_FUEL !== "true", "공개 유가(TRANSPORT_UI_MODE=fuel) 격리 UI 테스트");
   placeRequests.length = 0;
-  await page.route((url) => /^https?:$/.test(url.protocol) && !["127.0.0.1", "localhost"].includes(url.hostname), (route) => route.abort());
+  await isolatePublicFuel(page);
   await page.route("**/api/public/fuel/places?*", (route: Route) => {
     const url = new URL(route.request().url());
     placeRequests.push(url);

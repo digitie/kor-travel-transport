@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Request, type Route } from "@playwright/test";
+import { isolatePublicFuel } from "./public-fuel-isolation";
 
 // 공개 유가(TRANSPORT_UI_MODE=fuel) 작은 결함 묶음(소유자 목록 4a~4e)을 격리 응답으로 검사한다.
 // 4a favicon, 4b 지역 이동 기본 선택(칩이 없으면 지도 중심), 4c 대화상자 제목 "지역 이동",
@@ -36,7 +37,7 @@ const fuelPayload = (extra: Record<string, unknown> = {}) => ({
 
 test.beforeEach(async ({ page }) => {
   test.skip(process.env.E2E_PUBLIC_FUEL !== "true", "공개 유가(TRANSPORT_UI_MODE=fuel) 격리 UI 테스트");
-  await page.route((url) => /^https?:$/.test(url.protocol) && !["127.0.0.1", "localhost"].includes(url.hostname), (route) => route.abort());
+  await isolatePublicFuel(page);
   await page.route("**/api/public/fuel/area-catalog", (route: Route) => route.fulfill({ json: catalog }));
 });
 

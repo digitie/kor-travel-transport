@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ChartLine, LocateFixed } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { CameraRequest, FitBoundsRequest, UserLocationMarker, type BoundsTarget, type CameraTarget } from "@/components/map-overlays";
 import { FuelRegionPicker, type FuelAreaChoice, type FuelSelectedRegion } from "@/components/public-fuel-controls";
 import { TransportMap } from "@/components/transport-map";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { FUEL_CHART_ORDER } from "@/lib/fuel-chart-model";
-import { FROM_MAP_PARAM } from "@/lib/public-fuel-statistics";
+import { FROM_MAP_PARAM, MAP_PRODUCT_PARAM, mapProductFromSearch } from "@/lib/public-fuel-statistics";
 import { publicFuelGet } from "@/lib/public-fuel";
 import {
   LOCATE_MESSAGES, LOCATE_WATCHDOG_MS, RETRYABLE_LOCATE_FAILURES, isLocateFailure, requestUserPosition, type LocateFailure,
@@ -59,6 +60,16 @@ function getStoredProducts() {
   catch { return null; }
 }
 
+function canWriteStorage() {
+  if (typeof window === "undefined") return true;
+  try {
+    const probe = `${PRODUCT_STORAGE_KEY}.probe`;
+    window.localStorage.setItem(probe, "1");
+    window.localStorage.removeItem(probe);
+    return true;
+  } catch { return false; }
+}
+
 function parseProductPreferences(value: string | null): string[] {
   if (value === null) return [];
   try {
@@ -86,7 +97,15 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
   const watch = useRef<number | undefined>(undefined);
   const [temporaryProducts, setTemporaryProducts] = useState<string[]>();
   const storedProducts = useSyncExternalStore(subscribeToProductPreferences, getStoredProducts, () => null);
-  const products = useMemo(() => temporaryProducts ?? parseProductPreferences(storedProducts), [temporaryProducts, storedProducts]);
+  // 주소의 유종(`?product=`, 통계 화면의 지도 링크)은 이 화면을 그 유종 하나로 연다. 저장한 선택은 덮어쓰지 않고, 사용자가 지도에서
+  // 유종을 고르면 그 선택을 저장하고 주소에서 지운다(뒤로 가기·새로고침이 옛 유종으로 되돌리지 않게). 서버 렌더도 같은 주소를 읽는다.
+  const urlProduct = mapProductFromSearch(useSearchParams());
+  const [dismissedUrlProduct, setDismissedUrlProduct] = useState<string | null>(null);
+  const linkedProduct = urlProduct && urlProduct !== dismissedUrlProduct ? urlProduct : null;
+  // 링크 유종 안내가 "바꾸면 저장합니다"라고 말해도 되는지(저장이 막힌 브라우저면 이번 화면에서만 바뀐다). 안내는 팝오버를 연 뒤에만 그린다.
+  const [storageWritable] = useState(canWriteStorage);
+  const products = useMemo(() => temporaryProducts ?? (linkedProduct ? [linkedProduct] : parseProductPreferences(storedProducts)),
+    [temporaryProducts, linkedProduct, storedProducts]);
   // 필터는 이 브라우저에 저장한다(저장이 막히면 이번 화면에서만 유지). 서버가 적용한다.
   const [temporaryFilters, setTemporaryFilters] = useState<PublicFuelFilters>();
   const storedFilters = useSyncExternalStore(subscribeToFilterPreferences, getStoredFilters, () => null);
@@ -123,7 +142,18 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
       setTemporaryFilters(value);
     }
   }
+  // 링크 유종을 버린다(주소의 product만 지우고 좌표는 남긴다). Next가 replaceState를 라우터 상태와 맞춘다.
+  function dropLinkedProduct() {
+    if (!linkedProduct) return;
+    setDismissedUrlProduct(linkedProduct);
+    try {
+      const next = new URL(window.location.href);
+      next.searchParams.delete(MAP_PRODUCT_PARAM);
+      window.history.replaceState(null, "", `${next.pathname}${next.search}${next.hash}`);
+    } catch { /* 주소를 바꿀 수 없어도 이 화면의 선택은 위 상태로 따른다. */ }
+  }
   function onProductsChange(value: string[]) {
+    dropLinkedProduct();
     try {
       window.localStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(value));
       setTemporaryProducts(undefined);
@@ -195,6 +225,8 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
     <TransportMap mode="fuel" load={loadFuel} mapOnly publicFuel={{
       products, onProductsChange, refreshEnabled, filterQuery, filters, onFiltersChange,
       selectedRegion, onClearRegion: () => setSelectedRegion(undefined),
+      linkedProduct: linkedProduct && !temporaryProducts
+        ? { code: linkedProduct, saved: storedProducts === null ? null : parseProductPreferences(storedProducts), canSave: storageWritable, onUseSaved: dropLinkedProduct } : undefined,
       onOpenRegion: (current, element, center) => {
         rememberOpener(element); setRegionCurrent(current); setRegionCenter(center); setRegionOpen(true);
       },

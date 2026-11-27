@@ -12,7 +12,7 @@ import { Pending, RetryAlert, Segmented } from "./public-fuel-statistics-parts";
 import { buttonVariants } from "./ui/button-variants";
 import { NativeSelect } from "./ui/native-select";
 import {
-  ALL_ROUTES, HIGHWAY_PRODUCTS, formatPrice as money, PUBLIC_FUEL_AREAS, PUBLIC_FUEL_PRODUCTS, STALE_STATISTICS_HOURS, isImplausibleMinimum, listScope, publicMapHref,
+  ALL_ROUTES, HIGHWAY_PRODUCTS, formatPrice as money, PUBLIC_FUEL_AREAS, PUBLIC_FUEL_PRODUCTS, STALE_STATISTICS_HOURS, isImplausibleMinimum, listScope, publicMapHomeHref, publicMapHref,
   regionOptions, sidoOfSigungu, sigunguGroups, statisticsAgeHours,
   type PublicFuelArea, type PublicFuelMetrics, type PublicFuelPeriod, type PublicFuelStatistics,
 } from "@/lib/public-fuel-statistics";
@@ -33,7 +33,7 @@ export function PublicFuelStatisticsPage() {
   const settled = selected && !current.pending && !current.error;
   return <main className="public-fuel-stats" aria-labelledby="public-fuel-stats-title">
     <header className="public-fuel-stats-header">
-      <MapBackLink fromMap={state.fromMap} />
+      <MapBackLink fromMap={state.fromMap} product={state.productChosen ? view.product : null} />
       <div>
         <h1 id="public-fuel-stats-title">지역별 유가 통계</h1>
         <p>전국·시도·시군구·고속도로의 평균·최저·최고 가격과 기간별 변화</p>
@@ -49,7 +49,7 @@ export function PublicFuelStatisticsPage() {
         note={view.area === "highway" ? "고속도로 휴게소는 휘발유·경유·LPG 가격만 있습니다." : undefined} />
     </section>
     <SubstitutionNotices replacedProduct={state.replacedProduct} substitution={settled ? state.substitution : null} product={product} shown={selected?.label} />
-    <CurrentStatistics resource={current} selected={selected} product={product} area={view.area} scope={state.scope} onRetry={state.retryCurrent} />
+    <CurrentStatistics resource={current} selected={selected} product={product} productCode={view.product} area={view.area} scope={state.scope} onRetry={state.retryCurrent} />
     {!current.error && (current.pending || selected) ? <TrendSection view={view} trend={trend} selected={selected} to={state.to}
       onPeriod={period => update({ period: period as PublicFuelPeriod })} onRetry={state.retryTrend} /> : null}
     {/* 조건을 바꾼 뒤 새 값이 들어오면 한 번 읽어 준다(조회 중 안내는 시각 표시만 한다). */}
@@ -62,11 +62,12 @@ export function PublicFuelStatisticsPage() {
 }
 
 /**
- * 지도의 통계 단추로 연 화면(`from=map`, 첫 렌더에 읽음)이면 뒤로 가기(지도 위치·선택 유지), 아니면 지도를 새로 연다.
- * 새 탭·수정 키 누름은 브라우저 기본 동작에 맡긴다.
+ * 지도의 통계 단추로 연 화면(`from=map`, 첫 렌더에 읽음)이면 뒤로 가기(지도 위치·선택 유지 — 통계에서 유종을 바꿨어도 지도는 떠날 때 그대로다),
+ * 아니면 지도를 새로 연다. 새로 열 때는 링크가 정했거나 여기서 고른 유종을 싣고(`?product=`, 저장한 선택은 바꾸지 않는다), 기본 휘발유만
+ * 본 화면이면 싣지 않는다(저장한 선택 그대로). 새 탭·수정 키 누름은 브라우저 기본 동작(새 지도)에 맡긴다.
  */
-function MapBackLink({ fromMap }: { fromMap: boolean }) {
-  return <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/" onClick={event => {
+function MapBackLink({ fromMap, product }: { fromMap: boolean; product: string | null }) {
+  return <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={publicMapHomeHref(product)} onClick={event => {
     if (!fromMap || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     window.history.back();
@@ -146,7 +147,7 @@ function SingleRegionPicker({ highway, items, pending, failed, region, onChange 
   </div>;
 }
 
-function CurrentStatistics({ resource, selected, product, area, scope, onRetry }: { resource: ResourceView<PublicFuelStatistics>; selected?: PublicFuelMetrics; product: string; area: PublicFuelArea; scope: string; onRetry: () => void }) {
+function CurrentStatistics({ resource, selected, product, productCode, area, scope, onRetry }: { resource: ResourceView<PublicFuelStatistics>; selected?: PublicFuelMetrics; product: string; productCode: string; area: PublicFuelArea; scope: string; onRetry: () => void }) {
   const headingId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const data = resource.data;
@@ -155,14 +156,14 @@ function CurrentStatistics({ resource, selected, product, area, scope, onRetry }
   else if (resource.pending) body = <><Pending retrying={resource.retrying}>현재 통계를 불러오는 중…</Pending><StatStrip ariaLabel="현재 유가" isLoading items={[{ label: "평균 가격", value: null }, { label: "최저 가격", value: null }, { label: "최고 가격", value: null }, { label: "주유소", value: null }]} /></>;
   else if (!data?.generated_at) body = <EmptyState title="아직 공개된 유가 통계가 없습니다" description="첫 수집이 끝나면 통계가 생깁니다. 잠시 뒤 다시 확인해 주세요." />;
   else if (!selected) body = <EmptyState title={`이 범위에는 ${product} 통계가 없습니다`} description={area === "highway" ? "고속도로 휴게소는 휘발유·경유·LPG 가격만 있습니다. 다른 유종을 골라 보세요." : "다른 유종이나 지역을 골라 보세요."} />;
-  else body = <CurrentValues data={data} selected={selected} highway={area === "highway"} scope={scope} />;
+  else body = <CurrentValues data={data} selected={selected} highway={area === "highway"} scope={scope} productCode={productCode} />;
   return <section className="public-fuel-stats-card" aria-labelledby={headingId} aria-busy={resource.pending}>
     <h2 id={headingId} ref={heading} tabIndex={-1}>{selected && !resource.pending && !resource.error ? `${selected.label} · ${product} 현재 가격` : `현재 ${product} 가격`}</h2>
     {body}
   </section>;
 }
 
-function CurrentValues({ data, selected, highway, scope }: { data: PublicFuelStatistics; selected: PublicFuelMetrics; highway: boolean; scope: string }) {
+function CurrentValues({ data, selected, highway, scope, productCode }: { data: PublicFuelStatistics; selected: PublicFuelMetrics; highway: boolean; scope: string; productCode: string }) {
   const suspicious = isImplausibleMinimum(selected.minimum_price, selected.average_price);
   return <>
     <StatStrip ariaLabel="현재 유가" items={[
@@ -171,14 +172,15 @@ function CurrentValues({ data, selected, highway, scope }: { data: PublicFuelSta
       { label: "최고 가격", value: money(selected.maximum_price), unit: "원/L" },
       { label: "주유소", value: selected.station_count, unit: "곳", caption: highway ? "가격을 모은 휴게소" : "가격을 모은 곳" },
     ]} />
-    <CheapestStation selected={selected} highway={highway} scope={scope} />
+    {/* 지도 링크는 이 값의 유종으로 연다(응답 항목의 유종, 없으면 고른 유종). */}
+    <CheapestStation selected={selected} highway={highway} scope={scope} product={selected.product_code ?? productCode} />
     <Freshness generatedAt={selected.generated_at ?? data.generated_at} updatePending={data.update_pending} />
   </>;
 }
 
-function CheapestStation({ selected, highway, scope }: { selected: PublicFuelMetrics; highway: boolean; scope: string }) {
+function CheapestStation({ selected, highway, scope, product }: { selected: PublicFuelMetrics; highway: boolean; scope: string; product: string }) {
   const station = selected.cheapest_station;
-  const href = publicMapHref(station);
+  const href = publicMapHref(station, product);
   const others = Math.max(0, (selected.cheapest_station_count ?? 1) - 1);
   return <div className="public-fuel-stats-cheapest">
     <h3>최저가 {highway ? "휴게소" : "주유소"}</h3>
@@ -190,7 +192,7 @@ function CheapestStation({ selected, highway, scope }: { selected: PublicFuelMet
         : <><br /><span className="public-fuel-stats-address">{highway ? "휴게소 위치 좌표가 없어 지도 링크는 없습니다." : "위치 좌표가 없어 지도 링크는 없습니다."}</span></>}
     </p> : <p>최저가 주유소 정보가 없습니다.</p>}
     {station && isImplausibleMinimum(selected.minimum_price, selected.average_price) ? <p className="public-fuel-stats-notice" data-tone="warning">이 최저가는 평균보다 30% 넘게 낮아 원천 입력 오류일 수 있습니다. 실제 판매 가격을 확인하세요.</p> : null}
-    {others > 0 ? <TiedStations selected={selected} scope={scope} count={others + 1} /> : null}
+    {others > 0 ? <TiedStations selected={selected} scope={scope} count={others + 1} product={product} /> : null}
   </div>;
 }
 
@@ -199,7 +201,7 @@ type Tie = NonNullable<PublicFuelMetrics["cheapest_stations"]>[number];
  * 같은 최저가 주유소 목록. 응답의 가격순 목록은 고른 범주에만 실려 오므로(그 밖은 빈 목록) 펼칠 때 그 범주로 한 번 더 읽는다(1분 재사용).
  * 목록은 최대 10곳이다 — 같은 가격이 더 많으면 그렇다고 쓴다.
  */
-function TiedStations({ selected, scope, count }: { selected: PublicFuelMetrics; scope: string; count: number }) {
+function TiedStations({ selected, scope, count, product }: { selected: PublicFuelMetrics; scope: string; count: number; product: string }) {
   const [open, setOpen] = useState(false);
   const inline = (selected.cheapest_stations ?? []).length > 0;
   const [loaded, setLoaded] = useState<{ key: string; rows?: Tie[]; failed?: boolean }>({ key: "" });
@@ -220,7 +222,7 @@ function TiedStations({ selected, scope, count }: { selected: PublicFuelMetrics;
     <summary>같은 최저가 {count}곳 보기</summary>
     {waiting ? <p className="public-fuel-stats-pending">불러오는 중…</p>
       : loaded.key === key && loaded.failed ? <p>목록을 불러오지 못했습니다. 닫았다 다시 펼쳐 보세요.</p>
-      : <><ul>{rows.map(row => { const link = publicMapHref(row); return <li key={row.station_key}>
+      : <><ul>{rows.map(row => { const link = publicMapHref(row, product); return <li key={row.station_key}>
           <strong>{row.name}</strong>{row.address ? ` · ${row.address}` : ""}{link ? <> · <a className="public-fuel-stats-link" href={link}>지도</a></> : null}
         </li>; })}</ul>
         {count > rows.length ? <p className="public-fuel-stats-meta">가격순 목록은 최대 10곳이라 같은 가격 {count}곳 중 {rows.length}곳만 보입니다.</p> : null}</>}

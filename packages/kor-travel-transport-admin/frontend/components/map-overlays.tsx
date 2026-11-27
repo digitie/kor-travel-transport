@@ -219,11 +219,14 @@ export function ZoomButtons() {
   return null;
 }
 
+/** 배경지도 알림 끝의 목록 보기 안내. 목록 보기가 없는 화면(공개 유가 지도)은 이 꼬리를 떼고 보인다. */
+export const MAP_LIST_HINT = " · 목록 보기";
+
 /** 초기화 불가(키 없음·WebGL 없음)는 기본 fallback으로 보이거나 소비자 오류 영역으로 전달한다. 로그는 키를 가린다. */
 export function MapUnavailable({ info, onMessage }: { info: VWorldMapFallbackInfo; onMessage?: (message: string | null) => void }) {
   const message = info.reason === "missing-api-key"
-    ? "지도 키 없음 · 목록 보기"
-    : "지도 표시 불가 · 목록 보기";
+    ? `지도 키 없음${MAP_LIST_HINT}`
+    : `지도 표시 불가${MAP_LIST_HINT}`;
   useEffect(() => {
     if (info.error) console.warn("[TransportMap] 지도를 초기화하지 못했습니다", redactVWorldText(info.error.message));
   }, [info.error]);

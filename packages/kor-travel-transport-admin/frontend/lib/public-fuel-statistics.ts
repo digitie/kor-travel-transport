@@ -58,12 +58,15 @@ export function fitProductToArea(view: PublicFuelStatisticsView): { view: Public
   return { view: { ...view, product: "B027" }, replaced: view.product };
 }
 
-/** 화면 상태 → URL query(기본값은 생략해 짧게 둔다). */
-export function statisticsViewQuery(view: PublicFuelStatisticsView) {
+/**
+ * 화면 상태 → URL query(기본값은 생략해 짧게 둔다). keepProduct면 기본 유종(휘발유)도 남긴다 — 사용자가 고른 휘발유가 새로고침·
+ * 앞으로 가기 뒤에도 "고른 유종"으로 남아 지도 링크에 실린다.
+ */
+export function statisticsViewQuery(view: PublicFuelStatisticsView, { keepProduct = false }: { keepProduct?: boolean } = {}) {
   const search = new URLSearchParams();
   if (view.area !== DEFAULT_VIEW.area) search.set("scope", view.area);
   if (view.region && view.region !== ALL_ROUTES && view.area !== "nationwide") search.set("region", view.region);
-  if (view.product !== DEFAULT_VIEW.product) search.set("product", view.product);
+  if (keepProduct || view.product !== DEFAULT_VIEW.product) search.set("product", view.product);
   if (view.period !== DEFAULT_VIEW.period) search.set("period", view.period);
   return search.toString();
 }
@@ -250,10 +253,30 @@ export function statisticsAgeHours(generatedAt: string | null | undefined, now =
   return Number.isFinite(instant) ? Math.max(0, (now - instant) / 3_600_000) : null;
 }
 
-export function publicMapHref(station?: FuelChartStation | null) {
+/**
+ * 공개 지도 주소의 유종(`product`, 통계 화면과 같은 이름·코드). 통계 화면에서 지도로 가는 링크가 붙여, 지도는 이 유종 하나로 열린다.
+ * 이 브라우저에 저장한 유종 선택은 바꾸지 않는다 — 지도에서 유종을 직접 고르면 그때 저장하고 주소에서 이 값을 지운다.
+ */
+export const MAP_PRODUCT_PARAM = "product";
+export function mapProductFromSearch(search: Pick<URLSearchParams, "get"> | null | undefined): string | null {
+  const code = search?.get(MAP_PRODUCT_PARAM) ?? null;
+  return code && PUBLIC_FUEL_PRODUCTS.includes(code) ? code : null;
+}
+function withMapProduct(search: URLSearchParams, product?: string | null) {
+  if (product && PUBLIC_FUEL_PRODUCTS.includes(product)) search.set(MAP_PRODUCT_PARAM, product);
+  return search;
+}
+
+/** 통계 화면에서 지도를 새로 여는 주소(지도에서 오지 않았을 때의 "유가 지도"). 지금 보는 유종으로 연다. */
+export function publicMapHomeHref(product?: string | null) {
+  const query = withMapProduct(new URLSearchParams(), product).toString();
+  return query ? `/?${query}` : "/";
+}
+
+export function publicMapHref(station?: FuelChartStation | null, product?: string | null) {
   return station && Number.isFinite(station.longitude) && Number.isFinite(station.latitude)
     && station.longitude! >= 124 && station.longitude! <= 132 && station.latitude! >= 32 && station.latitude! <= 39.5
-    ? `/?${new URLSearchParams({ longitude: String(station.longitude), latitude: String(station.latitude) })}` : null;
+    ? `/?${withMapProduct(new URLSearchParams({ longitude: String(station.longitude), latitude: String(station.latitude) }), product)}` : null;
 }
 
 /* 응답 형식 검사. 화면이 쓰는 필드만 확인하고 나머지는 그대로 둔다(새 필드 추가에 깨지지 않는다).

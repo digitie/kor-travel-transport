@@ -1,8 +1,9 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { isolatePublicFuel } from "./public-fuel-isolation";
 
 // 공개 유가(TRANSPORT_UI_MODE=fuel) 시군구 가격 분포: 범위 요약의 지역 칩(고른 곳 하나, 고르기 전에는 화면 대표 시군구 하나)
 // → 대화상자(토글), 주유소 상세 등급·핀.
-// 유가 BFF는 page.route가 대신하고 외부 지도 타일은 막는다. 스크린샷은 E2E_SCREENSHOT_DIR이 있으면 그곳에도 저장한다.
+// 유가 BFF는 page.route가 대신하고 외부 요청은 막는다(배경지도 타일만 성공 이미지, public-fuel-isolation.ts). 스크린샷은 E2E_SCREENSHOT_DIR이 있으면 그곳에도 저장한다.
 const generated = "2026-11-21T22:00:00Z";
 const SEOUL = { latitude: 37.5665, longitude: 126.978 };
 const metrics = { station_count: 29, average_price: 1883, minimum_price: 1819, maximum_price: 1998, price_spread: 179,
@@ -43,7 +44,7 @@ const centerRequests: boolean[] = [];
 test.beforeEach(async ({ page }) => {
   centerRequests.length = 0;
   test.skip(process.env.E2E_PUBLIC_FUEL !== "true", "공개 유가(TRANSPORT_UI_MODE=fuel) 격리 UI 테스트");
-  await page.route((url) => /^https?:$/.test(url.protocol) && !["127.0.0.1", "localhost"].includes(url.hostname), (route) => route.abort());
+  await isolatePublicFuel(page);
   await page.route("**/api/public/fuel/places?*", (route: Route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("include_viewport_sigungu")).toBe("true");
