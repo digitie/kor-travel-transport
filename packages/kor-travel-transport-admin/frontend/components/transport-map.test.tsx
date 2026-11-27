@@ -22,8 +22,9 @@ vi.mock("vworld-map-web", async () => {
     ClusterLayer: ({ points, renderMarker }: { points: { id: string }[]; renderMarker: (point: unknown) => React.ReactNode }) => <>{points.map((point) => <React.Fragment key={point.id}>{renderMarker(point)}</React.Fragment>)}</>,
   };
 });
+const basemapHealth = vi.hoisted(() => ({ value: {} as { basemapFailed?: boolean } }));
 vi.mock("./map-overlays", () => ({
-  vworldApiKey: () => undefined, useVWorldBasemapHealth: () => ({}), ZoomButtons: () => null, CameraRequest: ({ target }: { target?: unknown }) => <span data-camera-request={JSON.stringify(target)} />, MarkerBadge: () => null, ClusterBubble: () => null, MapUnavailable: () => null, OverlapPopup: () => null,
+  vworldApiKey: () => undefined, useVWorldBasemapHealth: () => basemapHealth.value, ZoomButtons: () => null, CameraRequest: ({ target }: { target?: unknown }) => <span data-camera-request={JSON.stringify(target)} />, MarkerBadge: () => null, ClusterBubble: () => null, MapUnavailable: () => null, OverlapPopup: () => null,
   MapMarkerButton: ({ ariaLabel, onClick, children, className }: { ariaLabel: string; onClick: () => void; children: React.ReactNode; className?: string }) => <button className={className} aria-label={ariaLabel} onClick={onClick}>{children}</button>,
 }));
 vi.mock("./filter-combobox", () => ({ FilterCombobox: ({ options, value, onChange, placeholder }: { options: {value:string;label:string}[]; value:string[]; onChange:(value:string[])=>void; placeholder:string }) => <select aria-label={placeholder} value={value[0] ?? ""} onChange={event=>onChange(event.target.value ? [event.target.value] : [])}><option value="">전체</option>{options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select> }));
@@ -753,4 +754,21 @@ test("재조회 뒤에도 실패하면 '다시 조회 중…'을 지우고 실�
     expect(visibleAlerts(host)).toHaveLength(1);
     expect(visibleAlerts(host)[0]).toContain("혼잡합니다");
   });
+});
+
+test("목록 보기가 없는 공개 유가 지도는 타일 오류 알림에서 '목록 보기'로 안내하지 않는다(관리 지도는 그대로)", async () => {
+  basemapHealth.value = { basemapFailed: true };
+  vi.mocked(fetch).mockImplementation(async () => Response.json({ items: [], total: 0, truncated: false, clustered: false, clusters: [] }));
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<TransportMap mode="fuel" mapOnly publicFuel={{ products: [], onProductsChange: vi.fn() }} />));
+    const alerts = () => [...host.querySelectorAll('[role="alert"]')].map(node => node.textContent);
+    expect(alerts()).toContain("지도 타일 오류");
+    expect(alerts().join(" ")).not.toContain("목록 보기");
+    await act(async () => root.render(<TransportMap mode="fuel" />));
+    expect(alerts()).toContain("지도 타일 오류 · 목록 보기");
+  } finally {
+    basemapHealth.value = {};
+    await act(async () => root.unmount()); host.remove();
+  }
 });

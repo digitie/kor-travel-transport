@@ -1,3 +1,10 @@
+## 현재 상태 — 2026-11-27 공개 유가 지도 잔여 2건(FUEL-PUBLIC-MAP-RETRY-E2E·지도 유종 링크)
+
+- transport-admin(fuel web)만: 공개 지도 `?product=` 유종 링크와 통계 화면 링크, 공개 지도 배경지도 알림에서 "· 목록 보기" 제거,
+  공개 유가 격리 e2e 공용 격리(`e2e/public-fuel-isolation.ts`). backend·gateway·migration 없음.
+- 배포(Codex 담당): fuel web 이미지(transport-admin과 같은 artifact) 재빌드. 관리 화면은 문구·동작 변화 없음.
+- 다음 한 작업: FUEL-HISTORY-PUBLIC-UI-VERIFY(tasks.md) — 배포 뒤 통계 화면에서 LPG를 고르고 "지도에서 보기"가 LPG 지도로 열리는지도 본다.
+
 ## 현재 상태 — 2026-11-27 유가 장기 추이 보류 P2 정리(FUEL-HISTORY-P2)
 
 - 관리 `/fuel/statistics`: 주·월 툴팁·키보드 안내에 기록 범위·일수, 장기 추이 표 60행 쪽 나눔. 공유 차트(`fuel-price-chart`)는 점에

@@ -139,6 +139,26 @@ docker compose run --rm --no-deps backend pytest -q
 docker compose run --rm --no-deps frontend npm run test -- --run
 ```
 
+### 공개 유가 격리 e2e (`E2E_PUBLIC_FUEL=true`)
+
+`packages/kor-travel-transport-admin/frontend/e2e/public-fuel-*.spec.ts`는 fuel 실행 서버를 응답 모의로 검사한다(CI 밖, 수동).
+
+```bash
+cd packages/kor-travel-transport-admin/frontend
+NEXT_PUBLIC_VWORLD_API_KEY=e2e-dummy-key npm run build        # 키 있음·없음 둘 다 통과해야 한다
+TRANSPORT_UI_MODE=fuel BACKEND_INTERNAL_URL=http://127.0.0.1:9 npx next start --hostname localhost --port 12391
+E2E_PUBLIC_FUEL=true E2E_BASE_URL=http://localhost:12391 npx playwright test e2e/public-fuel- --project=chromium
+```
+
+- 서버는 `--hostname localhost`(또는 운영처럼 `0.0.0.0`)로 띄운다. `npm run start`의 `--hostname 127.0.0.1`이면 Next가 fuel proxy의
+  `/`·`/statistics` rewrite(`x-middleware-rewrite: http://localhost:PORT/...`)를 다른 origin으로 보고 자기 자신에게 HTTP로 다시
+  보낸다. 병렬 실행 부하에서 그 연결이 `ECONNRESET`으로 끊기면 페이지가 "Internal Server Error"가 된다(2026-11-27, 부하 중
+  public-fuel-filters "중심을 정하지 못하면" 새로고침 실패). `0.0.0.0`·`localhost`·생략은 `/public/fuel`로 내부 rewrite한다 — 운영
+  fuel-web(`--hostname 0.0.0.0`)은 해당 없다. `curl -sD- -o/dev/null http://localhost:12391/ | grep -i x-middleware-rewrite`가
+  `/public/fuel`이면 맞다.
+- 외부 요청은 `e2e/public-fuel-isolation.ts`가 막고 VWorld 배경지도 타일만 1px 성공 이미지로 채운다. 타일을 막으면 키로 빌드한
+  서버에서 "지도 타일 오류" 알림이 아무 때나 요약 위에 생겨(34.5px) 위치를 재는 검사가 흔들렸다(FUEL-PUBLIC-MAP-RETRY-E2E).
+
 ## 반응형 검증
 
 배포 origin을 지정한 live E2E는 브라우저 설치 후 실행한다. 현재 승인 기준은 반드시

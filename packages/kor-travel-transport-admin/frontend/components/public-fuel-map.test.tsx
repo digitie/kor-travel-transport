@@ -6,11 +6,13 @@ const state = vi.hoisted(() => ({ props: {} as Record<string, unknown>, picker: 
 vi.mock("./transport-map", () => ({ TransportMap: (props: Record<string, unknown>) => { state.props = props; return <div data-map="fuel" />; } }));
 vi.mock("@/components/map-overlays", () => ({ CameraRequest: () => null, FitBoundsRequest: () => null, UserLocationMarker: () => null }));
 vi.mock("@/lib/public-fuel", () => ({ publicFuelGet: state.get }));
+// 지도 화면은 주소의 유종(`product`)을 Next 라우터로 읽는다. 시험에서는 지금 주소를 그대로 돌려준다.
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
 vi.mock("@/components/public-fuel-controls", () => ({ FuelRegionPicker: (props: Record<string, unknown>) => { state.picker = props; return null; } }));
 import { PublicFuelMap } from "./public-fuel-map";
 let root: Root, host: HTMLDivElement;
 beforeEach(() => { vi.useFakeTimers(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); host = document.createElement("div"); document.body.append(host); root = createRoot(host); state.get.mockReset(); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); localStorage.removeItem("transport.public-fuel.products"); localStorage.removeItem("transport.public-fuel.filters"); vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); window.history.replaceState(null, "", "/"); localStorage.removeItem("transport.public-fuel.products"); localStorage.removeItem("transport.public-fuel.filters"); vi.useRealTimers(); vi.unstubAllGlobals(); });
 // layers = <><CameraRequest target /><UserLocationMarker position /><FitBoundsRequest target /></>
 const layerProps = () => (state.props.layers as ReactElement<{ children: ReactElement<{ target?: unknown; position?: unknown }>[] }>).props.children.map(child => child.props);
 const cameraTarget = () => layerProps()[0].target;
@@ -213,4 +215,43 @@ it("keeps only the region chosen in the region picker and clears it on request",
   expect(layerProps()[2].target).toMatchObject({ bounds: [126.9, 37.5, 127, 37.6] });
   await act(async () => controls().onClearRegion());
   expect(controls().selectedRegion).toBeUndefined();
+});
+
+it("opens with the fuel from the link (?product=) without overwriting the saved selection, then saves a user choice and drops the link fuel", async () => {
+  const key = "transport.public-fuel.products";
+  localStorage.setItem(key, JSON.stringify(["B027", "D047"]));
+  window.history.replaceState(null, "", "/?longitude=127.1&latitude=37.5&product=K015");
+  await render();
+  const controls = () => state.props.publicFuel as { products: string[]; onProductsChange: (value: string[]) => void; filterQuery?: string };
+  expect(controls().products).toEqual(["K015"]);
+  // 지도의 통계 단추도 그 유종으로 연다.
+  expect(host.querySelector('a[aria-label="지역별 유가 통계"]')?.getAttribute("href")).toBe("/statistics?product=K015&from=map");
+  // 링크로 연 유종은 저장하지 않는다.
+  expect(JSON.parse(localStorage.getItem(key)!)).toEqual(["B027", "D047"]);
+  await act(async () => controls().onProductsChange(["D047"]));
+  expect(controls().products).toEqual(["D047"]);
+  expect(JSON.parse(localStorage.getItem(key)!)).toEqual(["D047"]);
+  // 주소의 유종은 지워 뒤로 가기·새로고침이 링크 유종으로 되돌리지 않게 한다(좌표는 그대로).
+  expect(window.location.search).toBe("?longitude=127.1&latitude=37.5");
+  await act(async () => root.unmount()); root = createRoot(host);
+  await render();
+  expect(controls().products).toEqual(["D047"]);
+});
+it("ignores an unknown link fuel and keeps the saved selection", async () => {
+  localStorage.setItem("transport.public-fuel.products", JSON.stringify(["C004"]));
+  window.history.replaceState(null, "", "/?product=X999");
+  await render();
+  expect((state.props.publicFuel as { products: string[] }).products).toEqual(["C004"]);
+});
+it("uses the link fuel even when the browser blocks storage, and a later choice still wins", async () => {
+  window.history.replaceState(null, "", "/?product=D047");
+  const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+  try {
+    await render();
+    const controls = () => state.props.publicFuel as { products: string[]; onProductsChange: (value: string[]) => void };
+    expect(controls().products).toEqual(["D047"]);
+    await act(async () => controls().onProductsChange([]));
+    expect(controls().products).toEqual([]);
+    expect(window.location.search).toBe("");
+  } finally { setItem.mockRestore(); }
 });

@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Request, type Route } from "@playwright/test";
+import { isolatePublicFuel } from "./public-fuel-isolation";
 
 // 공개 유가(TRANSPORT_UI_MODE=fuel) 소유자 요청 2026-11-23 묶음(격리 응답):
 // 1) "오래됨"·"업데이트"를 유종·필터 옆 아이콘 하나로(오래됨=빨간 ClockAlert·누르면 업데이트, 최신·불가=포커스 가능한 비활성+툴팁 이유·시각)
@@ -93,7 +94,7 @@ async function mockFuel(page: Page, { stale = false, stations = false }: Options
 
 test.beforeEach(async ({ page }) => {
   test.skip(process.env.E2E_PUBLIC_FUEL !== "true", "공개 유가(TRANSPORT_UI_MODE=fuel) 격리 UI 테스트");
-  await page.route((url) => /^https?:$/.test(url.protocol) && !["127.0.0.1", "localhost"].includes(url.hostname), (route) => route.abort());
+  await isolatePublicFuel(page);
 });
 
 const at = (width: number) => ({ width, height: width < 1000 ? 844 : 900 });

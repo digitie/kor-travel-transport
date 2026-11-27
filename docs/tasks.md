@@ -15,10 +15,15 @@
   유종, 현재 평균·최저·최고·주유소 수·최저가 주유소(공개 지도 링크)·통계 기준 시각·반영 대기·오래됨, 30일·90일·1년·전체 추이와 기간 요약,
   혼잡(429·503 Retry-After) 자동 1회·대기 후 다시 조회, 이상 최저·최고 제외, 없는 지역 안내, 1분 재사용·ETag 재검증,
   backend `statistics?include_history=false`. 지도 왼쪽 아래 "통계" 단추가 입구다([공개 유가 서비스](design/2026-11-20-public-fuel-service.md#지역별-유가-통계-statistics)).
-- [ ] **FUEL-PUBLIC-MAP-RETRY-E2E / P2** — 격리 e2e `public-fuel-map.spec.ts` "자동 재조회 대기"(375·1440)가 origin/main(47d62230)
-  빌드에서도 재조회 성공 뒤 요약 y가 34.5px 움직여 실패한다(BACKEND_INTERNAL_URL 무관, 2026-11-27 확인). 공개 지도 요약 배치 확인 필요.
+- [x] **FUEL-PUBLIC-MAP-RETRY-E2E / P2** — 2026-11-27 해결. 제품 배치 회귀가 아니라 시험 격리 문제였다: 외부 요청을 모두 막아
+  VWorld 키로 빌드한 서버에서는 지도 첫 idle 뒤 "지도 타일 오류" 알림이 요약 위 줄(34.5px)에 생겨 재조회 전후 측정 사이에 요약을 밀었다
+  (키 없이 빌드하면 "지도 키 없음"이 처음부터 있어 통과). `e2e/public-fuel-isolation.ts`가 타일만 성공 이미지로 채운다. 부하 중
+  public-fuel-ui2 "가격 아이콘 하나"의 34.5px도 같은 원인이었고, 공개 지도 알림의 없는 "· 목록 보기" 안내를 지웠다
+  ([testing.md](runbooks/testing.md#공개-유가-격리-e2e-e2e_public_fueltrue)).
+- [x] **FUEL-PUBLIC-MAP-PRODUCT-LINK / P2** — 2026-11-27 통계 화면 "지도에서 보기"·"유가 지도"가 보던 유종으로 지도를 연다(`/?product=`).
+  저장한 유종 선택은 덮어쓰지 않고, 지도에서 유종을 고르면 저장하고 주소의 `product`를 지운다([공개 유가 서비스](design/2026-11-20-public-fuel-service.md#지역별-유가-통계-statistics)).
 - [ ] **FUEL-HISTORY-PUBLIC-UI-VERIFY / P2** — fuel web 이미지 배포 뒤 https://fuel.digitie.mywire.org/statistics 를 390·1440px에서 열어
-  전국·시군구·고속도로 LPG와 1년·전체 추이가 보이는지, 지도 아이콘·"지도에서 보기"가 지도로 돌아가는지 확인.
+  전국·시군구·고속도로 LPG와 1년·전체 추이가 보이는지, 지도 아이콘·"지도에서 보기"가 지도로 돌아가는지(통계에서 고른 유종으로 열리는지) 확인.
 
 ## 2026-11-24 — Map 호출 개선 후속(MAP-CALL-REVIEW-20261124)
 

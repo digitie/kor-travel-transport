@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { isolatePublicFuel } from "./public-fuel-isolation";
 
 // 공개 유가 지역별 통계(/statistics, TRANSPORT_UI_MODE=fuel 서버)를 격리 응답으로 검사한다. 유가 BFF는 page.route가 대신한다.
 const generated = "2026-11-27T00:31:44Z";
@@ -23,7 +24,7 @@ function trend(search: URLSearchParams) {
 
 async function routeFuel(page: Page, history: (route: Route, search: URLSearchParams) => Promise<void> = (route, search) => route.fulfill({ json: trend(search) })) {
   const requests: URLSearchParams[] = [];
-  await page.route((url) => /^https?:$/.test(url.protocol) && !["127.0.0.1", "localhost"].includes(url.hostname), (route) => route.abort());
+  await isolatePublicFuel(page);
   await page.route("**/api/public/fuel/statistics?*", (route) => {
     const search = new URL(route.request().url()).searchParams;
     const scope = search.get("scope");
@@ -53,7 +54,7 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole("heading", { level: 1, name: "지역별 유가 통계" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "전국 · 휘발유 현재 가격" })).toBeVisible();
     await expect(page.getByLabel("현재 유가")).toContainText("1,853.72");
-    await expect(page.getByRole("link", { name: "지도에서 보기" })).toHaveAttribute("href", "/?longitude=126.978&latitude=37.5665");
+    await expect(page.getByRole("link", { name: "지도에서 보기" })).toHaveAttribute("href", "/?longitude=126.978&latitude=37.5665&product=B027");
     await expect(page.locator("time")).toHaveText("2026.11.27 09:31");
     await expect(page.getByRole("group", { name: /전국 휘발유 최근 30일 평균·최저·최고 가격/ })).toBeVisible();
     expect(requests[0].get("from")).toBe("2026-10-29");
@@ -192,6 +193,42 @@ test("최저가 주유소 '지도에서 보기'는 그 주유소 둘레를 확�
   await page.getByRole("link", { name: "지도에서 보기" }).click();
   await expect(page).toHaveURL(/longitude=126.978/);
   await expect.poll(() => zooms.at(-1)).toBe("15");
+});
+
+test("통계에서 고른 유종으로 지도를 연다 — 저장한 유종 선택은 그대로 두고, 지도에서 유종을 고르면 그 선택을 따른다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await routeFuel(page);
+  const products: string[] = [];
+  await page.route("**/api/public/fuel/places?*", (route) => {
+    products.push(new URL(route.request().url()).searchParams.get("product_codes") ?? "");
+    return route.fulfill({ json: { items: [], total: 0, truncated: false, clustered: false, available_sources: [], fuel_statistics: [],
+      fuel_prices_stale: false, fuel_prices_last_refreshed_at: generated } });
+  });
+  // 이 브라우저에는 휘발유를 저장해 두었다.
+  await page.addInitScript(() => { if (!localStorage.getItem("transport.public-fuel.products")) localStorage.setItem("transport.public-fuel.products", JSON.stringify(["B027"])); });
+  await page.goto("/statistics?product=K015");
+  await expect(page.getByRole("heading", { name: "전국 · LPG 현재 가격" })).toBeVisible();
+  await page.getByRole("link", { name: "지도에서 보기" }).click();
+  await expect(page).toHaveURL(/longitude=126.978.*product=K015/);
+  const combo = page.getByRole("region", { name: "현재 지도 범위 유가 통계" }).getByRole("button", { name: /^유종·필터/ });
+  await expect(combo).toHaveAccessibleName("유종·필터: LPG");
+  await expect.poll(() => products.at(-1)).toBe("K015");
+  expect(await page.evaluate(() => localStorage.getItem("transport.public-fuel.products"))).toBe(JSON.stringify(["B027"]));
+  // 지도의 통계 단추도 그 유종으로 연다.
+  await expect(page.getByRole("link", { name: "지역별 유가 통계" })).toHaveAttribute("href", "/statistics?product=K015&from=map");
+  // 지도에서 고르면 저장하고 주소의 유종은 지운다(좌표는 남는다). 새로고침해도 고른 유종이다.
+  await combo.click();
+  await page.getByRole("dialog", { name: "유종·필터" }).getByRole("checkbox", { name: "경유", exact: true }).check();
+  await page.keyboard.press("Escape");
+  await expect(page).not.toHaveURL(/product=/);
+  await expect(page).toHaveURL(/longitude=126.978/);
+  await page.reload();
+  await expect(combo).toHaveAccessibleName(/^유종·필터: .*경유/);
+  // 통계에서 지도를 새로 여는 "유가 지도"(지도에서 오지 않은 화면)도 보던 유종으로 연다.
+  await page.goto("/statistics?product=D047");
+  await page.getByRole("link", { name: "유가 지도" }).click();
+  await expect(page).toHaveURL(/\/\?product=D047$/);
+  await expect(combo).toHaveAccessibleName("유종·필터: 경유");
 });
 
 test("고속도로에서 고른 노선에 그 유종이 없으면 전체 노선 값을 보이고 알린다", async ({ page }) => {

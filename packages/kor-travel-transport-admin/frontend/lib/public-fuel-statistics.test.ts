@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  currentScope, historyPath, kstDay, listScope, regionSubstitution, fitProductToArea, parseStatisticsView, plausiblePoints, publicMapHref, regionOptions, resolveRegion, sigunguGroups, statisticsPath,
+  currentScope, historyPath, kstDay, listScope, regionSubstitution, fitProductToArea, parseStatisticsView, plausiblePoints, mapProductFromSearch, publicMapHomeHref, publicMapHref, regionOptions, resolveRegion, sigunguGroups, statisticsPath,
   statisticsAgeHours, statisticsViewQuery, trendSummary, type PublicFuelMetrics, type PublicFuelTrendPoint,
 } from "./public-fuel-statistics";
 
@@ -109,6 +109,16 @@ describe("보조", () => {
     expect(publicMapHref({ name: "a", longitude: 127.1, latitude: 37.5 })).toBe("/?longitude=127.1&latitude=37.5");
     expect(publicMapHref({ name: "a", longitude: 0, latitude: 0 })).toBeNull();
     expect(publicMapHref({ name: "a" })).toBeNull();
+  });
+  it("지도 링크는 보던 유종을 product로 싣고, 지도는 아는 유종 코드만 받는다", () => {
+    expect(publicMapHref({ name: "a", longitude: 127.1, latitude: 37.5 }, "K015")).toBe("/?longitude=127.1&latitude=37.5&product=K015");
+    expect(publicMapHref({ name: "a", longitude: 127.1, latitude: 37.5 }, "X999")).toBe("/?longitude=127.1&latitude=37.5");
+    expect(publicMapHomeHref("D047")).toBe("/?product=D047");
+    expect(publicMapHomeHref("<script>")).toBe("/");
+    expect(mapProductFromSearch(new URLSearchParams("product=C004&longitude=127"))).toBe("C004");
+    expect(mapProductFromSearch(new URLSearchParams("product=c004"))).toBeNull();
+    expect(mapProductFromSearch(new URLSearchParams(""))).toBeNull();
+    expect(mapProductFromSearch(null)).toBeNull();
   });
   it("통계 나이를 시간으로 잰다", () => {
     expect(statisticsAgeHours("2026-11-27T00:00:00Z", Date.parse("2026-11-28T12:00:00Z"))).toBe(36);

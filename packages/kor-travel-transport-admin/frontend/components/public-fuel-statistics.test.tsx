@@ -64,7 +64,8 @@ describe("공개 유가 지역별 통계", () => {
     expect(host.textContent).toContain("최저가 시험주유소 외 같은 가격 1곳");
     // 지도는 첫 렌더에 주소 좌표를 읽으므로 앱 안 이동(next/link)이 아니라 새로 여는 링크다.
     const link = host.querySelector<HTMLAnchorElement>('a[href^="/?longitude"]')!;
-    expect(link.getAttribute("href")).toBe("/?longitude=126.98&latitude=37.56");
+    // 보던 유종을 싣는다(지도는 저장한 유종 선택 대신 이 유종 하나로 열린다).
+    expect(link.getAttribute("href")).toBe("/?longitude=126.98&latitude=37.56&product=B027");
     expect(host.querySelector("time")?.textContent).toBe("2026.11.27 09:31");
     expect(host.textContent).toContain("최근 30일 휘발유 평균 가격 변화");
     expect(host.textContent).toContain("+29원");
@@ -210,7 +211,10 @@ describe("공개 유가 지역별 통계", () => {
     const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined);
     await render();
     const plain = new MouseEvent("click", { bubbles: true, cancelable: true });
-    [...host.querySelectorAll("a")].find(node => node.textContent === "유가 지도")!.dispatchEvent(plain);
+    const mapLink = () => [...host.querySelectorAll("a")].find(node => node.textContent === "유가 지도")!;
+    // 지도를 새로 열 때는 보던 유종으로 연다.
+    expect(mapLink().getAttribute("href")).toBe("/?product=B027");
+    mapLink().dispatchEvent(plain);
     expect(plain.defaultPrevented).toBe(false);
     await act(async () => root.unmount()); root = createRoot(host);
     await render("?from=map&product=D047");

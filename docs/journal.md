@@ -1,3 +1,22 @@
+## 2026-11-27 — 공개 유가 지도 잔여 2건(FUEL-PUBLIC-MAP-RETRY-E2E·지도 유종 링크)
+
+- FUEL-PUBLIC-MAP-RETRY-E2E 원인: 제품 배치 회귀도, 낡은 기대값도 아니었다. 시험이 외부 요청을 모두 막아 VWorld 타일이 전부 실패하고,
+  지도 첫 idle에 "지도 타일 오류 · 목록 보기" 알림이 범위 요약 위 줄(`.map-feedback`, 34.5px)에 생겨 요약을 민다. 재조회 대기(측정 1)와
+  성공(측정 2) 사이에 그 idle이 오면 34.5px로 실패한다. VWorld 키(`NEXT_PUBLIC_VWORLD_API_KEY`, 로컬 `.env.local`)로 빌드한 서버에서만
+  재현되고, 키 없이 빌드하면 "지도 키 없음"이 첫 렌더부터 있어 두 측정에 같이 들어가 통과한다(f77de230 시험 추가 뒤 관련 코드 변화 없음 —
+  빌드 키에 따라 결과가 갈렸다). 더미 키 빌드로 재현·확인했다.
+- 수정: `e2e/public-fuel-isolation.ts`가 외부 요청은 막고 WMTS 타일만 1px 성공 이미지로 채워 6개 공개 유가 스펙이 공유한다. 부하 중
+  public-fuel-ui2 "320px 가격 아이콘 하나"의 34.5px(같은 줄 두 상자를 차례로 재는 사이 알림 생성)와 public-fuel-map 첫 시험의
+  "34px 어긋남" 주석도 같은 원인이었다. 공개 지도에는 목록 보기가 없어(`mapOnly`) 알림의 "· 목록 보기"를 빼고 "지도 타일 오류"로 쓴다.
+- 병렬 부하의 또 다른 실패(새로고침이 "Internal Server Error"): `npm run start`의 `--hostname 127.0.0.1`로 띄우면 Next가 fuel proxy의
+  rewrite를 다른 origin(`http://localhost:PORT`)으로 보고 자기 자신에게 HTTP로 다시 보낸다 — 그 연결이 `ECONNRESET`이면 500. `localhost`·
+  `0.0.0.0`(운영 fuel-web)·생략은 내부 rewrite(`x-middleware-rewrite: /public/fuel`)라 운영에는 해당 없다. 시험 하네스 기준을 testing.md에 남겼다.
+- 지도 유종 링크: 공개 지도 주소에 `?product=`(통계 화면과 같은 이름·코드)를 더했다. 통계 화면의 "지도에서 보기"·같은 최저가 목록 "지도"·
+  지도에서 오지 않은 화면의 "유가 지도"가 보던 유종을 싣는다(휘발유도 생략하지 않는다). 지도는 `useSearchParams`로 읽어 그 유종 하나로
+  열고, 저장한 선택은 덮어쓰지 않는다(통계를 잠깐 본 사람의 평소 유종 보존). 지도에서 유종을 고르면 평소처럼 저장하고 주소의 `product`만
+  `replaceState`로 지워, 새로고침·지도 → 통계 → "유가 지도"(뒤로 가기)가 링크 유종으로 되돌아가지 않는다. 모르는 값·옛 링크는 지금처럼
+  저장한 선택. `from=map` 흐름·좌표·지역 선택 복원은 그대로다.
+
 ## 2026-11-27 — 유가 장기 추이 보류 P2 정리(FUEL-HISTORY-P2)
 
 - PR #300의 보류·기각 P2를 모두 처리했다. 관리 `/fuel/statistics` 주·월 점은 툴팁·키보드 안내가 버킷 시작일 하루(`00:00 KST`)를
