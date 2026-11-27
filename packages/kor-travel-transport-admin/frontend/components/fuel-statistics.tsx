@@ -5,7 +5,7 @@ import { VirtualTable, type ColumnDef } from "@kor-travel/ui/virtual-table";
 import { CircleHelp, Clock, ClockAlert, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { InfoButton } from "./info-button";
-import { useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { dateTime, transportGet } from "@/lib/journey";
 import { fuelProductLabel } from "@/lib/transport-presentation";
 import { fuelDrivingCosts } from "@/lib/driver-statistics";
@@ -21,6 +21,7 @@ import type { PublicFuelFilters } from "@/lib/public-fuel-filters";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { OffsetPager } from "./pagination-bar";
 
 export type FuelMetrics = {
   cheapest_stations?: (FuelChartStation & { station_key: string; price: number })[]; ranking_complete?: boolean;
@@ -46,6 +47,8 @@ const bucketNote: Record<TrendBucket, string> = {
   month: "월 단위 · 평균은 그 달 일별 평균의 단순 평균, 최저·최고는 그 달의 최저·최고",
 };
 const bucketGapDays: Record<TrendBucket, number> = { day: 1, week: 7, month: 31 };
+/** 장기 추이 표 한 쪽의 행 수. 1년·모든 유종(약 1,825행)을 한 번에 그리지 않는다. 차트는 모든 점을 그린다. */
+export const TREND_TABLE_PAGE_SIZE = 60;
 /** 공개 통계 세대 시각의 KST 날짜(통계 일자와 같은 기준). */
 function kstDay(value: string) {
   const instant = Date.parse(value);
@@ -379,15 +382,57 @@ export function FuelLongTrend({ trend, period }: { trend: Trend; period: Exclude
     <p className="fuel-stat-bucket-note text-xs text-text-secondary">{bucketNote[trend.bucket]}{trend.from_day && trend.to_day ? ` · ${trend.from_day} → ${trend.to_day}` : ""}. 기록이 없는 날짜는 채우지 않습니다.</p>
     {trend.points.some(point => point.minimum_price == null || point.maximum_price == null) ? <p className="fuel-stat-extremes-note text-xs text-text-secondary">일부 기간의 최저·최고가는 미제공입니다. 평균가로 대신 채우지 않습니다.</p> : null}
     <FuelPriceChart label={`${periodHeading[period]} 유종별 평균·최저·최고 유가`} maxGapDays={bucketGapDays[trend.bucket]} longRange={span > 120} rangeAsLines={rangeAsLines}
-      series={products.map(product => ({ product, points: trend.points.filter(point => point.product_code === product).map(point => ({ time: point.day, average: point.average_price, minimum: point.minimum_price, maximum: point.maximum_price, generated_at: point.generated_at })) }))} />
-    <details className="fuel-stat-table overflow-x-auto"><summary className="flex min-h-11 cursor-pointer items-center text-sm text-text-secondary">{unit} 가격 표</summary><VirtualTable ariaLabel={`${periodHeading[period]} 유가 ${unit} 관측값`} data={trend.points} getRowId={point => `${point.product_code}:${point.day}`} virtualized={false} columns={columns} /></details></>;
+      series={products.map(product => ({ product, points: trend.points.filter(point => point.product_code === product).map(point => ({ time: point.day, average: point.average_price, minimum: point.minimum_price, maximum: point.maximum_price, generated_at: point.generated_at,
+        span: daily ? null : { first_day: point.first_day, last_day: point.last_day, day_count: point.day_count } })) }))} />
+    {/* 다른 응답(기간·범주·유종·새로고침)은 첫 쪽부터 본다. 지금 흐름은 조회 중에 표를 내리지만 응답만 바뀌는 경로도 같게 둔다. */}
+    <FuelTrendTable key={`${trend.bucket}:${trend.from_day}:${trend.to_day}:${trend.generated_at}:${trend.points.length}`} unit={unit} label={`${periodHeading[period]} 유가 ${unit} 관측값`} points={trend.points} columns={columns} /></>;
+}
+/** 장기 추이 표: 최신 날짜부터(같은 날은 유종 순) 60행씩 쪽으로 나눈다(semantic table 유지, 표준 OffsetPager).
+ * pager는 표 위·가로 스크롤 밖에 둔다 — 넘긴 뒤 새 첫 행이 바로 아래 보이고, 좁은 화면에서 표를 옆으로 밀어도 pager가 따라가지 않는다.
+ * 한 쪽이면 pager를 두지 않는다. */
+function FuelTrendTable({ unit, label, points, columns }: { unit: string; label: string; points: TrendPoint[]; columns: ColumnDef<TrendPoint, unknown>[] }) {
+  const [page, setPage] = useState(1);
+  const pager = useRef<HTMLDivElement>(null);
+  const paged = useRef(false);
+  const ordered = useMemo(() => [...points].sort((a, b) => b.day.localeCompare(a.day) || productOrder(a.product_code) - productOrder(b.product_code) || a.product_code.localeCompare(b.product_code)), [points]);
+  const pages = Math.max(1, Math.ceil(ordered.length / TREND_TABLE_PAGE_SIZE));
+  const current = Math.min(page, pages);
+  const start = (current - 1) * TREND_TABLE_PAGE_SIZE;
+  const shown = ordered.slice(start, start + TREND_TABLE_PAGE_SIZE);
+  const count = (value: number) => value.toLocaleString("ko-KR");
+  // 첫·마지막 쪽에서는 방금 누른 버튼이 native disabled가 되어 초점이 body로 떨어진다. 같은 pager의 사용할 수 있는 버튼으로 옮긴다.
+  useLayoutEffect(() => {
+    if (!paged.current) return;
+    paged.current = false;
+    const active = document.activeElement;
+    if (active && active !== document.body && !(active as HTMLButtonElement).disabled) return;
+    pager.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  }, [current]);
+  return <details className="fuel-long-trend-table"><summary className="flex min-h-11 cursor-pointer items-center text-sm text-text-secondary">{unit} 가격 표{pages > 1 ? ` · ${count(ordered.length)}건` : ""}</summary>
+    {pages > 1 ? <div ref={pager} className="fuel-long-trend-table-pager">
+      <p className="sr-only" role="status">{`${unit} 가격 표 ${current}/${pages}쪽 · ${count(start + 1)}–${count(start + shown.length)}번째 / 총 ${count(ordered.length)}건`}</p>
+      <OffsetPager ariaPrefix={`${unit} 가격 표`} page={current} totalPages={pages} totalCount={ordered.length} currentCount={shown.length} onPageChange={next => { const target = Math.max(1, Math.min(pages, next)); paged.current = target !== current; setPage(target); }} />
+    </div> : null}
+    <div className="fuel-stat-table overflow-x-auto">
+      <VirtualTable ariaLabel={pages > 1 ? `${label} ${current}/${pages}쪽` : label} data={shown} getRowId={point => `${point.product_code}:${point.day}`} virtualized={false} columns={columns} />
+    </div>
+  </details>;
 }
 /** 장기 추이 영역의 조회 중·실패·결과. 30일 통계(순위 표 등)와 따로 알린다. */
 function FuelLongTrendSection({ period, trend }: { period: Exclude<Period, "30">; trend: TrendState }) {
+  const section = useRef<HTMLDivElement>(null);
+  const retried = useRef(false);
+  // 다시 조회 버튼은 조회 중에 사라진다. 누를 때 초점을 이 영역에 두고, 다시 실패하면 새 버튼으로 돌려준다(body로 떨어지지 않게).
+  useEffect(() => {
+    if (!retried.current || trend.pending) return;
+    retried.current = false;
+    if (trend.error && document.activeElement === section.current) section.current?.querySelector<HTMLButtonElement>(".fuel-long-trend-retry")?.focus();
+  }, [trend.pending, trend.error]);
   const body = trend.pending ? <p role="status" className="text-sm text-text-secondary">추이 조회 중…</p>
-    : trend.error ? <p role="alert" className="text-sm text-destructive">{trend.error}</p>
+    : trend.error ? <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-sm text-destructive">{trend.error}</p>
+      <Button type="button" variant="outline" size="sm" className="fuel-long-trend-retry" onClick={() => { retried.current = true; section.current?.focus(); trend.retry(); }}>추이 다시 조회</Button></div>
     : trend.data ? <FuelLongTrend trend={trend.data} period={period} /> : null;
-  return <div className="fuel-long-trend" aria-busy={trend.pending}>{body}</div>;
+  return <div ref={section} tabIndex={-1} className="fuel-long-trend outline-none" aria-busy={trend.pending}>{body}</div>;
 }
 const productOrder = (code: string) => FUEL_CHART_ORDER.includes(code) ? FUEL_CHART_ORDER.indexOf(code) : FUEL_CHART_ORDER.length;
 function StationAddress({ station }: { station?: FuelChartStation | null }) {
@@ -467,13 +512,16 @@ function useFuelStatistics() {
 }
 
 
-type TrendState = { pending: boolean; error: string | null; data: Trend | null };
+type TrendState = { pending: boolean; error: string | null; data: Trend | null; retry: () => void };
 /** 30일보다 긴 기간의 장기 추이. 통계 페이지가 고른 범주·공개 세대 날짜에 맞춰 읽는다(그 날짜보다 새 날짜는 묻지 않는다). */
 function useFuelLongTrend(period: Period, scope: string, product: string, shownData: Statistics | null, dataVersion: number): TrendState {
-  const [state, setState] = useState<TrendState & { context: string }>({ pending: false, error: null, data: null, context: "" });
+  const [state, setState] = useState<Omit<TrendState, "retry"> & { context: string }>({ pending: false, error: null, data: null, context: "" });
+  // 실패(혼잡 429·일시 오류)는 이 영역만 다시 읽는다(페이지 전체 새로고침 없이).
+  const [attempt, setAttempt] = useState(0);
+  const retry = () => setAttempt(value => value + 1);
   const key = shownData?.history_scope_key ?? null;
   const to = shownData?.generated_at ? kstDay(shownData.generated_at) : null;
-  const context = period === "30" || !key || !to ? "" : `${period}/${scope}/${product}/${key}/${to}/${dataVersion}`;
+  const context = period === "30" || !key || !to ? "" : `${period}/${scope}/${product}/${key}/${to}/${dataVersion}/${attempt}`;
   useEffect(() => {
     if (!context || !key || !to) return;
     const controller = new AbortController();
@@ -487,7 +535,7 @@ function useFuelLongTrend(period: Period, scope: string, product: string, shownD
     return () => controller.abort();
   }, [context, key, to, scope, product, period]);
   // 다른 범주·기간·새로고침의 이전 응답은 보이지 않는다. 아직 응답이 없으면 조회 중이다.
-  return state.context === context ? state : { pending: Boolean(context), error: null, data: null };
+  return state.context === context ? { ...state, retry } : { pending: Boolean(context), error: null, data: null, retry };
 }
 
 // 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.

@@ -35,6 +35,12 @@
   옛 이미지가 migration 뒤에 공개한 날(자정을 넘겨 두 날이어도)은 일별 행만 바뀌기 때문이다. 같으면 키만 비교하고 JSON을 읽거나 쓰지 않는다.
   그날 행 교체용 인덱스 `ix_fuel_statistics_history_day (source, day)`를 함께 둔다. 한 해 약 58만 행·약 180MB(행+기본키,
   하루 약 1,600행 기준; 일별 표는 같은 기간 약 0.7GB)다.
+- **저장할 수 없는 가격(2026-11-27)**: 통계 point·추이 가격 열은 `NUMERIC(10,2)`(1억 미만)이고 휴게소 원천 가격 열은 INTEGER다.
+  1억 이상이 오면 통계 공개 transaction이, 2^31 이상이면 휴게소 수집 transaction이 통째로 실패했다. 이제 휴게소 수집이 저장 경계에서
+  1억 이상·-2^31 미만(INTEGER 밖)·정수가 아닌 값만 미제공(null)으로 저장하고(0·음수는 예전처럼 그대로 — 공급자가 "판매 안 함"을 0으로 줄 수 있고 export 계약을 바꾸지 않는다, 통계는 0 이하를 뺀다)(원문은 `raw_item_json`, 경고 `rest_area_fuel_price_out_of_range`·
+  `rest_area_fuel_prices_out_of_range`), 통계 공개도 같은 상한을 한 번 더 걸러 경고(`fuel_statistics_price_out_of_range`)를 남긴다
+  (이미 저장된 옛 값 대비). 그래서 places·export도 그 값을 미제공으로 보인다. 상한 아래의 이상값 판정은 원천 정정 몫이다. 오피넷 가격은
+  원천 표부터 `NUMERIC(10,2)`라 해당하지 않는다.
 - **기존 자료**: 0049가 기존 일별 행의 `metrics_json`에서 31일 창씩 옮긴다. 형 검사를 CASE 안에 두어(PostgreSQL은 AND 순서를 보장하지
   않는다) 평균·주유소 수가 숫자가 아니거나 0 이하, 값이 `NUMERIC(10,2)` 범위(1억) 밖인 행은 옮기지 않고, 최저·최고가 없던 옛 행은 null로 둔다.
 - **회당(하루 안) 지역 요약은 노출하지 않는다**: `fuel_region_summaries`는 성공 세대마다 시도·시군구 값을 영구 보존하지만 이력 API를
@@ -61,11 +67,25 @@
 - 응답에는 weak ETag와 `Cache-Control: private, no-cache`가 붙고 `If-None-Match`가 같으면 304다. 공개 유가·관리 BFF는 응답을
   `no-store`로 다시 쓰므로 304 재검증은 gateway 직접 호출(`fuel-api`·`transport-api`)에만 해당한다. 공개 gateway(12301·12307)와 공개 유가
   BFF(`/api/public/fuel/statistics/history`), 관리 BFF 허용 목록에 이 경로 하나만 더했다.
+- **동시 상한(2026-11-27)**: backend가 이 경로를 줄별로 센다 — 공개 줄(gateway가 덮어쓰는 `X-Transport-Listener` 표지) 6건,
+  내부 줄(관리 BFF 등 12302 loopback 직접 호출) 2건. 넘으면 기다리지 않고 `429` + `Retry-After: 2` problem+json이고, 공개 부하가
+  관리 화면을 막지 못한다. 직렬화까지 자리 안에서 한다. 두 공개 gateway는 정확 일치 location으로 먼저 센다: 12307 4건(BFF
+  127.0.0.1·직접 호출을 **한 key**로 — 공개 BFF도 누구나 부를 수 있어 나누면 외부 호출자가 두 몫을 다 쓴다, places와 다른 zone),
+  12301 2건(listener 전체). 공개 줄 6 = 4 + 2라 넘는 요청은 gateway가 먼저 거절한다. gateway 거절도 같은 `429` + `Retry-After: 2` problem+json
+  (`instance`=`/v1/transport/fuel/statistics/history`, 12307은 CORS header 포함)이고 backend 응답(422·429 등)은 그대로 전달한다.
+  관리 화면은 실패한 추이만 "추이 다시 조회"로 다시 읽는다.
+  응답(1년·모든 유종 약 0.42MB, 상한 약 0.46MB)은 요청당 256KiB 메모리 버퍼로 받고 임시 파일은 쓰지 않는다
+  ([가드레일](runbooks/request-timing-logs.md#공개-gateway-가드레일)). 공개 BFF는 상태와 `Retry-After`를 그대로 전달한다.
 
 관리 UI `/fuel/statistics`는 범위·유종 옆에 **기간**(30일·90일·1년·전체)을 둔다. 30일은 예전 그대로 페이지 응답의 이력(날짜별 최저가
 주유소 포함)을 쓴다. 90일·1년은 페이지가 고른 범주(`history_scope_key`)와 공개 세대 KST 날짜(`to`)로 `bucket=day`, 전체는
 `bucket=auto`를 읽어 같은 ECharts 차트·표로 보인다. 주·월 점은 점 간격(7일·31일)보다 먼 빈 기간에서만 선을 끊고, 넉 달 넘는 범위는
-x축을 연.월로 쓴다. 장기 추이 실패는 그 자리에서만 알리고 현재 범주·순위 표는 그대로 둔다. 공개 유가 웹은 2026-11-27부터 `/statistics`에서 같은 두 API로
+x축을 연.월로 쓴다. 주·월 점의 툴팁과 키보드 날짜 선택 안내는 시작일 하루가 아니라 실제 기록 범위·일수(`2026-01-05 → 2026-01-11
+KST · 기록 7일`, 유종마다 다르면 행마다)를 보인다(차트 점의 선택 필드 `span`, 2026-11-27). 표는 최신 날짜부터(같은 날은 유종 순) 60행씩 쪽으로
+나눈다(1년·모든 유종 약 1,825행을 한 번에 그리지 않는다). 표준 `OffsetPager`를 표 위·가로 스크롤 밖에 두고, 표 이름에 `n/N쪽`,
+쪽 안내 `role=status` 하나, 첫·마지막 쪽에서 누른 버튼이 disabled가 되면 초점을 같은 pager의 사용할 수 있는 버튼으로 옮긴다, 터치 44px.
+차트는 모든 점을 그린다. 공유 차트의 `span`은 일 단위 점에는 주지 않고, 필드가 빠지거나 형식이 다르면 무시한다.
+장기 추이 실패는 그 자리에서만 알리고 현재 범주·순위 표는 그대로 둔다. 공개 유가 웹은 2026-11-27부터 `/statistics`에서 같은 두 API로
 지역별 현재 값과 추이를 보인다([공개 유가 서비스](design/2026-11-20-public-fuel-service.md#지역별-유가-통계-statistics)).
 
 ## 통계 페이지 시군구 읽기 (2026-11-26)

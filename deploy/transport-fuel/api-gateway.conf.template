@@ -40,6 +40,14 @@ map $remote_addr $fuel_places_direct_slot {
 }
 limit_conn_zone $fuel_places_bff_slot zone=fuel_places_bff:1m;
 limit_conn_zone $fuel_places_direct_slot zone=fuel_places_direct:1m;
+# 장기 유가 추이(statistics/history) 동시 처리 상한. places와 달리 BFF·직접 호출을 **한 key**로 센다: 공개 BFF
+# (/api/public/fuel/statistics/history)도 누구나 부를 수 있어 둘로 나누면 외부 호출자가 두 몫을 다 쓴다(PR #302 Popper P1).
+# backend 공개 줄 상한(6)은 이 상한(4)과 12301(2)의 합이라 넘는 요청은 gateway가 먼저 거절한다. places와 zone이 달라
+# 추이 조회가 지도 몫을, 지도가 추이 몫을 쓰지 않는다.
+map $server_port $fuel_history_slot {
+    default history;
+}
+limit_conn_zone $fuel_history_slot zone=fuel_history:1m;
 # 소요 시간 access log 형식. 요청 줄($request)·query($args) 대신 클라이언트가 보낸 경로(디코드 전,
 # query 제외)만 남긴다. 경로 안의 공개 식별자(주유소 id)는 남는다. 디코드 전 경로에는 공백이 없다.
 # rt=gateway 전체, uct=upstream 연결, uht=upstream 첫 응답 header, urt=upstream 응답 끝까지(초),
@@ -154,7 +162,42 @@ server {
         return 429 '{"type":"about:blank","title":"Too Many Requests","status":429,"detail":"장소 지도 조회가 혼잡합니다. 잠시 후 다시 시도하세요.","instance":"/v1/transport/fuel/places"}';
     }
 
-    location ~ ^/v1/transport/fuel/(stations|statistics|statistics/history|price-distribution|area-catalog|stations/[1-9][0-9]*/price-history)$ {
+    # 장기 유가 추이. 유종당 최대 400점이라 1년·모든 유종(약 1,825점)은 비압축 약 0.42MB, 최대 5유종×400점은 약 0.46MB다
+    # (점 하나 약 230 bytes). 기본 버퍼(8×4k)를 넘으면 proxy_temp 파일로 내려가므로 요청당 최대 256KiB 메모리 버퍼로 받고
+    # 임시 파일은 쓰지 않는다. 그보다 큰 나머지는 클라이언트가 읽는 속도로 흘린다(BFF는 같은 호스트라 바로 읽는다).
+    # 메모리(자리를 잡은 동안 요청당, 모두 gzip 직접 호출로 잡은 최악): proxy 260KiB + zlib 264KiB + gzip_buffers 128KiB + 송신
+    # socket 버퍼 약 512KiB(sndbuf 256k) ≈ 1.1MiB × 4 ≈ 4.6MiB. places 두 몫(≈15.2MiB, socket 버퍼 제외)과 합쳐도 ≈19.8MiB로 64MiB의
+    # 1/3 이하다. 부분 완화일 뿐이다: 응답을 커널에 다 넘기면 자리가 풀리고 읽지 않는 연결의 남은 본문(gzip이면 작다)은 커널 송신
+    # 버퍼에 남아 이 상한이 묶지 않는다. keepalive를 짧게 두고, 많은 읽지 않는 연결의 실제 메모리는 probe가 잰다.
+    # 넘으면 places와 같은 429 + Retry-After 2 problem+json이다.
+    location = /v1/transport/fuel/statistics/history {
+        if ($fuel_preflight = 2) { return 403; }
+        if ($fuel_preflight = 1) { return 204; }
+        proxy_pass http://127.0.0.1:12302;
+        proxy_buffers 8 32k;
+        proxy_max_temp_file_size 0;
+        send_timeout 10s;
+        keepalive_timeout 5s;
+        reset_timedout_connection on;
+        limit_conn fuel_history 4;
+        limit_conn_status 429;
+        limit_conn_log_level warn;
+        error_page 429 = @fuel_history_busy;
+    }
+
+    # limit_conn 거절만 받는다(backend 429는 그대로 전달된다). CORS 줄은 @fuel_places_busy와 같은 이유로 다시 적는다.
+    location @fuel_history_busy {
+        default_type application/problem+json;
+        add_header Access-Control-Allow-Origin $fuel_cors_origin always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Accept, If-None-Match, Content-Type" always;
+        add_header Access-Control-Expose-Headers "ETag, Retry-After, X-Limit-Applied" always;
+        add_header Vary "Origin" always;
+        add_header Retry-After 2 always;
+        return 429 '{"type":"about:blank","title":"Too Many Requests","status":429,"detail":"유가 추이 조회가 혼잡합니다. 잠시 후 다시 시도하세요.","instance":"/v1/transport/fuel/statistics/history"}';
+    }
+
+    location ~ ^/v1/transport/fuel/(stations|statistics|price-distribution|area-catalog|stations/[1-9][0-9]*/price-history)$ {
         if ($fuel_preflight = 2) { return 403; }
         if ($fuel_preflight = 1) { return 204; }
         proxy_pass http://127.0.0.1:12302;

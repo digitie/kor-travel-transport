@@ -167,7 +167,7 @@ def test_export_location_never_buffers_large_pages_to_temp_files_and_bounds_tota
 
 @pytest.mark.parametrize("location", [
     "location = /health", "location = /v1/transport/features/places", "location ~ ^/v1/transport/(",
-    "location ~ ^/v1/transport/rail/general/", "location = /mcp",
+    "location ~ ^/v1/transport/rail/general/", "location = /mcp", "location = /v1/transport/fuel/statistics/history",
 ])
 def test_public_transport_locations_hide_server_timing(location):
     text = _text(ADMIN)
@@ -251,3 +251,85 @@ def test_public_fuel_places_never_buffers_to_temp_files_and_bounds_total_memory(
     assert len(cors) == 5
     for line in cors:
         assert "        " + line in busy, line
+
+
+HISTORY = "/v1/transport/fuel/statistics/history"
+
+
+def _per_request(block: str) -> int:
+    match = re.search(r"proxy_buffers (\d+) (\d+)k;", block)
+    assert match
+    return int(match.group(1)) * int(match.group(2)) * 1024
+
+
+def test_public_fuel_history_has_its_own_concurrency_cap_on_both_gateways():
+    """장기 유가 추이(PR #300 Popper#10): 두 공개 gateway 모두 동시 상한·429 problem+json·버퍼 상한을 둔다.
+
+    12307은 BFF·직접 호출을 한 key로 센다(공개 BFF도 누구나 부를 수 있어 둘로 나누면 외부 호출자가 두 몫을 다 쓴다, PR #302).
+    상한은 backend 동시 실행 상한과 같다."""
+    from app.services.fuel_statistics import FUEL_HISTORY_GATEWAY_LIMITS, FUEL_HISTORY_RETRY_AFTER_SECONDS
+
+    fuel = _text(FUEL)
+    block = _block(fuel, f"    location = {HISTORY}")
+    slot = fuel.split("map $server_port $fuel_history_slot {", 1)[1].split("\n}", 1)[0]
+    assert slot.strip() == "default history;"
+    assert "limit_conn_zone $fuel_history_slot zone=fuel_history:1m;" in fuel
+    limit = int(re.search(r"limit_conn fuel_history (\d+);", block).group(1))
+    assert len(re.findall(r"limit_conn fuel_history", block)) == 1
+    assert limit == FUEL_HISTORY_GATEWAY_LIMITS["fuel"]
+    assert "fuel_places" not in block  # 지도 몫을 쓰지 않는다.
+    for directive in ("proxy_max_temp_file_size 0;", "send_timeout 10s;", "limit_conn_status 429;",
+                      "keepalive_timeout 5s;", "reset_timedout_connection on;",
+                      "limit_conn_log_level warn;", "error_page 429 = @fuel_history_busy;",
+                      "if ($fuel_preflight = 2) { return 403; }", "if ($fuel_preflight = 1) { return 204; }",
+                      "proxy_pass http://127.0.0.1:12302;"):
+        assert directive in block, directive
+    assert "proxy_hide_header" not in block and "add_header" not in block  # server 단위 CORS·숨김 상속 유지
+    identity = _per_request(block) + 4 * 1024
+    gzipped = identity + (1 << 17) + (1 << 17) + 8 * 1024 + 32 * 4 * 1024
+    places = _block(fuel, "    location = /v1/transport/fuel/places")
+    places_identity = _per_request(places) + 4 * 1024
+    places_gzipped = places_identity + (1 << 17) + (1 << 17) + 8 * 1024 + 32 * 4 * 1024
+    places_total = (int(re.search(r"limit_conn fuel_places_bff (\d+);", places).group(1)) * places_identity
+                    + int(re.search(r"limit_conn fuel_places_direct (\d+);", places).group(1)) * places_gzipped)
+    # 추이는 최악(모두 gzip 직접 호출)에 송신 socket 버퍼(sndbuf 256k → 커널 약 512KiB)까지 더해 센다.
+    history_total = limit * (gzipped + 512 * 1024)
+    assert identity < gzipped
+    # places 두 몫과 추이 몫을 모두 채워도 64MiB fuel gateway의 1/3 이하다.
+    assert places_total + history_total <= 64 * 1024 * 1024 // 3
+    busy = _block(fuel, "    location @fuel_history_busy")
+    assert f"add_header Retry-After {FUEL_HISTORY_RETRY_AFTER_SECONDS} always;" in busy and "default_type application/problem+json;" in busy
+    problem = _returned_json(busy, 429)
+    assert set(problem) == {"type", "title", "status", "detail", "instance"}
+    assert problem["status"] == 429 and problem["instance"] == HISTORY and re.search(r"[가-힣]", problem["detail"])
+    server = fuel.split("server {", 1)[1].split("    location", 1)[0]
+    cors = re.findall(r"^    (add_header [^\n]+;)$", server, re.M)
+    assert len(cors) == 5
+    for line in cors:
+        assert "        " + line in busy, line
+
+    # 12301: 직접 호출뿐이라 listener 전체 한 key. 다른 공개 읽기 location과 같은 header·timeout.
+    admin = _text(ADMIN)
+    block = _block(admin, f"    location = {HISTORY}")
+    # export map과 다른 변수다(한쪽 key를 바꿔도 다른 상한이 바뀌지 않는다).
+    slot = admin.split("map $server_port $transport_fuel_history_slot {", 1)[1].split("\n}", 1)[0]
+    assert slot.strip() == "default history;"
+    assert "limit_conn_zone $transport_fuel_history_slot zone=transport_fuel_history:1m;" in admin
+    limit = int(re.search(r"limit_conn transport_fuel_history (\d+);", block).group(1))
+    assert limit == FUEL_HISTORY_GATEWAY_LIMITS["transport"] and limit * (_per_request(block) + 4 * 1024 + 512 * 1024) <= 4 * 1024 * 1024
+    for directive in ("limit_except GET { deny all; }", "proxy_pass http://127.0.0.1:12302;",
+                      "proxy_hide_header Server-Timing;", "proxy_set_header Host 127.0.0.1;",
+                      "proxy_set_header X-Transport-Listener public;", "proxy_read_timeout 30s;",
+                      "proxy_max_temp_file_size 0;", "send_timeout 10s;", "limit_conn_status 429;",
+                      "keepalive_timeout 5s;", "reset_timedout_connection on;",
+                      "limit_conn_log_level warn;", "error_page 429 = @transport_fuel_history_busy;"):
+        assert directive in block, directive
+    assert "transport_export " not in block  # export 몫을 쓰지 않는다.
+    busy = _block(admin, "    location @transport_fuel_history_busy")
+    assert "add_header Retry-After 2 always;" in busy and "default_type application/problem+json;" in busy
+    problem = _returned_json(busy, 429)
+    assert set(problem) == {"type", "title", "status", "detail", "instance"}
+    assert problem["status"] == 429 and problem["instance"] == HISTORY
+    # 정규식 공개 읽기에서는 뺐다(정확 일치가 먼저 선택되지만 두 곳에 두지 않는다).
+    regex = next(line.strip() for line in admin.splitlines() if line.strip().startswith("location ~ ^/v1/transport/("))
+    assert "statistics/history" not in regex

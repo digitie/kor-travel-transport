@@ -45,29 +45,43 @@ for (const width of [390, 1440]) {
   });
 }
 
+/** 30일 페이지(2유종)와 장기 추이 API(90일·1년 day, 전체 auto→week)를 흉내 낸다. 받은 추이 query를 돌려준다. */
+async function routeLongTrend(page: Page) {
+  await page.route("**/api/transport/transport/fuel/statistics?*", route => route.fulfill({ json: {
+    generated_at: "2026-11-26T00:17:00Z", update_pending: false, history_scope_key: "all",
+    items: ["B027", "D047"].map(product_code => ({ ...metrics, product_code, scope_key: "all", label: "전국" })),
+    history: [{ product_code: "B027", day: "2026-11-26", generated_at: "2026-11-26T00:17:00Z", average_price: 1700, minimum_price: 1600, maximum_price: 1800, station_count: 12000 }] } }));
+  const requests: URLSearchParams[] = [];
+  await page.route("**/api/transport/transport/fuel/statistics/history?*", async route => {
+    const search = new URL(route.request().url()).searchParams; requests.push(search);
+    const bucket = search.get("bucket") === "auto" ? "week" : "day";
+    const step = bucket === "week" ? 7 : 1;
+    const count = bucket === "week" ? 60 : Number(search.get("from") === "2026-08-29" ? 90 : 365);
+    // 주 버킷 시작(day)은 API처럼 월요일이다. 마지막 주(2026-11-23 월)는 화요일부터 공개일(목)까지만 기록이 있다:
+    // x 위치(버킷 시작)와 first_day가 다르다.
+    const end = bucket === "week" ? Date.UTC(2026, 10, 23) : Date.UTC(2026, 10, 26);
+    const start = end - (count - 1) * step * 86_400_000;
+    const points = ["B027", "D047"].flatMap(product_code => Array.from({ length: count }, (_, i) => {
+      const day = new Date(start + i * step * 86_400_000).toISOString().slice(0, 10);
+      const first = bucket === "week" && i === count - 1 ? "2026-11-24" : day;
+      const last = [new Date(start + (i * step + step - 1) * 86_400_000).toISOString().slice(0, 10), "2026-11-26"].sort()[0];
+      const days = Math.round((Date.parse(last) - Date.parse(first)) / 86_400_000) + 1;
+      return { product_code, day, first_day: first, last_day: last, day_count: days, generated_at: `${last}T00:17:00Z`,
+        average_price: (product_code === "B027" ? 1700 : 1600) + Math.sin(i / 9) * 40, minimum_price: 1500, maximum_price: 1900, station_count: 12000 };
+    }));
+    await route.fulfill({ json: { scope: "nationwide", scope_key: "all", product_code: "ALL", source: "opinet_browser", label: "전국",
+      bucket, average_method: "mean_of_daily_averages", max_points: 400, from_day: points[0].day, to_day: "2026-11-26",
+      generated_at: "2026-11-26T00:17:00Z", update_pending: false, points } });
+  });
+  return requests;
+}
+
 for (const width of [390, 1440]) {
   test(`${width}px 기간 선택(90일·1년·전체)은 장기 추이 API를 읽어 같은 차트로 보인다`, async ({ page }) => {
+    // 세 기간·표 쪽 이동·차트 hover까지 한 흐름이라 기본 45초보다 길게 둔다(부하 중 CI·WSL).
+    test.setTimeout(90_000);
     await page.setViewportSize({ width, height: 1000 });
-    await page.route("**/api/transport/transport/fuel/statistics?*", route => route.fulfill({ json: {
-      generated_at: "2026-11-26T00:17:00Z", update_pending: false, history_scope_key: "all",
-      items: ["B027", "D047"].map(product_code => ({ ...metrics, product_code, scope_key: "all", label: "전국" })),
-      history: [{ product_code: "B027", day: "2026-11-26", generated_at: "2026-11-26T00:17:00Z", average_price: 1700, minimum_price: 1600, maximum_price: 1800, station_count: 12000 }] } }));
-    const requests: URLSearchParams[] = [];
-    await page.route("**/api/transport/transport/fuel/statistics/history?*", async route => {
-      const search = new URL(route.request().url()).searchParams; requests.push(search);
-      const bucket = search.get("bucket") === "auto" ? "week" : "day";
-      const step = bucket === "week" ? 7 : 1;
-      const count = bucket === "week" ? 60 : Number(search.get("from") === "2026-08-29" ? 90 : 365);
-      const start = Date.UTC(2026, 10, 26) - (count - 1) * step * 86_400_000;
-      const points = ["B027", "D047"].flatMap(product_code => Array.from({ length: count }, (_, i) => {
-        const day = new Date(start + i * step * 86_400_000).toISOString().slice(0, 10);
-        return { product_code, day, first_day: day, last_day: day, day_count: step, generated_at: `${day}T00:17:00Z`,
-          average_price: (product_code === "B027" ? 1700 : 1600) + Math.sin(i / 9) * 40, minimum_price: 1500, maximum_price: 1900, station_count: 12000 };
-      }));
-      await route.fulfill({ json: { scope: "nationwide", scope_key: "all", product_code: "ALL", source: "opinet_browser", label: "전국",
-        bucket, average_method: "mean_of_daily_averages", max_points: 400, from_day: points[0].day, to_day: "2026-11-26",
-        generated_at: "2026-11-26T00:17:00Z", update_pending: false, points } });
-    });
+    const requests = await routeLongTrend(page);
     await page.goto("/fuel/statistics");
     await expect(page.getByRole("heading", { name: "최근 30일 평균 유가 · 전국" })).toBeVisible();
     const period = page.getByLabel("기간", { exact: true });
@@ -81,10 +95,56 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole("group", { name: /최근 90일 유종별 평균·최저·최고 유가/ })).toBeVisible();
     await period.selectOption("365");
     await expect(page.getByRole("group", { name: /최근 1년 유종별 평균·최저·최고 유가/ })).toBeVisible();
+    // 1년 × 2유종 = 730건은 최신 날짜부터 60행씩 쪽으로 나눈다(표준 pager는 표 위, 쪽 번호가 표 이름에 붙는다).
+    await page.getByText("일별 가격 표 · 730건", { exact: true }).click();
+    const yearTable = page.getByRole("table", { name: "최근 1년 유가 일별 관측값 1/13쪽" });
+    await expect(yearTable.locator("tbody tr")).toHaveCount(60);
+    await expect(yearTable.locator("tbody tr").first()).toContainText("2026-11-26휘발유");
+    const next = page.getByRole("button", { name: "일별 가격 표 다음 페이지" });
+    await next.click();
+    const second = page.getByRole("table", { name: "최근 1년 유가 일별 관측값 2/13쪽" });
+    await expect(second.locator("tbody tr")).toHaveCount(60);
+    await expect(second.locator("tbody tr").first()).toContainText("2026-10-27휘발유");
+    await expect(next).toBeFocused();
+    // 넘긴 뒤 새 첫 행이 화면 안(pager 바로 아래)에 있다.
+    await expect(second.locator("tbody tr").first()).toBeInViewport();
+    const last = page.getByRole("button", { name: "일별 가격 표 마지막 페이지" });
+    await last.click();
+    await expect(page.getByRole("table", { name: "최근 1년 유가 일별 관측값 13/13쪽" }).locator("tbody tr")).toHaveCount(10);
+    // 마지막 쪽에서 누른 버튼이 disabled가 되면 초점은 같은 pager의 첫 페이지 버튼으로 옮긴다(body로 떨어지지 않는다).
+    await expect(page.getByRole("button", { name: "일별 가격 표 첫 페이지" })).toBeFocused();
+    // 좁은 화면에서 표를 옆으로 밀어도 pager는 가로 스크롤 밖이라 제자리다.
+    const scroller = page.locator(".fuel-long-trend-table .fuel-stat-table");
+    // 표는 안쪽 세로 스크롤 상자에 갇히지 않는다(60행이 다 펼쳐진다).
+    expect(await page.locator('.fuel-long-trend-table [data-slot="table-container"]').evaluate(element => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);
+    const before = (await page.getByRole("navigation", { name: "일별 가격 표 pagination" }).boundingBox())!;
+    await scroller.evaluate(element => { element.scrollLeft = element.scrollWidth; });
+    const after = (await page.getByRole("navigation", { name: "일별 가격 표 pagination" }).boundingBox())!;
+    expect(after.x).toBe(before.x);
+    // pager 버튼은 링크처럼 밑줄을 긋지 않는다(.fuel-stat-table button 규칙 밖).
+    expect(await page.getByRole("button", { name: "일별 가격 표 첫 페이지" }).evaluate(element => getComputedStyle(element).textDecorationLine)).toBe("none");
+    await page.getByRole("navigation", { name: "일별 가격 표 pagination" }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `test-results/fuel-statistics-table-${width}.png`, fullPage: false });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await period.selectOption("all");
     await expect(page.getByRole("heading", { name: "전체 기간 평균 유가 · 전국" })).toBeVisible();
     await expect(page.getByText("주 단위(월요일 시작)", { exact: false })).toBeVisible();
     await expect(page.getByRole("group", { name: /전체 기간 유종별 평균·최저·최고 유가/ }).locator("canvas")).toBeVisible();
+    // 주 단위 점은 시작일 하루가 아니라 기록 범위·일수를 안내한다(키보드 선택 = 툴팁과 같은 문구).
+    const keyboard = page.getByRole("button", { name: "전체 기간 유종별 평균·최저·최고 유가 날짜 선택" });
+    await keyboard.focus();
+    await keyboard.press("End");
+    const chosen = page.locator(".fuel-echarts-block [role=status]").first();
+    await expect(chosen).toContainText("휘발유 · 2026-11-24 → 2026-11-26 KST · 기록 3일");
+    await expect(chosen).not.toContainText("2026-11-23");
+    await keyboard.press("ArrowLeft");
+    await expect(chosen).toContainText("휘발유 · 2026-11-16 → 2026-11-22 KST · 기록 7일");
+    // 차트 위 마우스 툴팁도 같은 범위를 보인다. 마지막 점은 plot 오른쪽 끝(grid right 18px)에 있다.
+    const canvas = page.getByRole("group", { name: /전체 기간 유종별 평균·최저·최고 유가/ }).locator("canvas").first();
+    await canvas.scrollIntoViewIfNeeded();
+    const box = (await canvas.boundingBox())!;
+    await page.mouse.move(box.x + box.width - 18, box.y + box.height / 2);
+    await expect(page.locator(".fuel-chart-tooltip").first()).toContainText("2026-11-24 → 2026-11-26 KST · 기록 3일");
     expect(requests.map(search => [search.get("from"), search.get("to"), search.get("bucket")])).toEqual([
       ["2026-08-29", "2026-11-26", "day"], ["2025-11-27", "2026-11-26", "day"], [null, "2026-11-26", "auto"]]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -306,6 +366,26 @@ test("안내를 키보드로 연 뒤 재조회·실패·성공에도 초점과 �
     await page.keyboard.press("Escape");
     await expect(info).toBeFocused();
   } finally { release(); }
+});
+
+test.describe("터치 장기 추이 표", () => {
+  test.use({ hasTouch: true });
+  test("390px 장기 추이 표 pager 버튼은 44px 높이다", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await routeLongTrend(page);
+    await page.goto("/fuel/statistics");
+    expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+    await page.getByLabel("기간", { exact: true }).selectOption("365");
+    await page.getByText("일별 가격 표 · 730건", { exact: true }).click();
+    const nav = page.getByRole("navigation", { name: "일별 가격 표 pagination" });
+    await nav.scrollIntoViewIfNeeded();
+    expect((await page.locator(".fuel-long-trend-table > summary").boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    for (const name of ["첫 페이지", "이전 페이지", "다음 페이지", "마지막 페이지"]) {
+      const box = await page.getByRole("button", { name: `일별 가격 표 ${name}` }).boundingBox();
+      expect(box!.height, name).toBeGreaterThanOrEqual(44);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
 });
 
 test.describe("터치 지도 범위 요약", () => {

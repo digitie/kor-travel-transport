@@ -1,3 +1,14 @@
+## 현재 상태 — 2026-11-27 유가 장기 추이 보류 P2 정리(FUEL-HISTORY-P2)
+
+- 관리 `/fuel/statistics`: 주·월 툴팁·키보드 안내에 기록 범위·일수, 장기 추이 표 60행 쪽 나눔. 공유 차트(`fuel-price-chart`)는 점에
+  선택 필드 `span`만 더했다(기존 호출 그대로 — 공개 `/statistics`(#301)도 이 차트를 쓰지만 span을 주지 않아 출력이 같다).
+- 두 공개 gateway의 `/v1/transport/fuel/statistics/history` 동시 상한(backend 줄별 공개 6·내부 2, 12307 BFF·직접 합계 4, 12301 2)과 429 + Retry-After 2 problem+json,
+  `scripts/gateway-probe.py` 확장. 0047·0050 오프라인 `--sql` 지원. 휴게소 가격은 수집 저장 경계(정수 아님·1억 이상·-2^31 미만 → null)와 통계 공개에서 걸러 경고(수집·공개 실패 방지).
+- migration 없음(0047·0050 파일은 오프라인 분기만 바뀌고 온라인 동작·revision은 같다).
+- 배포(Codex 담당): fuel gateway 이미지 재빌드(12307), 12301 gateway 재생성(template bind mount), backend·Dagster code-server 이미지
+  (휴게소 가격 저장 경계·통계 상한, 추이 줄별 상한), transport-admin 이미지(관리 UI). 순서 무관.
+- 다음 한 작업: FUEL-HISTORY-P2-VERIFY, 그 뒤 FUEL-HISTORY-VERIFY(tasks.md).
+
 ## 현재 상태 — 2026-11-27 공개 유가 지역별 통계 화면(FUEL-HISTORY-PUBLIC-UI)
 
 - transport-admin(fuel web): `/statistics` 공개 화면, 지도 "통계" 단추, proxy rewrite, 공개 reader 경로·Retry-After 날짜 형식.

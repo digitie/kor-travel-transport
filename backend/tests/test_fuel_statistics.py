@@ -128,6 +128,35 @@ def test_highway_direction_and_old_station_exclusion(client):
     asyncio.run(exercise())
 
 
+def test_highway_price_that_cannot_be_stored_is_left_out_instead_of_failing_publish(client, caplog):
+    """휴게소 원천 가격(INTEGER)이 통계 열 NUMERIC(10,2) 상한(1억) 이상이면 그 값만 빼고 공개한다(PR #300 Popper#3).
+
+    PostgreSQL에서는 예전 코드가 point insert의 numeric field overflow로 공개 transaction 전체를 실패시켰다."""
+    from app.services.fuel_statistics import STATISTICS_PRICE_LIMIT
+
+    async def exercise():
+        async with client.app.state.session_factory() as session:
+            stamp = datetime.now(timezone.utc)
+            for key, gasoline, diesel in (("A", 1700, 1500), ("B", STATISTICS_PRICE_LIMIT, 1600),
+                                          ("C", 1800, STATISTICS_PRICE_LIMIT - 1)):
+                session.add(RestAreaFuelPrice(source=HIGHWAY, service_area_code=key,
+                    service_area_name=key, route_code="0010", route_name="경부선", direction="상행",
+                    gasoline_price=gasoline, diesel_price=diesel, first_seen_at=stamp, last_seen_at=stamp))
+            await publish_fuel_statistics(session, HIGHWAY, stamp)
+            await session.commit()
+            gasoline = (await fuel_statistics_page(session, "highways", "B027"))["items"][0]
+            assert gasoline["station_count"] == 2 and gasoline["average_price"] == 1750
+            assert gasoline["maximum_price"] == 1800
+            # 상한 바로 아래(99,999,999)는 저장할 수 있으므로 그대로 센다(이상값 판정은 원천 정정 몫이다).
+            diesel = (await fuel_statistics_page(session, "highways", "D047"))["items"][0]
+            assert diesel["station_count"] == 3 and diesel["maximum_price"] == STATISTICS_PRICE_LIMIT - 1
+    with caplog.at_level("WARNING", logger="app.services.fuel_statistics"):
+        asyncio.run(exercise())
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("fuel_statistics_price_out_of_range" in message and "station_key=B" in message for message in messages)
+    assert any("fuel_statistics_prices_out_of_range" in message and "count=1" in message for message in messages)
+
+
 def test_publication_between_reads_keeps_current_day_history(client):
     async def exercise():
         async with client.app.state.session_factory() as session:
