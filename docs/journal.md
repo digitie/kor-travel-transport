@@ -11,6 +11,7 @@
 - 정정: #308에서 운영 PostgreSQL을 "16(공용 16-alpine, 2026-11-28 16.9 확인)"으로 적은 것은 틀렸다. 16.9는 n150 시절 값이고,
   2026-11-28 운영 transport DB `version()`은 PostgreSQL 18.6(Debian, aarch64)이다. CLAUDE.md·architecture·shared-db-dagster·
   data-model·performance·ADR-018을 18로 되돌렸다. JIT-OFF 기록(아래 항목)의 "운영은 공유 PostgreSQL 16 alpine"도 같은 오류다.
+
 ## 2026-11-28 — Common 0.2.8·Python dev3 반영
 
 - 공개·관리 UI의 Common 배포 산출물과 백엔드 Common 핀을 맞췄다. 관리 Dagster 실행 상세는 공통 오류 로그 필터를 사용하고 기존 처리 내역 조회와 취소·재시도 계약을 유지한다.
