@@ -310,3 +310,48 @@ def test_statistics_page_can_skip_thirty_day_history(client):
     without = client.get("/v1/transport/fuel/statistics", params={"scope": "nationwide", "include_history": "false"}).json()
     assert len(with_history["history"]) == 3 and without["history"] == []
     assert without["items"] == with_history["items"]
+
+
+def test_page_orders_hangul_scope_keys_by_code_point_and_picks_the_first_by_default(client):
+    """한글 scope_key 정렬·기본 범주는 DB 기본 collation이 아니라 코드포인트(가나다)순이다.
+
+    운영 libc en_US.utf8은 한글 비교가 매우 느리고 순서도 달랐다(전남광주 강진군이 맨 앞). 유종 ALL처럼
+    같은 범주가 유종마다 여러 행이어도 지정 범주 선택은 한 값이다.
+    """
+    from sqlalchemy import event, insert
+
+    from app.models import FuelStatisticsState
+
+    keys = ['["전남광주통합특별시","강진군"]', '["서울특별시","강남구"]', '["강원특별자치도","강릉시"]',
+            '["강원특별자치도","고성군"]']
+    stamp = datetime(2026, 11, 26, 0, 17, tzinfo=timezone.utc)
+    day = stamp.date()
+    metrics = {"station_count": 1, "average_price": 1800.0, "minimum_price": 1800, "maximum_price": 1800,
+               "cheapest_station": None, "cheapest_station_count": 1}
+    engine = client.app.state.engine
+    captured = []
+
+    async def exercise():
+        async with client.app.state.session_factory() as session:
+            await session.execute(insert(FuelStatisticsDaily), [
+                {"source": OPINET, "scope": "sigungu", "scope_key": key, "product_code": product, "day": day,
+                 "generated_at": stamp, "label": key, "metrics_json": metrics}
+                for key in keys for product in ("B027", "D047")])
+            session.add(FuelStatisticsState(source=OPINET, generated_at=stamp, day=day))
+            await session.commit()
+        listener = lambda conn, cursor, statement, parameters, context, many: captured.append(statement)  # noqa: E731
+        event.listen(engine.sync_engine, "before_cursor_execute", listener)
+        try:
+            async with client.app.state.session_factory() as session:
+                default = await fuel_statistics_page(session, "sigungu", "B027", include_history=False)
+                every = await fuel_statistics_page(session, "sigungu", "ALL", scope_key=keys[0])
+        finally:
+            event.remove(engine.sync_engine, "before_cursor_execute", listener)
+        assert [row["scope_key"] for row in default["items"]] == sorted(keys)
+        assert default["history_scope_key"] == '["강원특별자치도","강릉시"]'
+        assert every["history_scope_key"] == keys[0]
+        assert [row["product_code"] for row in every["items"] if row["scope_key"] == keys[0]] == ["B027", "D047"]
+        if engine.dialect.name == "postgresql":
+            statement = next(item for item in captured if "fuel_current_keys" in item)
+            assert statement.count('COLLATE "C"') == 2 and "DISTINCT" not in statement, statement
+    asyncio.run(exercise())

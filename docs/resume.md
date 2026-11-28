@@ -7,6 +7,12 @@
 
 네 유종 UI(등유 제외), 위치 동의·반경·가격/거리 정렬·지도/목록·지역 비교와 목적지 링크·공유를 구현했다. 로그인 없는 주유소 상세는 기존 fuel web의 고정 BFF 읽기와 저장 행 검증을 사용한다. 마이현대는 OS 장소 공유이며 차량 API·임의 deep link는 없고 실제 앱 수신은 미검증이다. WSL/Docker 집중시험과 두 독립 리뷰 수정·재확인, n150 PC/모바일 캡처를 마쳤다. [계약·검증·제한](reports/2026-11-28-fuel-mcp-app-ui.md). 다음은 최종 CI·소스 머지와 기존 개인 플러그인 게시 정산이다. Transport 운영 이미지·DB·수집·환경은 바꾸지 않았다.
 
+## 현재 상태 — 2026-11-28 공개 유가 시군구 통계: 한글 키 정렬 collation(FUEL-SIGUNGU-COLLATION)
+
+- backend `fuel_statistics_page`만: 범주 키 정렬·기본 범주 최솟값을 `COLLATE "C"`로, CTE `DISTINCT` 제거. migration·gateway·frontend 없음.
+  응답 목록·기본 범주가 가나다(코드포인트)순으로 바뀐다. 운영 PG 버전 문서 오류(16 → 실제 18.6) 정정 포함.
+- 배포(Codex 담당): backend 이미지. 다음 한 작업: 배포 뒤 FUEL-HISTORY-VERIFY(시군구 실제 유종 TTFB 0.5초 안팎).
+
 ## 현재 상태 — 2026-11-28 ADR 범위 정리(ADR-SCOPE, 문서만)
 
 - 1/3(#308) 기준·개정 규칙, 2·3/3 ADR-013·014 등 세부 이전과 사후 기록 ADR-018·019. 새 export 운영 계약 정본은

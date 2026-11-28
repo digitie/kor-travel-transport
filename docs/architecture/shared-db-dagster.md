@@ -75,9 +75,10 @@ Manager 소유 bootstrap이 `kor_travel_transport`와 전용 role(`kor_travel_tr
 
 두 DB를 합치면 양쪽 Alembic이 `alembic_version` 테이블을 서로 덮어쓰므로 절대 합치지 않는다.
 
-엔진 버전은 Manager가 정한다. 운영 공용 instance는 `postgres:16-alpine`이고 2026-11-28 운영 진단에서 16.9를 확인했다
-(n150 시절 2026-09-28에도 16.9 — [배포 런북](../runbooks/deployment.md)). CI는 `postgres:18`(`.github/workflows/ci.yml`)이라
-16과 18의 동작 차이는 CI가 잡지 못할 수 있다([ADR-018](../adr/018-shared-postgres-and-dagster-plane.md)).
+엔진 버전은 Manager가 정한다. 운영(Odroid) 공용 instance는 2026-11-28 transport DB `version()`에서 PostgreSQL 18.6
+(Debian 빌드, aarch64)을 확인했다. n150 시절 공용 instance는 16.9였다(2026-09-28 — [배포 런북](../runbooks/deployment.md)).
+CI는 `postgres:18`(`.github/workflows/ci.yml`)이다. 운영 기본 collation은 libc `en_US.utf8`이다. 운영 호스트 부하에서
+한글 키 230개 정렬이 `COLLATE "C"`보다 15배 이상 느렸으므로 한글 키를 대량 정렬하는 쿼리는 `COLLATE "C"`를 검토한다([성능](performance.md)).
 운영 DSN은 `127.0.0.1:11000`을 사용하며, 비밀번호·service key·RustFS key는
 n150의 비추적 환경 파일에만 둔다.
 
@@ -139,7 +140,7 @@ Manager가 공용 DB/네트워크와 전용 role·RustFS bucket을 provision한 
    `git show 07d3848:scripts/cutover-shared-db-server14.sh`).
    one-shot은 staged artifact의 `deploy-server14-remote.sh`를 직접 호출하므로 n150의 Git checkout을
    요구하지 않는다. 또한 n150에 PostgreSQL client 패키지를 설치하지 않고, host network의
-   일회성 `postgres:16-alpine` client container로 legacy loopback DB와 shared DB를 조회한다.
+   일회성 `postgres:16-alpine` client container로 legacy loopback DB와 shared DB를 조회한다(n150 cutover 당시 절차. 지금 운영 서버는 18이므로 dump 등에 쓸 client는 18 이상).
    DSN의 비밀번호는 URL percent-encoding을 유지한 채 Docker command/env가 아니라 cutover workdir의
    mode `0600` passfile로만 전달하고, client command에는 passwordless URI만 넘긴다.
    base dump → legacy writer quiesce → final dump/restore → public table

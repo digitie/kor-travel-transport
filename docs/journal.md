@@ -1,7 +1,22 @@
+## 2026-11-28 — 공개 유가 시군구 통계: JIT가 아니라 한글 collation 정렬(FUEL-SIGUNGU-COLLATION)
+
+- b96e40e(JIT-OFF) 배포 뒤 공개 GET 5회: 시군구 B027 1.40~1.77초, D047 1.02~1.48초, K015 0.87~1.32초(이전 3~5초보다는 낮지만
+  목표 0.5초 밖), 시도 0.17~0.24초. Codex JIT A/B: 계획 비용 약 204로 `jit_above_cost` 100000에 못 미쳐 켬/끔 모두 `JIT:` 절이
+  없다. JIT 가설은 기각(JIT-OFF는 무해해서 유지). 같은 문장 실행이 4.0·6.3·4.3초로 흔들리는 것은 호스트 부하 영향으로 본다.
+- collation 진단(Codex, 읽기 전용): 한글 JSON 배열 `scope_key` 230개 정렬 노드가 기본 `en_US.utf8` 1.96초(첫 실행)·0.56초(반복),
+  `COLLATE "C"`는 쿼리 전체 43ms. 인덱스 스캔은 0.8~400ms로 흔들려(첫 실행·호스트 부하) 절대값보다 같은 세션 비교가 근거다. 느린 부분은 DISTINCT의 Sort→Unique·`min()`·최종 ORDER BY였다.
+- 변경: 정렬과 기본 범주 최솟값만 `COLLATE "C"`(SQLite는 기본 BINARY), CTE `DISTINCT` 제거(지정 범주 선택은 `LIMIT 1`,
+  유종 ALL에서 여러 행이어도 한 값). 같음 비교는 기본 collation이라 색인 사용은 같다. 목록·기본 범주가 가나다순이 된다
+  (예전 기본은 "전남광주통합특별시 강진군"). 시험 `test_page_orders_hangul_scope_keys_by_code_point_and_picks_the_first_by_default`.
+- 정정: #308에서 운영 PostgreSQL을 "16(공용 16-alpine, 2026-11-28 16.9 확인)"으로 적은 것은 틀렸다. 16.9는 n150 시절 값이고,
+  2026-11-28 운영 transport DB `version()`은 PostgreSQL 18.6(Debian, aarch64)이다. CLAUDE.md·architecture·shared-db-dagster·
+  data-model·performance·ADR-018을 18로 되돌렸다. JIT-OFF 기록(아래 항목)의 "운영은 공유 PostgreSQL 16 alpine"도 같은 오류다.
+
 ## 2026-11-28 — Common 0.2.8·Python dev3 반영
 
 - 공개·관리 UI의 Common 배포 산출물과 백엔드 Common 핀을 맞췄다. 관리 Dagster 실행 상세는 공통 오류 로그 필터를 사용하고 기존 처리 내역 조회와 취소·재시도 계약을 유지한다.
 - 독립 리뷰 James의 필터 결과 접근성 지적과 Popper의 로그 조회 불가 표시 지적을 반영했다. 빈 결과와 조회 지연을 구분해 알리고 선택한 버튼의 초점을 유지한다.
+
 
 ## 2026-11-28 — ADR 범위 정리 2·3/3: 세부 이전과 사후 기록 ADR-018·019(ADR-SCOPE)
 

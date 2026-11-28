@@ -26,7 +26,7 @@ OpenAPI와 내부 통계로 즉시 제공한다. 현재 `parking-radar`는 그�
 
 ## 2. 운영 기준
 
-- 백엔드: FastAPI, SQLAlchemy 2, PostgreSQL 16(운영 공용 instance `postgres:16-alpine`; CI는 18), Alembic
+- 백엔드: FastAPI, SQLAlchemy 2, PostgreSQL 18(운영 공용 instance — 2026-11-28 18.6 aarch64 확인; CI도 18), Alembic
 - 프론트엔드: Next.js App Router, React, TypeScript
 - 실행: Docker Compose
 - 타임존: 저장·API는 UTC aware timestamp, 화면 표시는 `Asia/Seoul`
