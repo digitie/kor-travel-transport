@@ -155,7 +155,7 @@ SIGKILL, 배포 `--no-drain`) `_mark_fuel_failure`가 불리지 않아 직전 �
   (`last_error=None`)이라 관리 화면은 성공 배지인데 Dagster run은 실패다. T1 `rest-area-fuel-prices`의
   `last_attempt_failed`는 false다. 실패 기록이 없으므로 `warning`(실패 조건)은 뜨지 않고, 소실이 이어져 성공 나이가
   9.6시간·12시간을 넘으면 `critical`·`expired`(`cause=none`)로만 잡힌다.
-- **하지 않는 것**: 경보에 따른 자동 추가 유가 run은 만들지 않는다. 오피넷 호출 정책(ADR-013 하루 3회·8시간 tick,
+- **하지 않는 것**: 경보에 따른 자동 추가 유가 run은 만들지 않는다. 오피넷 호출 정책(하루 3회·8시간 tick — [service export 계약 §4](../architecture/service-exports.md#4-유가-수집-주기와-export-유예),
   provider 호출 유예)은 소유자 결정이다. 경보 채널(Manager·운영 알림, Dagster plane 밖)도 아직 붙이지 않았다 — 지금은 위
   로그 줄이 유일한 신호다.
 - **제안(소유자 결정 대기) — 신선도 보호 재시도**(감사 G1-F4 (b)): 마지막 시도가 실패했고 마지막 성공 나이가 16시간

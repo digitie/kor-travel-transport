@@ -129,7 +129,7 @@ scheduler는 DB의 남은 대기 시간을 사용해 미세한 tick 차이로 �
 in-process는 이를 되돌려 실제 시작 간격을 보존한다. 주기는 pin된 provider의 기본값(8시간,
 `sample_run_interval`)을 쓰지만 transport는 `collect_once`를 직접 부르므로 provider의 24시간 3회 throttle은
 적용되지 않는다. 하루 3회는 Dagster의 8시간 tick이 지키고(연속 24시간 창으로는 최대 15분 안쪽 네 번째 시작
-가능, ADR-013), in-process scheduler는 15분을 되돌려 기다려 시작 간격 8시간 이상을 지킨다.
+가능, [service export 계약 §4](service-exports.md#4-유가-수집-주기와-export-유예)), in-process scheduler는 15분을 되돌려 기다려 시작 간격 8시간 이상을 지킨다.
 유가 scheduler는 다음 예정 시각까지 기다리므로 5분마다 불필요한 skipped 실행을 만들지 않는다.
 결과(성공·실패)를 남기지 못하고 끝난 Dagster 유가 시도(op 밖 프로세스 종료·실패 기록 commit 실패)는 회수 sensor가
 회수 직후 상태 행에 `실행 소실` `last_error`만 남긴다(성공 시각·예약 불변, 2026-11-24 감사 G1-F5). 관리자 재시도는 같은

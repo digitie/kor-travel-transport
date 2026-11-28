@@ -102,7 +102,8 @@ INCIDENT_ACTIVE_SET_MAX_AGE = timedelta(minutes=30)
 #: 아니다). 정기 주기(유가 8시간·휴게소 1일·휴게소 유가 4시간)의 약 3배. 오피넷은 공개 API의 유가
 #: 신선도(`FUEL_STALE_AFTER`, 24시간)에 유가 수집 한 번의 상한(`FUEL_FETCH_TIMEOUT_SECONDS`, 3.5시간)을 더한다.
 #: 유예는 첫 성공의 **완료** 시각부터 재는데 다음 정기 시도는 시작 기준 8시간 tick이라, 세 번째 시도가 첫 성공보다
-#: 오래 걸리면 그 차이만큼 503이 났다(ADR-013 남은 틈 (1), 감사 G1-F4(a), 2026-11-24). 공개 화면의 유가
+#: 오래 걸리면 그 차이만큼 503이 났다(남은 틈 (1) — docs/architecture/service-exports.md §4, ADR-013 결정 3,
+#: 감사 G1-F4(a), 2026-11-24). 공개 화면의 유가
 #: 신선도 표시는 그대로 24시간이고, Map Valkey max_age(48시간)보다 작게 둔다.
 REFERENCE_STALE_AFTER = {
     OPINET_SOURCE: FUEL_STALE_AFTER + timedelta(seconds=FUEL_FETCH_TIMEOUT_SECONDS),
