@@ -82,7 +82,8 @@ compose 메모리 한도 부재 등 여러 자리에서 단일 호스트에 결�
     code-server 1.0g, frontend + admin web + gateway 합 0.3g — 이 합의 세 서비스 분배만 T-TRN-05가 실측으로 정한다)이고
     **호스트별 분기를 두지 않는다**(두 호스트 동일). 각 서비스 `memswap_limit == mem_limit`(swap 0 → 한도 도달 = OOM = run FAILURE)이고
     `oom_score_adj`는 두지 않는다. 한도는 compose를 가진 이 저장소만 걸 수 있고, Manager의 등록은 측정일 뿐이다. 운영 값이 이 리터럴과
-    다르면(2026-11-24 backend 512m) drift이며, 되돌릴지 이 결정을 고칠지는 소유자 결정으로 열려 있다
+    다르면 drift다 — 2026-10-19(6d095ed7)부터 code-server(2560m)와 웹 세 역할(frontend 384m + 관리 web 512m + gateway 64m)이,
+    2026-11-24부터 backend(512m)도 다르다([런타임 메모리 검토](../reviews/2026-10-19-runtime-memory.md)). 되돌릴지 이 결정을 고칠지는 소유자 결정으로 열려 있다
     ([2026-11-24 보고서](../reports/2026-11-24-map-call-performance-reliability.md) §9 #4).
     → 세부: [원문 결정 11](../audits/2026-10-13-odroid-transition-design.md#결정) (B11), `docs/tasks.md` T-TRN-05
 

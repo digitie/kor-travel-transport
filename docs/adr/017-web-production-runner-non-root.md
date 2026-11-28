@@ -1,6 +1,6 @@
 # ADR-017: 웹 production runner의 non-root와 역할별 예외
 
-- **상태**: accepted (→ 진행: `docs/tasks.md` 일반 이미지 빌드 B4)
+- **상태**: accepted (→ 진행: `docs/tasks.md` T-BUILD-ECOSYSTEM-20261113 B4)
 - **날짜**: 2026-11-13
 - **결정자**: 미기록 (원문에 결정자 표기 없음)
 - **컨텍스트**: 공통 CI-33은 production 멀티스테이지와 최종 non-root를 규정한다. 기존 공개 Dockerfile은 builder

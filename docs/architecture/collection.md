@@ -88,8 +88,8 @@ ADR-013 개정 — 한 번 다시 조회해도 비면 실패, 마지막 성공 �
   (`HIGHWAY_TICK_SLACK`), tick이 없는 실행(수동·in-process scheduler·관리자 재시도)은 시작 + 주기다(`_highway_next_due`).
 - **유가 실패 재시도**: `collect(retry_failed_fuel=True)`는 직전 유가 시도가 **실패**였을 때만 예정 전이라도 실행하고, 정기
   예약(다음 tick)은 옮기지 않는다. 이 경로는 유가 op의 자동 재시도(`FUEL_RETRY_POLICY` — 같은 run 안 step 재시도 1회, 300초
-  지수 backoff·jitter, `AUTO_RETRY_ERROR_CODES`인 브라우저 시간 초과·resource policy·DB 일시 오류만, run 상한까지 2시간 이상
-  남았을 때만)와 관리자 "재시도"(`kortravel/admin-retry-of` 태그)가 쓴다. 브라우저는 체크포인트에서 남은 지역만 요청한다.
+  지수 backoff·jitter, `AUTO_RETRY_ERROR_CODES`인 브라우저 시간 초과·resource policy·DB 일시 오류만, run 상한에서 경과 시간과 재시도 대기 2×300초를 빼고도
+  2시간 이상 남았을 때만)와 관리자 "재시도"(`kortravel/admin-retry-of` 태그)가 쓴다. 브라우저는 체크포인트에서 남은 지역만 요청한다.
   쿼터·차단·인증·파싱·전체 시간 초과는 자동 재시도하지 않는다.
 - **quota backoff**: KREX quota 초과는 해당 소스의 다음 예정을 `transport_quota_backoff_seconds` 뒤로 미루고, 다른 고속도로
   소스가 due여도 backoff 중인 소스는 호출하지 않는다(due는 소스별로 판정).
