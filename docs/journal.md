@@ -1,3 +1,11 @@
+## 2026-11-28 — 한글 collation 운영 진단(읽기 전용, 직접 실행)
+
+- WSL SSH로 Odroid 공용 instance(`kor-travel-shared-postgres`, 11000)에 붙어 `scripts/diagnostics/collation-hangul-readonly.sql`과
+  `pg_stat_statements`·EXPLAIN ANALYZE를 읽기 전용 transaction으로 실행했다. 쓰기 없음.
+- 한글 키 4,600행 정렬 기본 11,678ms / C 442ms / ICU 1,093ms. 주유소 시도·시군구 묶음은 차이 없음. 컬럼 단위 C는 유가 통계 `scope_key`
+  둘만 가치가 있다. "시군구 가격 목록"·"지도 범위 시군구 목록"의 큰 평균은 같은 시각 0.14·0.43초라 호스트 부하 겹침으로 본다
+  (형변환 join 가설은 틀렸다). 기록: `docs/audits/2026-11-28-hangul-collation.md` §6.
+
 ## 2026-11-28 — 공개 유가 시군구 통계: JIT가 아니라 한글 collation 정렬(FUEL-SIGUNGU-COLLATION)
 
 - b96e40e(JIT-OFF) 배포 뒤 공개 GET 5회: 시군구 B027 1.40~1.77초, D047 1.02~1.48초, K015 0.87~1.32초(이전 3~5초보다는 낮지만
