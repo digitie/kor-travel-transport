@@ -54,7 +54,7 @@ ADR은 "나중에 코드를 본 사람이 **왜 이런 구조인지**(맥락과 
 
 | ADR | 제목 | 상태 |
 |---|---|---|
-| [ADR-001](001-postgresql-as-primary-db.md) | PostgreSQL을 운영 기준 DB로 채택 | accepted |
+| [ADR-001](001-postgresql-as-primary-db.md) | PostgreSQL을 운영 기준 DB로 채택 | accepted (운영 DB 위치·CI 버전 범위는 ADR-018이 좁힘) |
 | [ADR-002](002-dual-check-5min-cutover.md) | 5분 수집 경계의 이중 확인 컷오버(일회성 이전) | accepted |
 | [ADR-003](003-unauthenticated-backup-network-restriction.md) | 인증 없는 백업 UI의 네트워크 제한 | superseded by ADR-012 |
 | [ADR-004](004-krairport-provider-library.md) | 비행편·주차 현황·주차요금 데이터는 `python-krairport-api`를 provider 라이브러리로 사용 | accepted |
