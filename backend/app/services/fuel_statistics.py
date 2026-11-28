@@ -476,8 +476,8 @@ async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: 
     d, state = FuelStatisticsDaily, FuelStatisticsState
     product_filter = literal(True) if product_code == "ALL" else d.product_code == product_code
     sqlite = session.bind.dialect.name == "sqlite"
-    # scope_key는 한글 JSON 배열이다. 운영 DB 기본 collation(libc en_US.utf8)의 한글 비교가 매우 느려
-    # 시군구 230개 정렬만 0.6~2.4초가 걸렸다(2026-11-28 운영 진단, "C"는 43ms). 정렬·최솟값은 바이트(코드포인트)
+    # scope_key는 한글 JSON 배열이다. 운영 DB 기본 collation(libc en_US.utf8)에서 시군구 230개 정렬이
+    # 운영 호스트 부하 아래 0.56~1.96초였다(2026-11-28 운영 진단, 같은 세션 "C"는 전체 43ms). 정렬·최솟값은 바이트(코드포인트)
     # 순으로 한다. 한글 음절은 코드포인트가 가나다순이다. 같음 비교는 그대로 두어 기본 collation 색인을 쓴다.
     by_bytes = (lambda column: column) if sqlite else (lambda column: column.collate("C"))
     current_keys = select(d.scope_key).join(state, and_(

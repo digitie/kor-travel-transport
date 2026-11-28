@@ -21,7 +21,7 @@
   route=/transport/fuel/statistics`가 사라지는지 확인한다. 여전하면 같은 진단 SQL의 EXPLAIN 끝 `JIT:` 절 유무를 본다.
   2026-11-28 b96e40e(JIT-OFF) 배포 뒤 공개 GET 5회: 시군구 B027 1.40~1.77초·D047 1.02~1.48초·K015 0.87~1.32초, 시도 B027 0.17~0.24초.
   JIT A/B(Codex): 계획 비용 약 204 < `jit_above_cost` 100000이라 `JIT:` 절 자체가 없다 — JIT 가설 기각. collation 진단에서 한글
-  `scope_key` 230개 정렬이 기본 `en_US.utf8` 0.65~2.4초, `COLLATE "C"` 43ms → PR FUEL-SIGUNGU-COLLATION. 배포 뒤 같은 공개 GET을 다시 잰다.
+  `scope_key` 230개 정렬 노드가 기본 `en_US.utf8` 0.56~1.96초, `COLLATE "C"`는 쿼리 전체 43ms → PR FUEL-SIGUNGU-COLLATION. 배포 뒤 같은 공개 GET을 다시 잰다.
 - [x] **FUEL-HISTORY-P2 / P2** — PR #300 보류 P2 정리(2026-11-27): 주·월 툴팁에 기록 범위·일수(James#6), 장기 추이 표 60행 쪽 나눔
   (James#12, 표준 `OffsetPager`·터치 44px), 동시 상한(Popper#10: backend 줄별 공개 6·내부 2 + 12307 BFF·직접 합계 4, 12301 2, 429 + Retry-After 2
   problem+json, probe 확장), 0047·0050 오프라인 `--sql`(Popper#9, transaction 밖 DROP/CREATE CONCURRENTLY, PG 시험), 휴게소 1억 이상

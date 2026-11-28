@@ -53,7 +53,7 @@
 
 ## 기술 스택
 
-- 백엔드: FastAPI, SQLAlchemy 2, PostgreSQL 16, Alembic
+- 백엔드: FastAPI, SQLAlchemy 2, PostgreSQL 18(운영 공용 instance), Alembic
 - 프론트엔드: Next.js App Router, React, TypeScript
 - 테스트: pytest, Vitest
 - 실행: Docker Compose (PostgreSQL은 `docker-compose.db.yml`로 별도 컨테이너, T-032)

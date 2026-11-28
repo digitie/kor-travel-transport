@@ -735,8 +735,9 @@ skip scan으로 230개 범주마다 색인을 다시 찾는 것이 원인이라�
 ### 한글 범주 키 정렬 collation(2026-11-28)
 
 0050 뒤에도 실제 유종(B027·D047·K015) 시군구는 0.9~1.8초(TTFB)였다. 운영 transport DB(PostgreSQL 18.6 aarch64, 기본 collation
-libc `en_US.utf8`)의 읽기 전용 진단에서 인덱스 스캔은 1~25ms인데, 한글 JSON 배열 `scope_key` 230개를 정렬하는 노드(`DISTINCT`의
-Sort→Unique, `min()`, 최종 `ORDER BY`)가 대부분이었다. 같은 키 230개 정렬이 기본 collation 0.65~2.4초, `COLLATE "C"` 43ms였다.
+libc `en_US.utf8`)의 읽기 전용 진단에서 인덱스 스캔은 캐시가 따뜻하면 1~25ms(첫 실행 180~400ms)인데, 한글 JSON 배열 `scope_key`
+230개를 정렬하는 노드(`DISTINCT`의 Sort→Unique, `min()`, 최종 `ORDER BY`)가 대부분이었다. 같은 세션에서 정렬 노드만 기본 collation
+0.56~1.96초, `COLLATE "C"`는 쿼리 전체 43ms였다. 같은 인덱스 스캔도 0.8~182ms로 흔들려 호스트 부하가 절대값을 부풀렸지만 15배 이상 차이는 같은 조건의 비교다.
 계획 비용은 약 204라 `jit_above_cost`(100000)에 한참 못 미치고 EXPLAIN에 `JIT:` 절이 없었다. JIT는 원인이 아니었다(JIT-OFF는
 무해해서 그대로 둔다). 페이지 쿼리는 정렬과 기본 범주 최솟값만 `COLLATE "C"`로 하고 `DISTINCT`를 없앴다. 같음 비교는 기본
 collation 그대로라 색인 사용은 같다. 한글 음절은 코드포인트가 가나다순이라 목록·기본 범주가 가나다순이 된다(예전 en_US 순서는

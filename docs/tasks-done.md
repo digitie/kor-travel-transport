@@ -1,6 +1,6 @@
 ## 2026-11-28 — ADR 범위 정리(ADR-SCOPE)
 
-- [x] **ADR-SCOPE-1** — `docs/adr/README.md` 작성 기준·담는 것/담지 않는 것·개정 규칙·목록 정정, CLAUDE.md 운영 PG 16(#308).
+- [x] **ADR-SCOPE-1** — `docs/adr/README.md` 작성 기준·담는 것/담지 않는 것·개정 규칙·목록 정정, CLAUDE.md 운영 PG 16(#308 — 틀림, 실제 18.6이라 #311에서 정정).
 - [x] **ADR-SCOPE-2** — ADR-013·014를 결정 수준으로(258→127, 299→137줄). 세부는 `docs/architecture/service-exports.md`(신규),
   014 원문은 `docs/audits/2026-10-13-odroid-transition-design.md`에 그대로 보관. 날짜 절 제목과 결정 번호는 유지.
 - [x] **ADR-SCOPE-3** — ADR-004·005·006·009·016·017 정리(세부는 data-sources·architecture·collection·performance·이미지 설계 문서),
