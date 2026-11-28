@@ -29,7 +29,45 @@ jobs:
       node-dockerfiles: >-
         ["frontend/Dockerfile","packages/kor-travel-transport-admin/frontend/Dockerfile"]
 
+  fuel-mcp-ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/kor-travel-fuel-mcp-ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.13.1"
+          cache: npm
+          cache-dependency-path: packages/kor-travel-fuel-mcp-ui/package-lock.json
+      - uses: actions/checkout@v4
+        with:
+          repository: digitie/kor-travel-common
+          ref: 309b881f8fd6d657b448f43b6fc61939fde742c2
+          path: .common-ui-policy
+          persist-credentials: false
+      - run: npm install --global npm@12.0.1
+      - run: npm ci --ignore-scripts --engine-strict --prefix ../../.common-ui-policy
+      # 중앙 Node 검사는 Python RUN을 해석하지 않는다. 유일한 실제 Node stage 전부를 전달한다.
+      - name: Verify MCP UI toolchain and actual Node builder
+        working-directory: .
+        run: |
+          node packages/kor-travel-fuel-mcp-ui/project-node-builder.mjs > .fuel-ui.Dockerfile
+          node .common-ui-policy/tools/check_node_toolchain.mjs --root . --registry .common-ui-policy/versions.json --manifest packages/kor-travel-fuel-mcp-ui/package.json --dockerfile .fuel-ui.Dockerfile
+          rm .fuel-ui.Dockerfile
+      - run: npm ci --engine-strict --no-audit --no-fund
+      - run: npm run type-check && npm test && npm run build
+      - run: node node_modules/@playwright/test/cli.js install --with-deps chromium
+      - run: node node_modules/@playwright/test/cli.js test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fuel-mcp-ui
+          path: backend/app/fuel_widget/index.html
+          retention-days: 3
+
   backend:
+    needs: fuel-mcp-ui
     runs-on: ubuntu-latest
     env:
       # Alembic은 Settings의 DATABASE_URL을 읽고, pytest fixture는 TEST_DATABASE_URL만 opt-in으로 쓴다.
@@ -55,6 +93,10 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: fuel-mcp-ui
+          path: backend/app/fuel_widget
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

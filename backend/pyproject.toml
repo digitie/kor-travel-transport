@@ -55,3 +55,6 @@ asyncio_mode = "auto"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["fuel_widget/*.html"]

@@ -1,3 +1,20 @@
+# MCP Apps는 빌더 CPU에서 무비밀 단일 HTML로 묶고, Python 런타임에는 결과만 복사한다.
+FROM --platform=$BUILDPLATFORM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS fuel-mcp-ui
+WORKDIR /ui/packages/kor-travel-fuel-mcp-ui
+COPY packages/kor-travel-fuel-mcp-ui/package.json packages/kor-travel-fuel-mcp-ui/package-lock.json packages/kor-travel-fuel-mcp-ui/.npmrc ./
+RUN --mount=type=cache,id=kor-travel-web-npm-v2,target=/root/.npm,sharing=locked \
+    npm install --global npm@12.0.1 \
+    && npm ci --engine-strict --prefer-offline --no-audit --no-fund
+COPY packages/kor-travel-fuel-mcp-ui/build.mjs packages/kor-travel-fuel-mcp-ui/tsconfig.json ./
+COPY packages/kor-travel-fuel-mcp-ui/src ./src
+COPY packages/kor-travel-transport-admin/frontend/app/transport-palette.css /ui/packages/kor-travel-transport-admin/frontend/app/transport-palette.css
+COPY packages/kor-travel-transport-admin/frontend/lib/fuel-station-links.ts /ui/packages/kor-travel-transport-admin/frontend/lib/fuel-station-links.ts
+RUN npm run type-check && npm run build
+
+# 무비밀 UI 산출물만 꺼내는 검증 target. Python 런타임 이미지와 별개다.
+FROM scratch AS fuel-mcp-ui-export
+COPY --from=fuel-mcp-ui /ui/backend/app/fuel_widget/index.html /index.html
+
 FROM ghcr.io/astral-sh/uv:0.11.21@sha256:ff07b86af50d4d9391d9daf4ff89ce427bc544f9aae87057e69a1cc0aa369946 AS uv
 FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
@@ -43,6 +60,7 @@ RUN --mount=type=cache,id=transport-pip-py312,target=/root/.cache/pip,sharing=lo
 RUN playwright install --with-deps chromium
 
 COPY backend /app
+COPY --from=fuel-mcp-ui /ui/backend/app/fuel_widget/index.html /app/app/fuel_widget/index.html
 COPY scripts /app/scripts
 # Backend regression container also verifies the committed shared Dagster environment contract.
 # This file contains no credentials; runtime secrets stay in the host-only env file.

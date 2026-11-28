@@ -34,3 +34,7 @@ packages/kor-travel-transport-admin/frontend/public/maplibre/
 
 # Transport 통합 작업의 로컬 검증 로그·임시 도구
 /validation/transport-*
+
+# MCP Apps의 무비밀 웹 번들은 고정 npm lock에서 빌드한다.
+backend/app/fuel_widget/index.html
+packages/kor-travel-fuel-mcp-ui/test-results/
