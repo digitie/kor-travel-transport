@@ -1,6 +1,6 @@
 # ADR-010: n150 운영 식별자를 `kor-travel-airport`에서 `kor-travel-transport`로 옮기고 공항 주차 도메인은 그대로 둔다
 
-- **상태**: accepted (저장소 쪽 준비. n150 cutover는 PR #44 머지 뒤 실행)
+- **상태**: accepted
 - **날짜**: 2026-09-28
 - **결정자**: agent + human
 - **대체**: [ADR-008](008-repo-rename-kor-travel-transport.md)의 "운영 리소스 이름은 호환 유지" 보류를

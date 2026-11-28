@@ -207,6 +207,6 @@ GitHub 운영은 `docs/runbooks/branch-protection.md`, `docs/runbooks/cross-repo
 - [ ] `docs/journal.md`에 작업 항목 추가(역시간순)
 - [ ] `docs/resume.md`의 "현재 상태"/"다음 한 작업" 갱신
 - [ ] 완료 task는 `docs/tasks.md` → `docs/tasks-done.md`로 이동
-- [ ] 되돌림 비용이 큰 결정이면 `docs/adr/README.md`에 ADR 추가
+- [ ] 되돌림 비용이 큰 결정이면 ADR 추가(판단 체크리스트·담지 않는 것은 `docs/adr/README.md`). 값·절차 변경은 ADR이 아니라 명세·런북을 고친다
 - [ ] `main` 머지 전 [hostile-review.md](docs/runbooks/hostile-review.md)
       게이트(James/Popper 서브에이전트) 통과
