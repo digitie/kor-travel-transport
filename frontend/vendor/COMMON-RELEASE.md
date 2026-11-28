@@ -1,5 +1,9 @@
 # Common 정본 산출물 채택
 
+## 2026-11-28 — 공통 UI 0.2.8·Tokens 0.1.9
+
+공식 산출물의 소스는 `e131a1efb195f618561fd6ca00833007ddc2721b`이고, 정책과 SHA256·SHA512 SRI는 머지된 카탈로그에서 확인한다. [Common 0.2.8 카탈로그](https://github.com/digitie/kor-travel-common/blob/73761c5d0a14e3df409e5b1c86f954eb219dae66/docs/evidence/releases/collection-pipeline-ui-0.2.8-catalog.md)
+
 ## 2026-11-23 — 공통 UI 0.2.6
 
 Common main CI의 [pack 산출물](https://github.com/digitie/kor-travel-common/actions/runs/45141922011/artifacts/14803131043)에서 UI 0.2.6과 tokens 0.1.7을 가져왔다. pack 출처는 `05d7f91a4151a69d72b8bf1dc0007291c6ab2a61`, 카탈로그와 정책은 `309b881f8fd6d657b448f43b6fc61939fde742c2`로 고정한다. 두 tarball의 SHA256과 SHA512 SRI를 Common 정본과 대조했다.

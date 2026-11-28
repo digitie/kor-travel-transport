@@ -95,3 +95,20 @@ it("공통 오류 로그 필터를 전환해도 다음 내역을 이어서 불�
   await click("오류 로그만 보기");
   expect(list()).toContain("정상 처리 내역");
 });
+
+it("오류 필터에서 빈 결과와 로그 조회 불가를 구별해 알린다", async () => {
+  const event = (kind: string, title: string) => ({kind, title, time: null, step: null, detail: null, warning: false, counts: {}});
+  vi.mocked(getConsoleRun)
+    .mockResolvedValueOnce({...detail(), cursor: "next", hasMore: true, events: [event("RunSuccessEvent", "정상 처리 내역")]})
+    .mockResolvedValueOnce({...detail(), events: [event("UNAVAILABLE", "이벤트 내역 조회 지연")]});
+  await act(async () => root.render(<DagsterRunInspector runId={id} jobLabel={jobLabel} />));
+  const filter = [...host.querySelectorAll("button")].find(button => button.textContent === "오류 로그만 보기");
+  filter?.focus();
+  await click("오류 로그만 보기");
+  const status = host.querySelector('[role="status"]');
+  expect(status?.textContent).toBe("불러온 내역에 오류 로그가 없습니다.");
+  expect(document.activeElement).toBe(filter);
+  await click("다음 내역 보기");
+  expect(status?.textContent).toBe("일부 처리 내역을 읽지 못했습니다.");
+  expect(host.querySelector('[aria-label="안전한 처리 내역"]')?.textContent).toContain("이벤트 내역 조회 지연");
+});
