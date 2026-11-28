@@ -5,7 +5,7 @@
   공용 Dagster 제어 평면 합류 2026-10-02~03 PR [#64](https://github.com/digitie/kor-travel-transport/pull/64)·Manager ADR-54)
 - **결정자**: agent + human (사후 기록)
 - **보완**: [ADR-001](001-postgresql-as-primary-db.md)을 좁힌다 — PostgreSQL 채택은 그대로이고, 운영 DB의 위치(앱 compose의
-  전용 컨테이너 → Manager 공용 instance)와 버전 관리 주체(Manager), CI 버전(ADR-001의 "CI에서도 동일한 PostgreSQL 16 컨테이너" → CI는 18)이 바뀐다.
+  전용 컨테이너 → Manager 공용 instance)와 버전 관리 주체(Manager), 버전(ADR-001의 PostgreSQL 16 → 운영 공용 instance와 CI 모두 18)이 바뀐다.
 - **컨텍스트**: 초기 운영은 앱 compose 안의 전용 PostgreSQL(ADR-001)과 FastAPI 프로세스 안의 in-process scheduler였다.
   2026-09 수집 대상이 고속도로·유가·철도·여객선 등으로 늘었다. 문서에 남은 목적은 "고속도로·유가처럼 짧은 주기의 데이터와
   열차·여객선처럼 변동이 적은 기준정보를 같은 운영 기준으로 다루기 위한 것"이다([공용 DB와 Dagster 운영 경계](../architecture/shared-db-dagster.md) §목적).

@@ -183,7 +183,7 @@ upsert하며, 더 오래된 배치는 기존 행을 덮지 못한다. `0018`~`00
 
 [PR #52 후속 검증·배포 조건](../runbooks/pr52-journey-fixes.md).
 
-운영 DB는 PostgreSQL 16이며 모든 이벤트 시각은 timezone-aware UTC `TIMESTAMPTZ`로
+운영 DB는 PostgreSQL 18(공용 instance)이며 모든 이벤트 시각은 timezone-aware UTC `TIMESTAMPTZ`로
 저장한다. Alembic의 `0001_initial`이 기준 스키마이고, 테스트와 legacy import에서만
 SQLite dialect를 허용한다.
 
