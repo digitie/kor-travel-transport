@@ -1,3 +1,10 @@
+## 2026-11-28 — ADR 범위 정리(ADR-SCOPE)
+
+- [ ] **ADR-SCOPE-1** — `docs/adr/README.md` 작성 기준(3문항)·담는 것/담지 않는 것·개정 규칙(번호 의미 보존, 날짜 절 anchor 보존,
+  상태 줄 형식)·목록 정정. 007·008·014·015·017 상태 줄 정리, CLAUDE.md 운영 PG 16 정정.
+- [ ] **ADR-SCOPE-2** — ADR-013·014를 결정 수준으로 줄이고 세부는 명세·런북·보관 문서로 이전(인용 보존).
+- [ ] **ADR-SCOPE-3** — ADR-004·005·006·009·016·017 정리, 빠진 ADR-018(공용 PostgreSQL·Manager Dagster)·ADR-019(OpiNet 브라우저 수집).
+
 ## 2026-11-28 — 주변 유가 MCP UI 운영 수용
 
 - [ ] **FUEL-MCP-APPS-UI-VERIFY** — 개인 플러그인 UI 게시·기존 공개 범위 유지, 별도 새 API 이미지 뒤 native 목록/리소스와 fuel web 이미지 뒤 공유 상세를 확인한다. Android/iOS 마이현대의 실제 위치 수신은 실기기 후속이다. [구현 경계](reports/2026-11-28-fuel-mcp-app-ui.md).

@@ -1,6 +1,6 @@
 # ADR-017 — 웹 production runner의 non-root와 역할별 예외
 
-- 상태: accepted (실제 새 이미지 QA는 `docs/tasks.md` B4)
+- 상태: accepted (→ 진행: `docs/tasks.md` 일반 이미지 빌드 B4)
 - 날짜: 2026-11-13
 - 범위: Transport 공개·관리자 Next 웹 runner. backend/CS/gateway의 UID 변경은 제외
 

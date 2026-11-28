@@ -16,7 +16,7 @@
 - 무제한 주차 이력은 PostgreSQL 원본의 재생성 가능한 읽기 캐시를 사용한다.
   최대 30초 반영 지연을 허용하며, 확인이 오래되면 직접 조회로 돌아간다.
 - SQLAlchemy 2 기반 비동기 데이터 접근
-- PostgreSQL 16 저장, Alembic migration
+- PostgreSQL 16 저장(운영 공용 instance `postgres:16-alpine`, 2026-11-28 16.9 확인; CI는 18), Alembic migration
 - SQLite는 legacy import와 빠른 단위 테스트에만 사용
 - 수집, 분석, 요금 계산, 비행편 마커, 통합 교통정보 API 제공
 
