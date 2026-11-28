@@ -1,3 +1,7 @@
+## 2026-11-28 — VWorld 지도 운영 후속
+
+- [ ] **FUEL-MCP-VWORLD-VERIFY** — 기존 개인 Site 게시 결과 정산, Native CI/머지 후 별도 API 이미지로 inline 리소스 확인. 기존 이미지/DB/수집은 이번 작업에서 변경하지 않는다.
+
 ## 2026-11-28 — 주변 유가 MCP UI 운영 수용
 
 - [ ] **FUEL-MCP-APPS-UI-VERIFY** — 개인 플러그인 UI 게시·기존 공개 범위 유지, 별도 새 API 이미지 뒤 native 목록/리소스와 fuel web 이미지 뒤 공유 상세를 확인한다. Android/iOS 마이현대의 실제 위치 수신은 실기기 후속이다. [구현 경계](reports/2026-11-28-fuel-mcp-app-ui.md).

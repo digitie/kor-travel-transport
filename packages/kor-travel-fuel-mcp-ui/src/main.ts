@@ -18,11 +18,11 @@ root.innerHTML = `<header class="heading"><div><p class="eyebrow">FUEL · 내 �
 <section id="map-pane" aria-label="주유소 지도" hidden><div id="map"></div><p id="map-message" class="muted" role="status"></p><button id="tile-retry" type="button" hidden>배경지도 다시 불러오기</button></section>
 <div class="results-layout"><section id="stations" aria-label="주유소 목록"></section><aside id="detail" aria-label="선택한 주유소 상세" hidden tabindex="-1"></aside></div>
 <section class="comparison"><div class="compare-heading"><h2>지역 가격과 비교</h2><div><button id="district" type="button" disabled>현재 위치 시군구</button><button id="national" type="button" disabled>전국</button></div></div><div id="comparison" role="status" aria-live="polite">범위 선택 시 저장된 지역 통계를 조회합니다.</div></section>
-<footer><p id="timestamp">수집 시각 미제공</p><p>가격은 원/L · 거리는 직선거리입니다. 방문 전 실제 판매가를 확인하세요.</p><p>지도 배경은 OpenStreetMap에서 불러옵니다.</p><button id="full-fuel" type="button">fuel 웹에서 더 보기</button></footer>`;
+<footer><p id="timestamp">수집 시각 미제공</p><p>가격은 원/L · 거리는 직선거리입니다. 방문 전 실제 판매가를 확인하세요.</p><p>지도 배경은 VWorld에서 불러옵니다.</p><button id="full-fuel" type="button">fuel 웹에서 더 보기</button></footer>`;
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const app = new App({ name: "transport-nearby-fuel", version: "1.0.0" }, {}, { autoResize: true });
 let connected = false, busy = false, result: FuelResponse | null = null, query: Query | null = null, product = "B027", selected: Station | null = null, map: FuelMap | null = null, comparison: FuelResponse | null = null;
-let comparisonEpoch = 0, locationEpoch = 0;
+let comparisonEpoch = 0, locationEpoch = 0, preferMap = true;
 const controller = new FuelController((name, args) => app.callServerTool({ name, arguments: args }, { timeout: 25000 }));
 const message = (text: string, error = false) => { el("notice").textContent = text; el("notice").dataset.error = String(error); };
 const text = (tag: string, value: string, className?: string) => { const node = document.createElement(tag); node.textContent = value; if (className)
@@ -69,7 +69,7 @@ function accept(data: FuelResponse) {
     if(data.collection.reason==="location_required" && data.products.length===0 && data.latitude==null && data.longitude==null){
         controller.invalidate();comparisonEpoch++;locationEpoch++;result=null;query=null;comparison=null;selected=null;
         el<HTMLInputElement>("latitude").value="";el<HTMLInputElement>("longitude").value="";
-        map?.destroy();map=null;el("map").replaceChildren();el("map-pane").hidden=true;
+        preferMap=true;map?.destroy();map=null;el("map").replaceChildren();el("map-pane").hidden=true;
         el("map-message").textContent="";el("tile-retry").hidden=true;
         el("list-view").setAttribute("aria-pressed","true");el("map-view").setAttribute("aria-pressed","false");
         el("timestamp").textContent="수집 시각 미제공";
@@ -236,7 +236,8 @@ function renderMap() {
         el("map-message").textContent = "이 환경에서는 지도를 표시하지 못했습니다. 목록에서 가격·주소를 확인해 주세요.";
     }
 }
-function render() { renderProducts(); renderSummary(); renderStations(); renderDetail(); renderComparison(); renderMap(); }
+function syncView(){const visible=Boolean(query)&&preferMap;el("map-pane").hidden=!visible;el("list-view").setAttribute("aria-pressed",String(!visible));el("map-view").setAttribute("aria-pressed",String(visible));}
+function render() { syncView();renderProducts(); renderSummary(); renderStations(); renderDetail(); renderComparison(); renderMap(); }
 async function compare(scope: "nationwide" | "sigungu") {
     if (!connected || busy || !query)
         return;
@@ -266,7 +267,7 @@ el("filter").addEventListener("input", () => { renderStations(); renderMap(); })
 el("district").onclick = () => { void compare("sigungu"); };
 el("national").onclick = () => { void compare("nationwide"); };
 for (const view of ["list", "map"] as const)
-    el(`${view}-view`).onclick = () => { el("map-pane").hidden = view !== "map"; el("list-view").setAttribute("aria-pressed", String(view === "list")); el("map-view").setAttribute("aria-pressed", String(view === "map")); renderMap(); };
+    el(`${view}-view`).onclick = () => { preferMap=view==="map";syncView();renderMap(); };
 el("tile-retry").onclick = () => { el("tile-retry").hidden = true; el("map-message").textContent = "배경지도를 다시 불러옵니다."; map?.retry(); };
 el("full-fuel").onclick = () => { void openExternal(`https://fuel.digitie.mywire.org/?product=${product}`); };
 el("locate").onclick = () => {

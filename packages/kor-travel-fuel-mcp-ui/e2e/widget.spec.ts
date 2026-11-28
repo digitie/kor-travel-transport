@@ -1,10 +1,12 @@
 import { test, expect } from "@playwright/test";
+test.beforeEach(async({page})=>{await page.route("https://api.vworld.kr/**",route=>route.fulfill({contentType:"image/png",headers:{"Access-Control-Allow-Origin":"*"},body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=","base64")}));});
+
 for (const width of [320, 375, 414, 768, 1440])
     test(`실제 MCP Apps 브리지와 반응형 ${width}px`, async ({ page }) => {
         await page.setViewportSize({ width, height: 1100 });
         const errors: string[] = [];
         page.on("pageerror", e => errors.push(e.message));
-        await page.route("https://tile.openstreetmap.org/**", route => route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64") }));
+        await page.route("https://api.vworld.kr/**", route => route.fulfill({ contentType: "image/png", headers:{"Access-Control-Allow-Origin":"*"}, body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64") }));
         await page.goto("/");
         const app = page.frameLocator("#widget");
         await expect(app.getByRole("button", { name: "다시 조회", exact: true })).toBeEnabled();
@@ -17,8 +19,10 @@ for (const width of [320, 375, 414, 768, 1440])
         await expect(app.locator("#result-caption")).toContainText("10000m");
         await app.getByRole("button", { name: "전국", exact: true }).click();
         await expect(app.locator("#comparison")).toContainText("평균");
+        await expect(app.getByRole("button", { name: "지도", exact: true })).toHaveAttribute("aria-pressed","true");
         await app.getByRole("button", { name: "지도", exact: true }).click();
-        await expect(app.locator("#map .leaflet-tile-loaded").first()).toBeVisible();
+        await expect(app.locator("#map .maplibregl-canvas").first()).toBeVisible();
+        await expect(app.locator("#map .fuel-marker-host").first()).toBeVisible();
         await expect(app.locator("#map .fuel-marker").first()).toBeVisible();
         expect(await app.locator("#map .fuel-marker").count()).toBeLessThan(20);
         await app.locator(".station").first().click();
@@ -87,11 +91,11 @@ test("수집 지연·미제공·거리 정렬", async ({ page }) => {
 });
 
 test("위치 없이 UI를 열고 동의 전에는 조회하지 않는다",async({page})=>{
-  await page.route("https://tile.openstreetmap.org/**",route=>route.fulfill({contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=","base64")}));
+  await page.route("https://api.vworld.kr/**",route=>route.fulfill({contentType:"image/png",headers:{"Access-Control-Allow-Origin":"*"},body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=","base64")}));
   await page.goto("/");const app=page.frameLocator("#widget");await expect(app.locator(".station")).toHaveCount(20);
   await app.getByRole("button",{name:"지도",exact:true}).click();await expect(app.locator("#map .fuel-marker").first()).toBeVisible();
   await page.evaluate(()=>{const w=window as unknown as {sendResult:(r:unknown)=>void};w.sendResult({scope:"radius",collection:{status:"unavailable",reason:"location_required",generated_at:null,last_success_at:null,stale:false,update_pending:false,last_attempt_failed:false},products:[],latitude:null,longitude:null,radius_m:null});});
-  await expect(app.locator("#map .leaflet-marker-icon")).toHaveCount(0);await expect(app.locator("#map-pane")).toBeHidden();await expect(app.locator("#timestamp")).toHaveText("수집 시각 미제공");await expect(app.getByRole("button",{name:"지도",exact:true})).toBeDisabled();
+  await expect(app.locator("#map .maplibregl-marker")).toHaveCount(0);await expect(app.locator("#map-pane")).toBeHidden();await expect(app.locator("#timestamp")).toHaveText("수집 시각 미제공");await expect(app.getByRole("button",{name:"지도",exact:true})).toBeDisabled();
   await expect(app.locator("#notice")).toContainText("위치 권한");await expect(app.getByRole("button",{name:"현재 위치로 검색",exact:true})).toBeEnabled();await expect(app.getByRole("button",{name:"전국",exact:true})).toBeDisabled();expect(await page.evaluate(()=>((window as unknown as {calls:unknown[]}).calls).length)).toBe(0);
   await app.locator("#location summary").click();await app.locator("#latitude").fill("37.5");await app.locator("#longitude").fill("127");await app.getByRole("button",{name:"이 조건으로 조회"}).click();await expect(app.locator(".station")).toHaveCount(20);
 });
@@ -136,4 +140,21 @@ test("등유 없는 목록과 상세 공유·목적지 앱·복사 거부 복구
  for(const mode of ["cancel","error","cancel"]){await app.locator("body").evaluate((_node,mode)=>{(window as any).shareMode=mode;},mode);await app.getByRole("button",{name:"마이현대로 위치 공유",exact:true}).click();await expect(app.locator("#notice")).toContainText(mode==="cancel"?"공유를 취소했습니다":"공유창을 열 수 없습니다");}
 
  await app.locator("body").evaluate(()=>{Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:async()=>{throw new DOMException("denied","NotAllowedError");}}});});await app.getByRole("button",{name:"링크 복사",exact:true}).click();await expect(app.locator("#notice")).toContainText("선택해서 복사");await expect(app.getByRole("textbox",{name:"주유소 공유 링크",exact:true})).toBeFocused();
+});
+
+
+test("최대 확대 중첩에서 팝업과 선택 가격 마커를 유지한다",async({page})=>{
+ await page.route("https://api.vworld.kr/**",route=>route.fulfill({contentType:"image/png",headers:{"Access-Control-Allow-Origin":"*"},body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=","base64")}));
+ await page.goto("/");const app=page.frameLocator("#widget");await expect(app.locator(".station")).toHaveCount(20);
+ for(const method of ["click","keyboard"]){
+  await page.evaluate(()=>{const data=(window as any).sample();for(const product of data.products)for(const row of [...product.ranked_stations,...product.cheapest_stations]){row.latitude=data.latitude;row.longitude=data.longitude;}(window as any).sendResult(data);});
+  await app.getByRole("button",{name:"지도",exact:true}).click();
+  const group=app.getByRole("button",{name:/주유소 20곳/});await expect(group).toBeVisible();
+  if(method==="click"){await group.click();await expect(app.getByRole("button",{name:"Zoom in",exact:true})).toBeDisabled();await group.click();}else await group.press("Enter");
+  const choices=app.locator(".fuel-map-choices");await expect(choices).toBeVisible();
+  if(method==="click")await choices.getByRole("button").first().click();else await choices.getByRole("button").first().press("Enter");
+  await expect(app.locator("#detail h2")).toHaveText("금남주유소");await expect(app.locator("#map .fuel-marker.is-selected")).toBeVisible();
+  const layers=await app.locator("#map .fuel-marker.is-selected").evaluate(node=>({selected:Number((node.parentElement as HTMLElement).style.zIndex),other:Math.max(...Array.from(document.querySelectorAll<HTMLElement>("#map .fuel-marker-host")).filter(el=>!el.querySelector(".is-selected")).map(el=>Number(el.style.zIndex)))}));
+  expect(layers.selected).toBeGreaterThan(layers.other);await expect(choices).toHaveCount(0);
+ }
 });
