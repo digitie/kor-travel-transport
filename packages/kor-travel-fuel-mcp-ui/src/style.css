@@ -19,3 +19,5 @@
 #locate:disabled{background:var(--surface-muted);border-color:var(--control-line);color:var(--text-tertiary)}
 #location .control-row,#location #search,.comparison .filter-label{margin-top:var(--space-2)}
 .station-sharing[open]>:not(summary){margin-top:var(--space-2)}
+
+#summary{display:block;margin:var(--space-2) 0 0}.directions{background:var(--brand);border-color:var(--brand);color:var(--brand-foreground);margin:var(--space-2) 0}.directions:hover{background:var(--brand-hover)}

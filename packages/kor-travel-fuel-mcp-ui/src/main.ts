@@ -12,11 +12,11 @@ root.innerHTML = `<header class="heading"><h1>내 주변 유가</h1><button id="
 <form id="controls"><button id="locate" type="button" disabled>현재 위치로 검색</button><details id="location"><summary>검색 조건</summary><div class="location-fields"><label>위도<input id="latitude" type="number" step="any" min="-90" max="90" required></label><label>경도<input id="longitude" type="number" step="any" min="-180" max="180" required></label></div>
 <div class="control-row"><label>반경<select id="radius"><option value="1000">1km</option><option value="3000">3km</option><option value="5000" selected>5km</option><option value="10000">10km</option><option value="20000">20km</option><option value="50000">50km</option></select></label><label>정렬<select id="sort"><option value="price">가격 낮은 순</option><option value="distance">직선거리 가까운 순</option></select></label></div><button id="search" type="button" disabled>이 조건으로 조회</button></details></form>
 <div id="results" hidden><fieldset class="products"><legend class="sr-only">유종 선택</legend><div id="products"></div></fieldset>
-<section id="summary" aria-label="유가 요약"></section>
 <div class="view-heading"><h2 id="list-title" tabindex="-1">주유소</h2><div class="views" role="group" aria-label="표시 방식"><button id="list-view" type="button" aria-pressed="true">목록</button><button id="map-view" type="button" aria-pressed="false">지도</button></div></div>
 <p id="result-caption" class="muted"></p>
 <section id="map-pane" aria-label="주유소 지도" hidden><div id="map"></div><p id="map-message" class="muted" role="status"></p><button id="tile-retry" type="button" hidden>배경지도 다시 불러오기</button></section>
 <div class="results-layout"><section id="stations" aria-label="주유소 목록"></section><aside id="detail" aria-label="선택한 주유소 상세" hidden tabindex="-1"></aside></div>
+<section id="summary" aria-label="유가 요약"></section>
 <details class="comparison"><summary>목록 검색·지역 비교</summary><label class="filter-label">이름·주소 찾기<input id="filter" type="search" autocomplete="off"></label><div class="compare-heading"><h2>지역 가격과 비교</h2><div><button id="district" type="button" disabled>현재 위치 시군구</button><button id="national" type="button" disabled>전국</button></div></div><div id="comparison" role="status" aria-live="polite">범위 선택 시 저장된 지역 통계를 조회합니다.</div></details>
 <footer><p id="timestamp">수집 시각 미제공</p><p>가격은 원/L · 거리는 직선거리입니다. 방문 전 실제 판매가를 확인하세요.</p><button id="full-fuel" type="button">fuel 웹에서 더 보기</button></footer></div>`;
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -133,12 +133,8 @@ function renderSummary() {
     el("summary").replaceChildren();
     if (!p)
         return;
-    const stats = [["반경 내 최저", p.minimum_price], ["반경 내 평균", p.average_price]] as const;
-    for (const [label, value] of stats) {
-        const box = text("div", "", "stat");
-        box.append(text("span", label, "muted"), text("strong", money(value)), text("span", value == null ? "" : "원/L", "muted"));
-        el("summary").append(box);
-    }
+    const amount = (value: number | null) => value == null ? "미제공" : `${money(value)}원/L`;
+    el("summary").append(text("p", `반경 내 최저 ${amount(p.minimum_price)} · 평균 ${amount(p.average_price)}`, "muted"));
 }
 function renderStations() {
     const p = result ? rowsFor(result, product) : null;
@@ -194,6 +190,14 @@ function renderDetail() {
         button.type = "button";
         button.onclick = () => { void openExternal(url); };
         panel.append(button);
+    }
+    const primary = stationMapLinks(selected)[0];
+    if (primary) {
+        const directions = text("button", "길찾기") as HTMLButtonElement;
+        directions.type = "button";
+        directions.className = "directions";
+        directions.onclick = () => { void openExternal(primary.url, primary.fallback); };
+        panel.insertBefore(directions, list);
     }
     const sharing=document.createElement("details");sharing.className="station-sharing";sharing.setAttribute("aria-label","주유소 공유 및 지도 앱");
     sharing.append(text("summary","공유·지도 앱"));

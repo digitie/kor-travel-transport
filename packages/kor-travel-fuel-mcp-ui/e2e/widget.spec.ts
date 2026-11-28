@@ -28,6 +28,10 @@ for (const width of [320, 375, 414, 768, 1440])
         expect(await app.locator("#map .fuel-marker").count()).toBeLessThan(20);
         await app.locator(".station").first().click();
         await expect(app.locator("#detail")).toContainText("금남주유소");
+        await expect(app.getByRole("button", { name: "길찾기", exact: true })).toBeVisible();
+        expect(await app.locator("#summary").evaluate(node =>
+            Boolean(document.querySelector("#stations")!.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)
+        )).toBe(true);
         await app.getByRole("button", { name: "큰 지도에서 위치 보기" }).click();
         await expect.poll(() => page.evaluate(() => ((window as unknown as {
             opened: string[];
