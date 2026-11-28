@@ -8,6 +8,7 @@ RUN --mount=type=cache,id=kor-travel-web-npm-v2,target=/root/.npm,sharing=locked
 COPY packages/kor-travel-fuel-mcp-ui/build.mjs packages/kor-travel-fuel-mcp-ui/tsconfig.json ./
 COPY packages/kor-travel-fuel-mcp-ui/src ./src
 COPY packages/kor-travel-transport-admin/frontend/app/transport-palette.css /ui/packages/kor-travel-transport-admin/frontend/app/transport-palette.css
+COPY packages/kor-travel-transport-admin/frontend/lib/fuel-station-links.ts /ui/packages/kor-travel-transport-admin/frontend/lib/fuel-station-links.ts
 RUN npm run type-check && npm run build
 
 # 무비밀 UI 산출물만 꺼내는 검증 target. Python 런타임 이미지와 별개다.

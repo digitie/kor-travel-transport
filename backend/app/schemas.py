@@ -24,6 +24,11 @@ class NearbyFuelListQuery(NearbyFuelQuery):
     sort_by: Literal["price", "distance"] = "price"
 
 
+class FuelWidgetQuery(NearbyFuelListQuery):
+    product_codes: list[Literal["B027", "D047", "B034", "K015"]] = Field(
+        default_factory=lambda: ["B027", "D047", "B034", "K015"], min_length=1, max_length=4)
+
+
 class RegionalFuelQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
     scope: Literal["nationwide", "sigungu"] = "nationwide"

@@ -268,7 +268,7 @@ def test_widget_resource_and_data_tools_remain_separate_and_authenticated(fuel_m
     assert resource["mimeType"] == "text/html;profile=mcp-app"
     contents = rpc(client, "resources/read", {"uri": uri}).json()["result"]["contents"][0]
     assert contents["mimeType"] == "text/html;profile=mcp-app"
-    assert contents["_meta"]["ui"]["permissions"] == {"geolocation": {}}
+    assert contents["_meta"]["ui"]["permissions"] == {"geolocation": {}, "clipboardWrite": {}}
     assert contents["_meta"]["ui"]["csp"]["connectDomains"] == ["https://tile.openstreetmap.org"]
     assert "내 주변 유가" in contents["text"] and "ui/initialize" in contents["text"]
     assert TOKEN not in contents["text"] and "x-kor-travel-transport-service-token" not in contents["text"]
@@ -325,3 +325,13 @@ def test_widget_can_open_without_guessing_or_querying_location(fuel_mcp):
         event.remove(engine, "before_cursor_execute", capture)
     assert result["collection"]["reason"] == "location_required" and result["latitude"] is None
     assert not result["products"] and not statements
+
+
+def test_widget_omits_kerosene_without_changing_data_tool_contract():
+    from pydantic import ValidationError
+    from app.schemas import FuelWidgetQuery, NearbyFuelListQuery
+    coords = dict(latitude=37.5, longitude=127)
+    assert FuelWidgetQuery(**coords).product_codes == ["B027", "D047", "B034", "K015"]
+    with pytest.raises(ValidationError):
+        FuelWidgetQuery(**coords, product_codes=["C004"])
+    assert NearbyFuelListQuery(**coords, product_codes=["C004"]).product_codes == ["C004"]

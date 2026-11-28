@@ -2,6 +2,7 @@ import { App } from "@modelcontextprotocol/ext-apps";
 import { FuelController } from "./controller";
 import { PRODUCTS, collectedAt, distance, mapUrl, money, queryFromResult, querySchema, readResult, rowsFor, type FuelResponse, type Query, type Station } from "./model";
 import { FuelMap } from "./map";
+import { stationMapLinks, stationShareUrl, stationAppShare } from "../../kor-travel-transport-admin/frontend/lib/fuel-station-links";
 import "../../kor-travel-transport-admin/frontend/app/transport-palette.css";
 import "./style.css";
 const root = document.querySelector<HTMLElement>("#app")!;
@@ -26,6 +27,17 @@ const controller = new FuelController((name, args) => app.callServerTool({ name,
 const message = (text: string, error = false) => { el("notice").textContent = text; el("notice").dataset.error = String(error); };
 const text = (tag: string, value: string, className?: string) => { const node = document.createElement(tag); node.textContent = value; if (className)
     node.className = className; return node; };
+async function openExternal(url:string,fallback?:string){
+ for(const target of [url,...(fallback?[fallback]:[])]){
+  try{const response=await app.openLink({url:target});if(!response.isError)return;}catch{/* 호스트 거부도 웹 대체 경로를 한 번 시도한다. */}
+ }
+ message("외부 화면을 열지 못했습니다. 공유 링크를 복사하거나 다른 지도 앱을 선택해 주세요.",true);
+}
+async function shareData(data:ShareData){
+ message("공유창에서 앱을 선택해 주세요.");
+ if(!navigator.share){message("이 환경은 앱 공유창을 지원하지 않습니다. 공유 링크를 복사해 휴대폰에서 열어 주세요.",true);return;}
+ try{await navigator.share(data);message("공유창에 주유소 정보를 전달했습니다.");}catch(error){if(error instanceof DOMException&&error.name==="AbortError"){message("공유를 취소했습니다.");return;}message("이 환경에서 공유창을 열 수 없습니다. 공유 링크를 복사해 휴대폰에서 열어 주세요.",true);}
+}
 function setTheme(theme: string) { document.documentElement.dataset.theme = theme; document.documentElement.classList.toggle("dark", theme === "dark"); }
 function setBusy(value: boolean) {
     busy = value;
@@ -34,6 +46,7 @@ function setBusy(value: boolean) {
     el("stations").setAttribute("aria-busy", String(value));
     el("refresh").textContent = value ? "조회 중…" : "다시 조회";
     for(const id of ["district","national","refresh"]) el<HTMLButtonElement>(id).disabled = value || !connected || !query;
+    el<HTMLButtonElement>("map-view").disabled=!query;
 }
 function fillQuery(next: Query) {
     query = next;
@@ -56,12 +69,19 @@ function accept(data: FuelResponse) {
     if(data.collection.reason==="location_required" && data.products.length===0 && data.latitude==null && data.longitude==null){
         controller.invalidate();comparisonEpoch++;locationEpoch++;result=null;query=null;comparison=null;selected=null;
         el<HTMLInputElement>("latitude").value="";el<HTMLInputElement>("longitude").value="";
+        map?.destroy();map=null;el("map").replaceChildren();el("map-pane").hidden=true;
+        el("map-message").textContent="";el("tile-retry").hidden=true;
+        el("list-view").setAttribute("aria-pressed","true");el("map-view").setAttribute("aria-pressed","false");
+        el("timestamp").textContent="수집 시각 미제공";
         setBusy(false);message("현재 위치로 검색을 누르고 위치 권한을 허용하거나, 검색 위치에 좌표를 입력해 주세요.");render();return;
     } if (data.scope !== "radius" || !queryFromResult(data)) {
     setBusy(false);
     message("주변 검색 응답의 위치를 확인하지 못했습니다. 다시 조회해 주세요.", true);
     return;
-} controller.invalidate(); comparisonEpoch++; result = data; comparison = null; selected = null; const next = queryFromResult(data); if (next)
+} controller.invalidate(); comparisonEpoch++; result = data; comparison = null; selected = null;
+const available=data.products.filter(p=>PRODUCTS.some(([code])=>code===p.product_code));
+if(!available.some(p=>p.product_code===product)) product=available[0]?.product_code??"B027";
+const next = queryFromResult(data); if (next)
     fillQuery(next); setBusy(false); showCollection(data); render(); }
 function search() {
     locationEpoch++;
@@ -90,7 +110,14 @@ function displayedRows() {
 }
 function select(station: Station) { selected = station; render(); if (!el("map-pane").hidden)
     map?.focus(station); el("detail").focus({ preventScroll: true }); }
-function renderProducts() { el("products").replaceChildren(...PRODUCTS.map(([code, label]) => { const button = text("button", label) as HTMLButtonElement; button.type = "button"; button.setAttribute("aria-pressed", String(product === code)); button.onclick = () => { product = code; selected = null; render(); }; return button; })); }
+function renderProducts() {
+    const host=el("products");
+    if(!host.childElementCount) for(const [code,label] of PRODUCTS){
+        const button=text("button",label) as HTMLButtonElement;button.type="button";button.dataset.productCode=code;
+        button.onclick=()=>{product=code;selected=null;render();};host.append(button);
+    }
+    for(const button of host.querySelectorAll<HTMLButtonElement>("button")) button.setAttribute("aria-pressed",String(button.dataset.productCode===product));
+}
 function renderSummary() {
     const p = result ? rowsFor(result, product) : null;
     el("summary").replaceChildren();
@@ -155,9 +182,19 @@ function renderDetail() {
     if (url) {
         const button = text("button", "큰 지도에서 위치 보기") as HTMLButtonElement;
         button.type = "button";
-        button.onclick = () => { void app.openLink({ url }).catch(() => message("외부 지도를 열지 못했습니다. 다시 시도해 주세요.", true)); };
+        button.onclick = () => { void openExternal(url); };
         panel.append(button);
     }
+    const sharing=document.createElement("section");sharing.className="station-sharing";sharing.setAttribute("aria-label","주유소 공유 및 지도 앱");
+    sharing.append(text("h3","공유·지도 앱"));
+    const link=stationShareUrl(selected,product);
+    if(link){const label=text("label","공유 링크");const input=document.createElement("input");input.readOnly=true;input.value=link;input.setAttribute("aria-label","주유소 공유 링크");label.append(input);sharing.append(label);
+      const copy=text("button","링크 복사") as HTMLButtonElement;copy.type="button";copy.onclick=()=>{void navigator.clipboard?.writeText(link).then(()=>message("주유소 공유 링크를 복사했습니다.")).catch(()=>{input.focus();input.select();message("공유 링크를 길게 누르거나 선택해서 복사해 주세요.");});if(!navigator.clipboard){input.focus();input.select();message("공유 링크를 선택해서 복사해 주세요.");}};sharing.append(copy);}
+    const maps=document.createElement("div");maps.className="map-apps";
+    for(const target of stationMapLinks(selected)){const button=text("button",target.label) as HTMLButtonElement;button.type="button";button.onclick=()=>{void openExternal(target.url,target.fallback);};maps.append(button);}sharing.append(maps);
+    const station=selected;const share=text("button","마이현대로 위치 공유") as HTMLButtonElement;share.type="button";share.onclick=()=>{void shareData(stationAppShare(station));};sharing.append(share);
+    if(link){const general=text("button","다른 앱으로 공유") as HTMLButtonElement;general.type="button";general.onclick=()=>{void shareData({title:station.name,text:station.address??station.name,url:link});};sharing.append(general);}
+    sharing.append(text("p","휴대폰 공유창에서 마이현대를 선택해 지도에서 위치를 확인하세요. 앱 설치·공유 지원 여부에 따라 표시되는 앱이 달라집니다.","muted"));panel.append(sharing);
 }
 function renderComparison() {
     const host = el("comparison");
@@ -182,7 +219,7 @@ function renderComparison() {
         const button = text("button", `최저가 ${station.name} · ${money(station.price)}원/L`) as HTMLButtonElement;
         button.type = "button";
         button.onclick = () => { const url = mapUrl(station); if (url)
-            void app.openLink({ url }).catch(() => message("외부 지도를 열지 못했습니다.", true)); };
+            void openExternal(url); };
         host.append(button);
     }
     if (p?.truncated)
@@ -219,7 +256,7 @@ async function compare(scope: "nationwide" | "sigungu") {
 }
 // MCP 호스트가 allow-forms를 주지 않아도 브리지 조회는 동작해야 한다.
 el("controls").addEventListener("submit", event => event.preventDefault());
-el("controls").addEventListener("keydown", event => { if (event.key === "Enter") {
+el("controls").addEventListener("keydown", event => { if (event.key === "Enter" && !event.isComposing && event.target instanceof HTMLInputElement && ["latitude","longitude"].includes(event.target.id)) {
     event.preventDefault();
     search();
 } });
@@ -231,7 +268,7 @@ el("national").onclick = () => { void compare("nationwide"); };
 for (const view of ["list", "map"] as const)
     el(`${view}-view`).onclick = () => { el("map-pane").hidden = view !== "map"; el("list-view").setAttribute("aria-pressed", String(view === "list")); el("map-view").setAttribute("aria-pressed", String(view === "map")); renderMap(); };
 el("tile-retry").onclick = () => { el("tile-retry").hidden = true; el("map-message").textContent = "배경지도를 다시 불러옵니다."; map?.retry(); };
-el("full-fuel").onclick = () => { void app.openLink({ url: `https://fuel.digitie.mywire.org/?product=${product}` }).catch(() => message("fuel 웹을 열지 못했습니다.", true)); };
+el("full-fuel").onclick = () => { void openExternal(`https://fuel.digitie.mywire.org/?product=${product}`); };
 el("locate").onclick = () => {
     if (!navigator.geolocation) {
         message("이 환경은 위치 요청을 지원하지 않습니다. 검색 위치에 좌표를 입력하거나 대화로 알려 주세요.", true);
@@ -241,7 +278,7 @@ el("locate").onclick = () => {
     el<HTMLButtonElement>("locate").disabled = true;
     message("기기의 위치 권한을 확인하고 있습니다.");
     navigator.geolocation.getCurrentPosition(position => { if (epoch !== locationEpoch)
-        return; fillQuery(querySchema.parse({ latitude: position.coords.latitude, longitude: position.coords.longitude, radius_m: query?.radius_m ?? 5000 })); setBusy(false); search(); }, () => { if (epoch !== locationEpoch)
+        return; el<HTMLInputElement>("latitude").value=String(position.coords.latitude);el<HTMLInputElement>("longitude").value=String(position.coords.longitude);setBusy(false);search(); }, () => { if (epoch !== locationEpoch)
         return; setBusy(false); message("위치를 확인하지 못했습니다. 위치 권한을 허용하거나 좌표를 입력해 주세요.", true); }, { timeout: 10000, maximumAge: 0 });
 };
 app.addEventListener("toolinput", input => { const candidate = querySchema.safeParse(input.arguments?.query); if (candidate.success) {

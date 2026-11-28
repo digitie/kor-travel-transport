@@ -1,6 +1,6 @@
 ## 2026-11-28 — 주변 유가 MCP UI 운영 수용
 
-- [ ] **FUEL-MCP-APPS-UI-VERIFY** — 개인 플러그인 UI 게시·기존 공개 범위 유지와 새 API 이미지 뒤 native 목록 전환·실제 도구/리소스를 확인한다. [구현 경계](reports/2026-11-28-fuel-mcp-app-ui.md).
+- [ ] **FUEL-MCP-APPS-UI-VERIFY** — 개인 플러그인 UI 게시·기존 공개 범위 유지, 별도 새 API 이미지 뒤 native 목록/리소스와 fuel web 이미지 뒤 공유 상세를 확인한다. Android/iOS 마이현대의 실제 위치 수신은 실기기 후속이다. [구현 경계](reports/2026-11-28-fuel-mcp-app-ui.md).
 
 ## 2026-11-27 — 휴게소 먹거리(REST-AREA-FOOD)
 

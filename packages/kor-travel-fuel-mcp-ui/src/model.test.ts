@@ -10,7 +10,7 @@ describe("신뢰 경계와 누락값", () => {
     it("유효 응답과 0m 거리를 보존한다", () => { const data = readResult({ structuredContent: fixture }); expect(data.products[0].ranked_stations?.[0].distance_m).toBe(0); expect(queryFromResult(data)?.latitude).toBe(37.5); });
     it.each([NaN, Infinity, -Infinity, 91])("잘못된 위도 %s를 거부한다", latitude => expect(querySchema.safeParse({ latitude, longitude: 127 }).success).toBe(false));
     it.each([0, -10, 50001])("범위 밖 반경 %s를 거부한다", radius_m => expect(querySchema.safeParse({ latitude: 0, longitude: 0, radius_m }).success).toBe(false));
-    it("최대20곳·다섯 유종과 위치0을 검증한다", () => { expect(querySchema.parse({ latitude: 0, longitude: 0 }).product_codes).toHaveLength(5); expect(querySchema.safeParse({ latitude: 0, longitude: 0, limit_per_product: 21 }).success).toBe(false); });
+    it("최대20곳·네 유종과 위치0을 검증한다", () => { expect(querySchema.parse({ latitude: 0, longitude: 0 }).product_codes).toHaveLength(4); expect(querySchema.safeParse({ latitude: 0, longitude: 0, limit_per_product: 21 }).success).toBe(false); });
     it("원문 오류를 화면 메시지로 전달하지 않는다", () => { expect(() => readResult({ isError: true, structuredContent: { secret: "not-a-user-message" } })).toThrow("유가 조회에 실패"); expect(() => readResult({ structuredContent: {} })).toThrow("응답을 확인"); });
     it("양수가 아닌 가격을 거부하고 null을 미제공으로 남긴다", () => { expect(() => readResult({ structuredContent: { ...fixture, products: [{ ...fixture.products[0], average_price: 0 }] } })).toThrow(); expect(money(null)).toBe("미제공"); expect(distance(null)).toBe("거리 미제공"); expect(distance(0)).toBe("0m"); });
     it("임의 URL을 받지 않고 검증한 좌표로 지도 주소를 만든다", () => { expect(mapUrl({ station_key: "1", name: "x", price: 1, latitude: 0, longitude: 0 })).toContain("mlat=0&mlon=0"); expect(mapUrl({ station_key: "1", name: "x", price: 1 })).toBeNull(); });
@@ -23,3 +23,6 @@ describe("조회 수명", () => {
 });
 it("응답이 다른 위치·반경이면 현재 위치 결과로 표시하지 않는다", async () => { const q = querySchema.parse({ latitude: 37.5, longitude: 127 }); let accepted = false; const failures: string[] = []; const c = new FuelController(async () => ({ structuredContent: { ...fixture, latitude: 36 } })); await c.search(q, () => { accepted = true; }, m => failures.push(m)); expect(accepted).toBe(false); expect(failures).toHaveLength(1); });
 it("기존 중계의 live 봉투와 native 결과를 같은 검증 경계에서 읽는다", () => { expect(readResult({ structuredContent: { mode: "live", result: fixture } }).scope).toBe("radius"); expect(() => readResult({ structuredContent: { mode: "live", result: { private: "hidden" } } })).toThrow("응답을 확인"); });
+
+import { PRODUCTS } from "./model";
+it("UI 목록과 기본 조회에서 등유를 제외한다",()=>{expect(PRODUCTS.map(([c])=>c)).toEqual(["B027","D047","B034","K015"]);expect(querySchema.parse({latitude:37.5,longitude:127}).product_codes).not.toContain("C004");expect(querySchema.safeParse({latitude:37.5,longitude:127,product_codes:["C004"]}).success).toBe(false);});

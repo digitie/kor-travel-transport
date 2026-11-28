@@ -8,6 +8,6 @@ window.sendResult=r=>send({method:"ui/notifications/tool-result",params:{structu
 window.addEventListener("message",event=>{if(event.source!==frame.contentWindow)return;const m=event.data;if(m.method==="ui/initialize"){send({id:m.id,result:{protocolVersion:m.params.protocolVersion,hostInfo:{name:"transport-test",version:"1"},hostCapabilities:{serverTools:{},openLinks:{}},hostContext:{theme:"light",displayMode:"inline",locale:"ko-KR"}}});}
 else if(m.method==="ui/notifications/initialized"){send({method:"ui/notifications/tool-input",params:{arguments:{query}}});window.sendResult(result());}
 else if(m.method==="tools/call"){window.calls.push(m.params);if(window.failNext){window.failNext=false;send({id:m.id,result:{content:[{type:"text",text:"private-upstream-error"}],isError:true}});}else send({id:m.id,result:{content:[],structuredContent:result(m.params.arguments.query,m.params.name==="get_regional_fuel_prices"?m.params.arguments.query.scope:"radius")}});}
-else if(m.method==="ui/open-link"){window.opened.push(m.params.url);send({id:m.id,result:{}});}
+else if(m.method==="ui/open-link"){window.opened.push(m.params.url);const failure=(window.openFailures??[]).shift();if(failure==="reject")send({id:m.id,error:{code:-32000,message:"host_rejected"}});else send({id:m.id,result:failure==="error"?{isError:true}:{}});}
 else if(m.id!==undefined){send({id:m.id,result:{}});}});
 </script></html>

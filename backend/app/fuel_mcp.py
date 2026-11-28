@@ -9,7 +9,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from starlette.responses import JSONResponse
 
-from app.schemas import FuelSearchResponse, NearbyFuelQuery, RegionalFuelQuery, NearbyFuelListQuery, FuelRankedSearchResponse, FuelSearchCollection
+from app.schemas import FuelSearchResponse, NearbyFuelQuery, RegionalFuelQuery, NearbyFuelListQuery, FuelRankedSearchResponse, FuelSearchCollection, FuelWidgetQuery
 from app.service_exports import require_service_access
 from app.services.fuel_search import begin_fuel_search, nearby_fuel, regional_fuel
 from app.services.fuel_search_location import FuelLocationResolver, published_region, region_for_address
@@ -89,12 +89,12 @@ def build_fuel_mcp(settings, session_factory):
             raise ToolError("fuel_search_unavailable") from None
 
     @server.tool(annotations=annotations, meta={"ui": {"visibility": ["app"]}})
-    async def query_fuel_widget(query: NearbyFuelListQuery) -> FuelRankedSearchResponse:
+    async def query_fuel_widget(query: FuelWidgetQuery) -> FuelRankedSearchResponse:
         """내 주변 유가 UI의 갱신용 데이터 도구. UI를 다시 마운트하지 않고 같은 공개 세대 목록을 조회합니다."""
         return await list_nearby_fuel_stations(query)
 
     @server.tool(annotations=annotations, meta={"ui": {"resourceUri": FUEL_WIDGET_URI}})
-    async def render_fuel_widget(query: NearbyFuelListQuery | None = None) -> FuelRankedSearchResponse:
+    async def render_fuel_widget(query: FuelWidgetQuery | None = None) -> FuelRankedSearchResponse:
         """사용자가 제공한 좌표 주변 유가를 지도·목록 UI로 엽니다. 좌표를 추측하지 마세요.
 
         위치를 모르면 query를 생략해 위치 동의·직접 입력 화면부터 엽니다.
@@ -108,7 +108,7 @@ def build_fuel_mcp(settings, session_factory):
 
     @server.resource(FUEL_WIDGET_URI, name="nearby-fuel", title="내 주변 유가",
                      mime_type="text/html;profile=mcp-app", meta={"ui": {
-                         "prefersBorder": True, "permissions": {"geolocation": {}},
+                         "prefersBorder": True, "permissions": {"geolocation": {}, "clipboardWrite": {}},
                          "csp": {"connectDomains": ["https://tile.openstreetmap.org"],
                                  "resourceDomains": ["https://tile.openstreetmap.org"]},
                      }})

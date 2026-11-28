@@ -1,6 +1,6 @@
 import { z } from "zod";
 export const PRODUCTS = [
-    ["B027", "휘발유"], ["D047", "경유"], ["B034", "고급휘발유"], ["K015", "LPG"], ["C004", "등유"],
+    ["B027", "휘발유"], ["D047", "경유"], ["B034", "고급휘발유"], ["K015", "LPG"],
 ] as const;
 const code = z.enum(["B027", "D047", "B034", "K015", "C004"]);
 const price = z.number().finite().positive().nullable();
@@ -17,7 +17,7 @@ export const responseSchema = z.object({ scope: z.enum(["radius", "nationwide", 
     products: z.array(product).max(5), region: z.object({ status: z.enum(["resolved", "unavailable"]), label: z.string().nullable().optional() }).nullable().optional(),
     sort_by: z.enum(["price", "distance"]).optional() });
 export const querySchema = z.object({ latitude: z.number().finite().min(-90).max(90), longitude: z.number().finite().min(-180).max(180),
-    radius_m: z.number().int().min(1).max(50000).default(5000), product_codes: z.array(code).min(1).max(5).default(PRODUCTS.map(([c]) => c)),
+    radius_m: z.number().int().min(1).max(50000).default(5000), product_codes: z.array(z.enum(["B027", "D047", "B034", "K015"])).min(1).max(4).default(PRODUCTS.map(([c]) => c)),
     limit_per_product: z.number().int().min(1).max(20).default(20), sort_by: z.enum(["price", "distance"]).default("price") });
 export type Query = z.infer<typeof querySchema>;
 export type FuelResponse = z.infer<typeof responseSchema>;

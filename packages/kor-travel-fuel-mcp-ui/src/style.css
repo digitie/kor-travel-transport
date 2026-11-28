@@ -10,3 +10,5 @@
 .fuel-marker small{display:block;font-size:10px;font-weight:400}.fuel-map-choices{display:flex;flex-direction:column;gap:var(--space-1);max-height:220px;overflow:auto}.fuel-map-choices button{text-align:left;font-size:12px;white-space:normal}
 
 .control-row{grid-template-columns:100px minmax(0,1fr)}.search-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-2)}.search-actions #search,.search-actions #locate{grid-column:auto}@media(max-width:480px){.control-row{grid-template-columns:80px minmax(0,1fr)}.search-actions button{font-size:12px;padding:var(--space-2)}}
+
+.station-sharing{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--surface-muted);padding-top:12px}.station-sharing h3{margin:0;font-size:14px}.map-apps{display:flex;flex-wrap:wrap;gap:4px}.station-sharing button{font-size:12px;min-height:32px}.station-sharing input{font-size:12px}
