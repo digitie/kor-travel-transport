@@ -184,7 +184,7 @@ PARKING-HISTORY-INCREMENTAL 단락)이 주로 줄였다. 통계 반영 지연으
   4.27→4.13초, 5.36→4.78초, 5.69→5.39초다. 벽시계는 7.80→9.24초, 9.36→10.43초, 10.32→11.81초로 10~18% 늘었다. 2048행씩 받는
   수신 왕복과 묶음 처리가 직렬이기 때문이다(수신만 5.3~6.2초, CPU 2.0초). 수신과 변환을 겹치는 방식도 재 보았지만 둘 다
   GIL을 쥐는 Python 작업이라 줄지 않아 넣지 않았다. 긴 범위 직접 조회는 동시 1건이므로 메모리 상한을 앞에 둔다. 운영은 ARM
-  Cortex-A55·PostgreSQL 16이라 크게 느리다(감사 추정 약 5배). 운영 직접 조회 시간과 갱신 최고 RSS는 배포 뒤 위 로그
+  Cortex-A55·PostgreSQL 18이라 크게 느리다(감사 추정 약 5배). 운영 직접 조회 시간과 갱신 최고 RSS는 배포 뒤 위 로그
   필드로 실측하는 후속이다.
 - live E2E. 무제한 이력 요청 시험은 모두 `frontend/e2e/full-history-encoding.spec.ts` 한 파일에 둔다(`fullyParallel: false`라
   한 worker에서 차례로 돈다). 다른 파일에서 동시에 보내면 긴 범위 직접 조회 차례를 서로 기다려 시간 한도를 넘길 수 있다.
@@ -731,3 +731,13 @@ ADR-016 결정 갱신. 입력 revision namespace의 배포 식별자가 `RELEASE
 skip scan으로 230개 범주마다 색인을 다시 찾는 것이 원인이라고 추정한다(운영 EXPLAIN 미확인, 배포 뒤 확인). 0050 인덱스 `(source, scope, day, product_code)` 뒤 400일 합성 데이터에서 Index Searches
 461→1, 공유 버퍼 3,494→361(B027). 장기 추이는 좁은 표 `fuel_statistics_history`만 읽는다(유종당 최대 400점, 로컬 16~29ms). 측정·원인·한계는
 [유가 통계](../fuel-statistics.md#통계-페이지-시군구-읽기-2026-11-26), 측정 스크립트 `backend/tests/benchmarks/fuel_statistics_page.py`.
+
+### 한글 범주 키 정렬 collation(2026-11-28)
+
+0050 뒤에도 실제 유종(B027·D047·K015) 시군구는 0.9~1.8초(TTFB)였다. 운영 transport DB(PostgreSQL 18.6 aarch64, 기본 collation
+libc `en_US.utf8`)의 읽기 전용 진단에서 인덱스 스캔은 1~25ms인데, 한글 JSON 배열 `scope_key` 230개를 정렬하는 노드(`DISTINCT`의
+Sort→Unique, `min()`, 최종 `ORDER BY`)가 대부분이었다. 같은 키 230개 정렬이 기본 collation 0.65~2.4초, `COLLATE "C"` 43ms였다.
+계획 비용은 약 204라 `jit_above_cost`(100000)에 한참 못 미치고 EXPLAIN에 `JIT:` 절이 없었다. JIT는 원인이 아니었다(JIT-OFF는
+무해해서 그대로 둔다). 페이지 쿼리는 정렬과 기본 범주 최솟값만 `COLLATE "C"`로 하고 `DISTINCT`를 없앴다. 같음 비교는 기본
+collation 그대로라 색인 사용은 같다. 한글 음절은 코드포인트가 가나다순이라 목록·기본 범주가 가나다순이 된다(예전 en_US 순서는
+"전남광주통합특별시 강진군"이 맨 앞이었다). 다른 쿼리도 한글 텍스트를 대량 정렬하면 같은 처리를 검토한다.

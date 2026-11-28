@@ -475,14 +475,19 @@ async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: 
     source = OPINET if scope in {"nationwide", "sido", "sigungu"} else HIGHWAY
     d, state = FuelStatisticsDaily, FuelStatisticsState
     product_filter = literal(True) if product_code == "ALL" else d.product_code == product_code
+    sqlite = session.bind.dialect.name == "sqlite"
+    # scope_key는 한글 JSON 배열이다. 운영 DB 기본 collation(libc en_US.utf8)의 한글 비교가 매우 느려
+    # 시군구 230개 정렬만 0.6~2.4초가 걸렸다(2026-11-28 운영 진단, "C"는 43ms). 정렬·최솟값은 바이트(코드포인트)
+    # 순으로 한다. 한글 음절은 코드포인트가 가나다순이다. 같음 비교는 그대로 두어 기본 collation 색인을 쓴다.
+    by_bytes = (lambda column: column) if sqlite else (lambda column: column.collate("C"))
     current_keys = select(d.scope_key).join(state, and_(
         d.source == state.source, d.day == state.day, d.generated_at == state.generated_at,
-    )).where(d.source == source, d.scope == scope, product_filter).distinct().cte("fuel_current_keys")
+    )).where(d.source == source, d.scope == scope, product_filter).cte("fuel_current_keys")
     chosen = func.coalesce(
-        select(current_keys.c.scope_key).where(current_keys.c.scope_key == scope_key).scalar_subquery(),
-        select(func.min(current_keys.c.scope_key)).scalar_subquery(),
+        select(current_keys.c.scope_key).where(current_keys.c.scope_key == scope_key).limit(1).scalar_subquery(),
+        select(current_keys.c.scope_key).order_by(by_bytes(current_keys.c.scope_key)).limit(1).scalar_subquery(),
     )
-    day_start = func.date(state.day, "-29 days") if session.bind.dialect.name == "sqlite" else state.day - 29
+    day_start = func.date(state.day, "-29 days") if sqlite else state.day - 29
     current_row = and_(d.day == state.day, d.generated_at == state.generated_at)
     # 현재 범주와 선택 범주의 30일 이력을 한 SQL snapshot에서 읽는다.
     # 발행의 delete/insert 사이 또는 자정 보관 정리 사이를 섞어 읽지 않는다.
@@ -490,7 +495,7 @@ async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: 
         d.source == state.source, d.scope == scope, product_filter,
         d.day.between(day_start, state.day), d.generated_at <= state.generated_at,
         or_(current_row, d.scope_key == chosen) if include_history else current_row,
-    )).where(state.source == source).order_by(d.scope_key, d.day, d.product_code))).all()
+    )).where(state.source == source).order_by(by_bytes(d.scope_key), d.day, d.product_code))).all()
     generated_at = rows[0][1] if rows else None
     selected_key = rows[0][3] if rows else None
     current = [row[0] for row in rows if row[0] is not None and row[0].day == row[2]
