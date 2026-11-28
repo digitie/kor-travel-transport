@@ -43,28 +43,48 @@ compose 메모리 한도 부재 등 여러 자리에서 단일 호스트에 결�
 2. **loopback URL은 불변, 그 URL에 붙는 자격증명만 호스트별이다.** PG·RustFS·Dagster plane이 호스트마다 로컬에 있으므로
    DSN·내부 URL·`require` 검사는 odroid에서도 같은 문자열이다. 호스트마다 다른 비밀(공용 Dagster PG 앱 비밀번호, RustFS 키)은
    그 호스트의 Manager에서 가져온다.
+   → 세부: [원문 결정 2](../audits/2026-10-13-odroid-transition-design.md#결정)
 3. **`DAGSTER_POSTGRES_URL`은 env로만 남기고 DB는 만들지 않는다.** backend는 읽지 않고 compose 보간·원격 검사만 만족시키는
    모양의 값이다. legacy-dagster profile은 odroid에서 띄우지 않는다.
-4. **호스트에 묶인 env는 규칙으로 파생한다.** TrustedHost·CORS의 LAN 항목 = 배포 host 주소. export allow-list
-   (`SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`) = loopback + Map이 있는 n150 — [ADR-013](013-internal-service-exports-for-map.md)의
-   토큰 + peer 주소 이중 잠금은 호출자가 LAN peer가 돼도 그대로 성립한다.
+   → 세부: [원문 결정 3](../audits/2026-10-13-odroid-transition-design.md#결정)
+4. **호스트에 묶인 env는 규칙으로 파생한다.** TrustedHost·CORS의 LAN 항목 = 배포 host 주소. export 주소 allowlist는 Map이 있는
+   n150을 허용하고 그 밖은 막는다 — [ADR-013](013-internal-service-exports-for-map.md) 결정 2의 토큰 + 주소 이중 잠금은 호출자가 LAN에
+   있어도 그대로 성립한다. 설계(2026-10-13)는 backend peer allowlist(`SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`)에 n150을 더하는
+   방식이었고, **2026-10-19(7e4e652a)부터는 소비자 앞의 API gateway export location이 CIDR allowlist
+   (`TRANSPORT_EXPORT_CONSUMER_CIDR`, 비면 모두 거부)로 n150을 받고 backend에는 loopback으로 넘긴다** — backend peer allowlist는
+   loopback 그대로다. 같은 "토큰 + n150만 허용" 효과를 소비자를 마주한 경계에서 지킨다.
+   → 세부: [service-exports §1](../architecture/service-exports.md#1-표면과-인증-adr-013-결정-12), [원문 결정 4](../audits/2026-10-13-odroid-transition-design.md#결정)
 5. **운영 UI Dagster 링크는 기존 변수 `NEXT_PUBLIC_TRANSPORT_DAGSTER_URL`을 build arg로 넘긴다**(설계의
-   `TRANSPORT_DAGSTER_PUBLIC_ORIGIN` 부활 대신; build 시점 값이라 plane host가 바뀌면 재build).
+   `TRANSPORT_DAGSTER_PUBLIC_ORIGIN` 부활 대신; build 시점 값이라 plane host가 바뀌면 재build). 공개 host 이름은 소유자 결정
+   (Manager ADR-58 열린 결정 4)이다.
+   → 세부: [원문 결정 5](../audits/2026-10-13-odroid-transition-design.md#결정)
 6. **legacy odroid 자산은 두 단계로 걷어낸다.** (a) "13번에서 Docker 금지" 계열 문구를 먼저 "odroid 작업은 배포 런북·ADR-014를
-   따른다"로 바꾸고, (b) odroid 배포 게이트가 초록인 뒤 legacy 자산 집합 **M**(fail-closed 마커 포함, 원문 참조)을 삭제한다.
-   odroid의 legacy `parking-radar` 스택·`pr2`는 폐기 대상, Plex·Samba 등 다른 상주 서비스는 공존 대상이다.
+   따른다"로 바꾸고, (b) odroid 배포 게이트가 초록인 뒤 legacy 자산 집합 **M**(compose·`deploy/odroid/*`·odroid 스크립트, 그중
+   fail-closed 마커 셋)을 삭제한다. 폐기 대상은 odroid의 legacy `parking-radar` 스택·Portainer 컨테이너·HAProxy `pr2` host로
+   **가정한다**(설계 기본값, 소유자 §14-2 미결). Plex·Samba·webvnc-router 등 다른 상주 서비스와 Portainer **볼륨**은 보존한다.
+   → 세부: [원문 결정 6 — 집합 M 목록](../audits/2026-10-13-odroid-transition-design.md#결정)
 7. **이미지는 arm64 odroid 현지 빌드다**(레지스트리 없음). Playwright Chromium이 arm64에서 실패하면 fallback은
    `OPINET_BROWSER_ENABLED=false`(유가만 끔)이고, provider 전체를 끄는 `TRANSPORT_COLLECTION_ENABLED=false`는 쓰지 않는다.
+   → 세부: [원문 결정 7](../audits/2026-10-13-odroid-transition-design.md#결정) (토글 두 층은 B9)
 8. **전환은 n150 수집을 먼저 멈춘다(이중 수집 금지).** 같은 원천 키로 두 호스트가 수집하면 일일 한도를 2배 쓴다. 공개 HAProxy
    경로는 odroid health·첫 스냅샷 뒤 선전환해 공개 outage를 피한다(Manager 일반 순서와의 차이는 원문·Manager 대조 참조).
    데이터는 fresh 재적재하고 n150 이력은 보존하지 않는다.
-9. **백업은 odroid Manager standalone backup이 맡는다**(n150 cron에서 이동). 이전 자체에는 백업·복원이 없다.
+   → 세부: [원문 결정 8](../audits/2026-10-13-odroid-transition-design.md#결정)
+9. **백업은 odroid Manager standalone backup이 맡는다**(n150 cron에서 이동). 대상은 transport 3일 주기만으로 **가정한다**(설계
+   기본값, 소유자 §14-7 미결). 이전 자체에는 백업·복원이 없다.
+   → 세부: [원문 결정 9](../audits/2026-10-13-odroid-transition-design.md#결정)
 10. **공용 Dagster plane 합류는 배포보다 먼저다.** 원격 단계의 "공용 webserver workspace에 location이 없으면 거부" 가드는
     파일 검사로 낮추지 않고 유지하며, 대신 plane/workspace 반영을 배포 앞에 둔다. 전제 두 가지(① 배포 전 location이 `absent`가
     아님 ② code-server healthy 뒤 location이 다시 실림)는 첫 odroid 배포에서 실측한다. 현재 명령은 Manager의
     `dagster-plane converge`다([Manager 대조](../audits/2026-10-19-manager-contract-alignment.md)).
-11. **메모리·swap 한도는 이 저장소 compose의 리터럴로 둔다**(두 호스트 동일, `memswap_limit == mem_limit`). 한도는 compose를 가진
-    이 저장소만 걸 수 있고, Manager의 등록은 측정일 뿐이다. 값은 설계 예산에서 출발해 실측으로 조정한다(T-TRN-05).
+    → 세부: [원문 결정 10](../audits/2026-10-13-odroid-transition-design.md#결정) (가드는 B10)
+11. **메모리·swap 한도는 이 저장소 compose의 리터럴로 둔다.** 값은 **설계 §3.2 예산 리터럴 그대로**(transport backend 0.8g,
+    code-server 1.0g, frontend + admin web + gateway 합 0.3g — 이 합의 세 서비스 분배만 T-TRN-05가 실측으로 정한다)이고
+    **호스트별 분기를 두지 않는다**(두 호스트 동일). 각 서비스 `memswap_limit == mem_limit`(swap 0 → 한도 도달 = OOM = run FAILURE)이고
+    `oom_score_adj`는 두지 않는다. 한도는 compose를 가진 이 저장소만 걸 수 있고, Manager의 등록은 측정일 뿐이다. 운영 값이 이 리터럴과
+    다르면(2026-11-24 backend 512m) drift이며, 되돌릴지 이 결정을 고칠지는 소유자 결정으로 열려 있다
+    ([2026-11-24 보고서](../reports/2026-11-24-map-call-performance-reliability.md) §9 #4).
+    → 세부: [원문 결정 11](../audits/2026-10-13-odroid-transition-design.md#결정) (B11), `docs/tasks.md` T-TRN-05
 
 ### 근거
 
@@ -76,7 +96,8 @@ compose 메모리 한도 부재 등 여러 자리에서 단일 호스트에 결�
 - **loopback 불변(결정 2)**이 핵심 단순화다 — compose·DSN·검사가 호스트 이전에서 바뀌지 않는다. n150 PG를 LAN으로 여는 대안은
   pg_hba 개방·gRPC 무인증 LAN 노출을 요구해 기각했다.
 - **값만 남긴 env(결정 3)**: 보간·검사를 걷어내는 것은 legacy-dagster profile(되돌리기 수단)을 함께 없애는 별개 결정이다.
-- **allow-list에 n150만 추가(결정 4)**: odroid 호스트 방화벽이 적용되기 전에는 토큰 + peer 이중 잠금이 경계다.
+- **export 허용을 n150으로만 넓힘(결정 4)**: odroid 호스트 방화벽이 적용되기 전에는 토큰 + 주소 allowlist 이중 잠금이 경계다 —
+  운영에서는 gateway CIDR allowlist + 토큰이다.
 - **기존 변수 재사용(결정 5)**: 코드가 이미 읽는 변수에 build arg 한 줄을 더하는 쪽이 새 이름을 되살리는 것보다 작다.
 - **Opinet만 비활성(결정 7)**: Chromium은 유가 수집 한 경로에만 쓰이므로 arm64 실패가 고속도로 소통·돌발·Map export까지 막을
   이유가 없다.

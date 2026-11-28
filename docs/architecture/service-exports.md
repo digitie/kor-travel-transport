@@ -21,12 +21,19 @@
 - 인증: 헤더 `X-Kor-Travel-Transport-Service-Token`(설정 `TRANSPORT_SERVICE_EXPORT_TOKEN`, 32자 이상, 상수 시간 비교)
   **그리고** 접속한 peer 주소(`request.client.host`)가 `SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`(CIDR, 기본 `127.0.0.1/32,::1/128`)
   안이어야 한다. 하나라도 어긋나면 404다. 토큰이 비면 export 전체가 404다.
+- **Odroid 운영의 실제 경계(2026-10-19, 7e4e652a)**: Map(n150)은 backend에 직접 붙지 않고 API gateway(12301)의
+  `location ^~ /v1/service/exports/`(`deploy/transport-admin/api-gateway.conf.template`)를 거친다. 이 location은
+  `TRANSPORT_EXPORT_CONSUMER_CIDR`로 만든 allowlist(`deploy/transport-admin/19-export-allowlist.sh`, 빈 값이면 모두 거부)와 GET만
+  허용하고, `127.0.0.1:12302`로 넘기며 `Host`를 `127.0.0.1`로, `X-Forwarded-For`를 빈 값으로 덮어 XFF로 peer 판정을 우회하지 못하게
+  한다. 토큰 헤더는 그대로 전달된다. 그래서 backend가 보는 peer는 loopback이고(`SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`는 기본 loopback
+  그대로), **실제 네트워크 경계는 gateway CIDR allowlist + 토큰**이다. CIDR 거부는 403, 토큰 불일치는 404다(감사 T1-13,
+  [2026-11-24 보고서](../reports/2026-11-24-map-call-performance-reliability.md)). 동시 요청 상한 거절 503은 [Map 인계](../map-service-exports-handoff.md#503-사유-code와-retry-after-2026-11-24)의 `EXPORT_BUSY` 행이다.
 - `Host` 헤더는 호출자가 정하는 값이라 쓰지 않는다(2026-10-02 리뷰 T1: `curl -H 'Host: 127.0.0.1' http://192.168.1.14:14001/...`가
   통과했다). backend는 host network라 peer 주소가 실제 접속 주소다.
-- 공개 표면은 이 경로를 전달하지 않는다 — 웹 프록시(`frontend/src/app/api/backend/[...path]`)와 관리자 API gateway
-  (`deploy/transport-admin/api-gateway.conf.template`)는 경로 allowlist에 없고 토큰 헤더도 넘기지 않는다.
+- 공개 웹 프록시(`frontend/src/app/api/backend/[...path]`)는 이 경로를 allowlist에 두지 않는다. API gateway는 위 export location
+  외의 경로로는 export를 넘기지 않는다.
 - standalone 개발에서 Map이 docker bridge(`host.docker.internal`)로 부르면 그 bridge 대역을 `SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`에
-  명시해 연다. Odroid 운영의 allow-list 규칙은 [ADR-014](../adr/014-odroid-host-and-deploy-host-flag.md) 결정 4다.
+  명시해 연다. 호스트 이전 때의 allow-list 결정은 [ADR-014](../adr/014-odroid-host-and-deploy-host-flag.md) 결정 4다.
 - 공항(결정 5): 주차 수집 여부와 무관하게 `python-krairport-api` 번들의 운영 공항 전체(포항경주 KPO 포함)를 ICAO·소재지·좌표와
   함께 내고, 주차 데이터 보유 여부는 `has_parking_data`로 표시한다.
 
@@ -68,6 +75,9 @@
   의도적으로 다르다.
 
 ## 4. 유가 수집 주기와 export 유예
+
+수집 scheduler 쪽 동작(Dagster tick·in-process 대기·실행 소실 회수)의 정본은
+[구조 문서](architecture.md)의 유가 주기 설명이고, 아래는 export 유예와 맞물리는 부분의 결정 이력이다.
 
 - **주기(2026-10-23 소유자 결정)**: 성공한 유가 수집의 다음 예정은 수집 **완료** + 8시간이었고 schedule은 8시간 정각마다라,
   수집이 1~2시간 걸리는 동안 다음 tick을 늘 건너뛰어 실제 주기가 16시간이었다. 그러면 성공 뒤 첫 시도의 실패만으로 다음
@@ -140,8 +150,8 @@ export 경로의 두 가지 500 → 503, T2/T3 55P03의 즉시 503 → 한 번 �
 - **돌발 0건의 code**: 0건 수집은 실패로 기록되므로(`last_error`) 운영의 0건은 `EXPORT_INCIDENTS_NOT_CURRENT`다. `EXPORT_EMPTY_SET`은
   상태가 현재(실패 없음, 30분 안)인데 활성 행이 0건인 안전망 분기와 T3 완결 head membership 0건에서만 나온다.
 - **`EXPORT_SOURCE_NOT_CURRENT`의 Retry-After 계산**: 수집 상태로 계산해 [60, 3600]초로 자른다. 진행 중인 수집(마지막 시작 > 마지막
-  성공, 그 뒤 실패 기록 없음)은 `시작 + 예상 수행 시간 − now`(넘겼으면 300), 다음 예정이 미래면 `next_due_at − now + 예상 수행
-  시간`, 예정이 없거나 지났으면 1800. 예상 수행 시간은 유가 2시간, 휴게소·휴게소 유가 10분, 공공 주차장 30분이다
+  성공, 그 뒤 실패 기록 없음, 시작 뒤 예상 수행 시간의 3배 미만 — `app/core/problems.py`)은 `시작 + 예상 수행 시간 − now`(넘겼으면 300), 다음 예정이 미래면 `next_due_at − now + 예상 수행
+  시간`, 예정이 없거나 지났으면 1800. 예상 수행 시간은 유가 2시간, 휴게소·휴게소 유가·휴게소 먹거리 10분, 공공 주차장 30분이다
   (`public_parking_routes.py`·`service_exports.py`). 휴게소 계열은 성공 때 `next_due_at`을 비우므로(`rest_area_collection.py`) 진행
   중이 아니면 1800이다. 유가 claim은 `next_due_at`을 시작 + 7시간 45분으로 옮기므로 예정 시각만 쓰면 이미 도는 복구 run을 몇 시간
   넘겨 짚었다 — 그래서 진행 중 분기를 먼저 본다. `EXPORT_NO_HISTORY`는 5분 주기 집합이면 300, 그 밖은 3600이다.
@@ -170,7 +180,8 @@ export 경로의 두 가지 500 → 503, T2/T3 55P03의 즉시 503 → 한 번 �
 
 - asyncpg 새 접속 상한 10초(기본 60초 > Map read 30초), pool checkout 상한 10초(기본 30초), `application_name`
   (`kor-travel-transport-api`/`kor-travel-transport-collector`). **pool checkout 상한은 엔진 전체라 공개·관리 경로에도 적용된다** —
-  예전에 10~30초 기다려 성공하던 요청이 이제 10초에 500으로 끝난다. 장소 지도 입장 제한(MUI-02, #273)이 장소 지도 몰림을 줄인다.
+  예전에 10~30초 기다려 성공하던 요청이 이제 10초에 500으로 끝난다. 장소 지도 입장 제한(MUI-02, #273, 머지됨)이 장소 지도 몰림을
+  줄이지만, #273 없이 이 변경만 배포된 이미지에서는 장소 지도 몰림이 pool을 채워 이 500이 늘 수 있었다(배포 순서 이력).
 - 서버 `lock_timeout`은 API 엔진에 두지 않는다 — 관리자 KRIC 매핑 저장은 기준 역 수집과 같은 advisory lock을, 관리자 좌표 보정은
   수집의 행 잠금을 의도적으로 기다린다. 짧은 대기가 맞는 경로는 이미 `SET LOCAL lock_timeout`을 둔다.
 - `idle_in_transaction_session_timeout`·`transaction_timeout`은 어느 엔진에도 두지 않는다 — 공항·버스 기준정보·일반철도·KRIC
@@ -179,7 +190,8 @@ export 경로의 두 가지 500 → 503, T2/T3 55P03의 즉시 503 → 한 번 �
 
 ## 8. T1 전송 (2026-11-24 개정)
 
-Map 호출 감사(T1-03·T1-04·T1-05·T1-06·T1-08·T1-09·RT-04)에 따른 T1 5종의 전송 방식 변경이다. JSON 본문(필드·순서·값)과 현재 집합
+Map 호출 감사(T1-03·T1-04·T1-05·T1-06·T1-08·T1-09·RT-04)에 따른 T1의 전송 방식 변경이다(당시 5종. 2026-11-27의
+`rest-area-food`도 같은 경로를 쓴다 — 6종). JSON 본문(필드·순서·값)과 현재 집합
 의미, 200/503 판정은 바꾸지 않았다. 소비자가 볼 수 있는 차이는 네 가지다.
 
 - **gzip**: `Accept-Encoding`이 gzip을 허용하고(q=0은 거절) 본문이 512B 이상이면 gzip level 1과 `Content-Encoding: gzip`. 모든 T1

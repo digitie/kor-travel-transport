@@ -22,12 +22,17 @@ OpiNet은 transport의 브라우저 수집본을 정본으로 쓴다.
 
 ### 결정
 
-1. **내부 export 표면**을 공개 API와 따로 둔다: `GET /v1/service/exports/*`. 모양은 kor-travel-concierge export와 같은 무-envelope
-   cursor 페이지에 근거 수집 상태(`collection`)를 붙이고, 각 item은 안정 자연키와 원본 provider 행을 담는다.
+1. **내부 export 표면**을 공개 API와 따로 둔다: `/v1/service/exports/` 아래의 **T1 현재/참조 집합**(주유소·휴게소·휴게소 유가·
+   돌발 활성·공항, 2026-11-27부터 휴게소 먹거리). 모양은 kor-travel-concierge export와 같은 무-envelope cursor 페이지에 근거 수집
+   상태(`collection`)를 붙이고, 각 item은 안정 자연키와 원본 provider 행을 담는다. 같은 경로 아래의 T2/T3 고정 snapshot과 T4 가격
+   이력은 인증(결정 2)만 공유하고 응답 계약은 각자의 문서가 정한다.
    → 세부: [service-exports §1](../architecture/service-exports.md#1-표면과-인증-adr-013-결정-12)
-2. **인증은 서비스 토큰 그리고 접속한 peer 주소 allowlist 둘 다다.** 둘 중 하나라도 어긋나면 404로 경로를 숨긴다. 호출자가 정하는
-   `Host` 헤더는 쓰지 않는다. 공개 표면(웹 프록시·관리자 gateway)은 이 경로와 토큰을 전달하지 않는다.
-3. **현재 집합 의미와 신선도 계약(모든 dataset 공통)**: 200 응답의 `items`는 "마지막 성공 수집의 현재 집합"이다 — 소비자는 거기
+2. **인증은 서비스 토큰 그리고 네트워크 주소 allowlist 둘 다다.** 토큰은 backend가 언제나 검사하고, 주소 allowlist는 소비자를 마주한
+   경계에서 검사한다 — backend의 peer 주소 allowlist(기본 loopback), 그리고 Odroid 운영에서는 소비자 앞의 API gateway export
+   location이 CIDR allowlist로 받는다(gateway가 loopback으로 backend에 넘기고 클라이언트 XFF는 지운다). 토큰이나 backend peer가
+   어긋나면 404로 경로를 숨긴다(gateway CIDR 거부는 403). 호출자가 정하는 `Host` 헤더는 쓰지 않는다. 공개 웹 프록시는 이 경로를 전달하지 않는다.
+   → 세부: [service-exports §1](../architecture/service-exports.md#1-표면과-인증-adr-013-결정-12)
+3. **현재 집합 의미와 신선도 계약(T1 모든 dataset 공통)**: 200 응답의 `items`는 "마지막 성공 수집의 현재 집합"이다 — 소비자는 거기
    없는 행을 사라진 것으로 다뤄도 된다. 그래서 **그 집합을 증명할 수 없으면 200을 주지 않고 503**이다.
    - 근거 수집의 이력이 없거나(수집이 꺼진 dataset 포함) 마지막 성공이 dataset별 stale 기준을 넘으면 503이다.
    - **참조 데이터**(주유소·휴게소·휴게소 유가·휴게소 먹거리)는 마지막 **성공**의 나이로 판정한다 — 기준 안이면 그 뒤 시도가
@@ -46,6 +51,7 @@ OpiNet은 transport의 브라우저 수집본을 정본으로 쓴다.
    0건 수집은 실패다. 원천에 안정 ID가 없어 휴게소 자연키는 Map이 쓰던 이름·노선·방향 규칙을 따른다. 기본 비활성이다.
    → 세부: [service-exports §6](../architecture/service-exports.md#6-휴게소-계열-수집-adr-013-결정-4)
 5. **공항**은 주차 수집 여부와 무관하게 `python-krairport-api` 번들의 운영 공항 전체를 내고, 주차 데이터 보유 여부를 표시한다.
+   → 세부: [service-exports §1](../architecture/service-exports.md#1-표면과-인증-adr-013-결정-12)
 6. **계약 정본**은 `docs/openapi.json`이고 CI가 `scripts/export_openapi.py --check`로 최신 여부를 검사한다(transport 자신의 drift 방지).
    이 export는 Map을 위해 있다 — Map에 필드·모양이 필요하면 이 API를 그에 맞게 바꾼다(같은 PR 쌍, 버전·호환 층·옛 모양 shim
    없음). Map은 이 파일을 pin·vendoring하지 않고 응답을 런타임에 엄격히 검증한다(2026-10-03 소유자 결정, Map ADR-106).
@@ -54,7 +60,9 @@ OpiNet은 transport의 브라우저 수집본을 정본으로 쓴다.
 
 옛 결정 3의 "마지막 수집이 실패했으면 503"이 저장 집합이 멀쩡한데도 Map 적재를 끊었다. 참조 데이터는 마지막 성공이 stale 기준
 안이면 200이고, 마지막 시도 실패는 `collection.last_attempt_failed`로 알린다. 돌발은 바꾸지 않는다. 공개 지도 API의 신선도 표시는
-의도적으로 다르다. → 세부: [service-exports §3·§4](../architecture/service-exports.md#3-참조-데이터는-마지막-성공의-나이로-판정한다-2026-10-23-개정)
+의도적으로 다르다. 같은 날 소유자 결정으로 유가 수집의 다음 예정을 수집 **시작** 기준 8시간으로 바꿔 8시간 tick을 건너뛰지 않게 했다.
+**오피넷 호출은 하루 3회(8시간 tick)로 소유자가 제한한 주기이며, 이를 넘는 추가 run(예: 경보 재시도)은 이 ADR 개정과 소유자 승인이
+필요하다.** → 세부: [service-exports §3·§4](../architecture/service-exports.md#3-참조-데이터는-마지막-성공의-나이로-판정한다-2026-10-23-개정)
 
 ### 개정 2026-11-24 — 돌발 활성 집합의 0건은 성공이 아니다
 
@@ -83,8 +91,10 @@ Map 호출 감사의 생산자 쪽 변경이다. export 503은 가산 `code`와 
 - 공개 marker API를 넓히는 대신 별도 표면을 둔 것은 둘의 계약이 다르기 때문이다. marker는 limit·bbox·표시 필드가 핵심이고,
   export는 전량·안정 키·원본 증거·"현재 집합" 의미가 핵심이다. 하나로 합치면 공개 응답에 provider 원본을 내거나 export에 표시용
   절단이 섞인다.
-- 토큰만으로도 닫히지만 접속 주소 allowlist를 더하면 토큰이 새도 외부에서 원본 대량 조회가 불가능하다. Map은 같은 호스트의
-  host-network 컨테이너에서 `127.0.0.1:14001`로 부른다(결정 당시; Odroid 운영의 LAN peer 규칙은 [ADR-014](014-odroid-host-and-deploy-host-flag.md) 결정 4).
+- 토큰만으로도 닫히지만 주소 allowlist를 더하면 토큰이 새도 허용 대역 밖에서 원본 대량 조회가 불가능하다. 결정 당시 Map은 같은
+  호스트의 host-network 컨테이너에서 `127.0.0.1:14001`로 불렀다. 2026-10-19부터 Odroid 운영에서는 Map(n150)이 API gateway의 export
+  location을 거쳐 오므로 backend가 보는 peer는 loopback이고, 실제 네트워크 경계는 gateway CIDR allowlist + 토큰이다
+  ([ADR-014](014-odroid-host-and-deploy-host-flag.md) 결정 4).
 - 신선도를 플래그로만 알리고 200을 주는 대안은 버렸다. 소비자마다 플래그를 읽는 코드를 따로 지켜야 하고, 한 곳이라도 빠지면
   빈·낡은 집합이 삭제·종료로 번진다. 503은 읽지 않으면 실패하는 쪽으로 기본값이 안전하다(Map은 플래그도 다시 확인한다 — Map ADR-106).
 - 참조 데이터를 마지막 성공의 나이로 판정하는 것은 이 원칙의 범위 안이다 — 실패한 시도가 집합을 바꾸지 않으므로 그 집합은

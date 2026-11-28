@@ -919,7 +919,12 @@ docker compose up -d
 - 프론트엔드: [http://localhost:3000](http://localhost:3000)
 - 백엔드 문서: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-## odroid 배포 계획(ADR-014 proposed, 미구현)
+## odroid 배포 계획(ADR-014 — 2026-10-13 최초 전환 계획, 이력)
+
+> **이력 절.** ADR-014는 accepted(2026-10-19 운영 수용)이고 아래는 최초 전환 때의 계획이다. 현재 절차는 위
+> "현재 Odroid 정본"·"T-TRN-01 source 배포 계약" 절과 [Manager 대조](../audits/2026-10-19-manager-contract-alignment.md)가 정본이다
+> (특히 아래의 odroid `ensure dagster`는 현재 Manager `dagster-plane converge`로 대체됐다). 아래의 B1~B11·결정 번호는
+> [ADR-014 설계 원문](../audits/2026-10-13-odroid-transition-design.md)의 것이다.
 
 [ADR-014](../adr/014-odroid-host-and-deploy-host-flag.md)·Manager ADR-58(proposed)에 따라 transport 스택 전체
 (backend·frontend·code-server·transport-admin·gateway, 그리고 odroid 로컬 PG `kor_travel_transport`·RustFS·공용 plane)를
@@ -971,7 +976,7 @@ PR에 수록, 머지 예정)다. Manager ADR-58 본문은 절차를 그 런북�
    유일한 수집 프로세스; backend·frontend는 아직 둔다) → n150 `ensure dagster`(plane 재생성, map/pinvi/conc tick 공백 ≈2 min) →
    odroid Manager 같은 sha 재설치 → odroid root `.env` workspace digest 갱신 → `ktdctl targets validate` → **odroid `ensure dagster`**
    (플립 PR workspace 반영 — webserver가 location `kor-travel-transport`를 **load error 상태로 싣는다**; code-server는 아직 없다.
-   ADR-014 결정 10·B10: 원격 배포 단계는 webserver workspace에 이 location이 없으면(`absent`) `scripts/deploy-server14-remote.sh:222-226`에서
+   ADR-014 결정 10·[B10](../audits/2026-10-13-odroid-transition-design.md#컨텍스트): 원격 배포 단계는 webserver workspace에 이 location이 없으면(`absent`) `scripts/deploy-server14-remote.sh:222-226`에서
    exit 2이므로 이 단계가 4b보다 **앞**이어야 한다. Manager §9.2 ②는 아직 이 순서를 적지 않았다 — Manager 쪽 전달 사항, T-TRN-04 대조).
    효과: odroid `curl 127.0.0.1:11002/graphql`의 workspace에 `kor-travel-transport` 항목이 있고 typename이 `RepositoryLocation`이
    아닌 load error(`PythonError` 류)다 — T-TRN-01이 첫 배포에서 그 값을 기록한다.
@@ -988,9 +993,10 @@ PR에 수록, 머지 예정)다. Manager ADR-58 본문은 절차를 그 런북�
    `.env.prod`를 호출 사용자(digitie)가 읽을 수 있음 ∧ 이미지 dagster 버전 == odroid plane 버전(기존 검사 그대로) ∧ odroid webserver
    workspace에 location 있음(4a 마지막 단계의 결과 — 기존 가드 `remote.sh:222-226` 그대로). 이어서 fresh `migrate`(Alembic head) →
    backend·frontend·code-server 기동 → webserver가 code-server를 다시 로드해 `RepositoryLocation`(`wait_location_loaded`, 최대 3분 —
-   ADR-014 결정 10 전제 ②; 안 되면 odroid `ensure dagster` 1회로 webserver 재생성 뒤 재시도) → 운영 UI 배포. **첫 빌드 직후 Opinet
+   ADR-014 결정 10 전제 ②; 당시 계획은 안 되면 odroid `ensure dagster` 1회로 webserver 재생성 뒤 재시도 — 현재는 Manager
+   `dagster-plane converge`, [Manager 대조](../audits/2026-10-19-manager-contract-alignment.md)) → 운영 UI 배포. **첫 빌드 직후 Opinet
    Chromium headless smoke 1회(arm64)** — 실패면 `.env.prod`에 `OPINET_BROWSER_ENABLED=false`를 두고 진행한다(유가만 비활성;
-   `TRANSPORT_COLLECTION_ENABLED=false`는 고속도로 수집까지 끄므로 쓰지 않는다 — ADR-014 결정 7·B9).
+   `TRANSPORT_COLLECTION_ENABLED=false`는 고속도로 수집까지 끄므로 쓰지 않는다 — ADR-014 결정 7·[B9](../audits/2026-10-13-odroid-transition-design.md#컨텍스트)).
 3. **참조 로드(쿼터 창)**: fresh DB이므로 KRIC 시간표(≤500회/48 h — `.env.server14.example:55-57`), 해상 기준정보(3일마다 03:00,
    run당 data.go.kr 요청 3건 — `backend/app/dagster/definitions.py:599`, `docs/architecture/shared-db-dagster.md` 수집 일정 표),
    휴게소 기준정보·유가(ADR-013), Opinet 유가(8시간 주기; 4b의 Chromium smoke가 통과한 경우만)가 각 schedule의 다음 tick에서
@@ -1036,7 +1042,7 @@ PR에 수록, 머지 예정)다. Manager ADR-58 본문은 절차를 그 런북�
       ≥1회 포함 창에서 OOM-kill 0.
 - [ ] `pr2` 404/제거(소유자 §14-2 미결 — ADR-014 가정).
 - [ ] legacy 자산 삭제 조건(T-TRN-03b): 위 게이트 전부 초록 — 그 전까지 `docker-compose.odroid.yml`·`deploy/odroid/*`·
-      `scripts/deploy-odroid.ps1`·`scripts/odroid-status.ps1`(ADR-014 결정 6의 집합 M; 그중 fail-closed 마커는
+      `scripts/deploy-odroid.ps1`·`scripts/odroid-status.ps1`(ADR-014 결정 6의 [집합 M](../audits/2026-10-13-odroid-transition-design.md#결정); 그중 fail-closed 마커는
       `docker-compose.odroid.yml`·`deploy/odroid/remote-deploy.sh`·`scripts/deploy-odroid.ps1` 셋)는 그대로 둔다. (13번 금지 **문구**는
       이와 달리 4b **전**에 T-TRN-03a가 교체한다 — 소유자 §14-2 결정 직후.)
 
@@ -1138,7 +1144,7 @@ DATA_GO_KR_SERVICE_KEY=...
 포트 메모:
 
 - 현재 ODROID에서는 `8000` 포트를 Portainer가 사용 중이다. (과거 기록 — 2026-10-13 실측에서는 8000이 `parking-radar` uvicorn
-  404이고 Portainer는 9443이다; ADR-014 B7.)
+  404이고 Portainer는 9443이다; ADR-014 [B7](../audits/2026-10-13-odroid-transition-design.md#컨텍스트).)
 - 따라서 `parking-radar` 백엔드는 `18000` 포트를 기본값으로 사용한다.
 - 프론트는 기본적으로 같은 origin의 `/api/backend`를 호출하고, Next.js 서버가 Docker 내부의 `BACKEND_INTERNAL_URL`로 프록시한다.
 - 기존 13번 외부 서비스 주소는 `https://pr2.digitie.mywire.org/`를 기준으로 한다.

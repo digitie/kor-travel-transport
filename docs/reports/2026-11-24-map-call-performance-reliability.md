@@ -279,9 +279,9 @@ T1·T4는 운영 실측이 0건이고, 1초 미만 요청은 로그에 남지 �
 
 ### 5.3 유가 신선도
 
-- **ADR-013 틈 (1) 닫기**(현재 [service export 계약 §4](../architecture/service-exports.md#4-유가-수집-주기와-export-유예)): export 전용 오피넷 유예를 `FUEL_STALE_AFTER` + 유가 run fetch timeout(12,600초, 약 27.5시간)으로 늘린다.
+- **ADR-013 틈 (1) 닫기**(이후 [service export 계약 §4](../architecture/service-exports.md#4-유가-수집-주기와-export-유예)로 이동): export 전용 오피넷 유예를 `FUEL_STALE_AFTER` + 유가 run fetch timeout(12,600초, 약 27.5시간)으로 늘린다.
   공개 화면 기준은 그대로 둔다. 이번 사건은 3연속 실패(틈 (2))였으므로 **이 변경으로는 막지 못한다.** 503 시작이 약 3.5시간 늦춰질 뿐이다.
-  24시간 값 변경은 ADR-013 결정 3의 개정 사항이다. 덧붙여 ADR-013(당시 본문 90-95행, 현재 [service export 계약 §4](../architecture/service-exports.md#4-유가-수집-주기와-export-유예))의 틈 (1) 서술(1회 실패 → 예약으로 tick 건너뜀)은 현재 코드와 다르다.
+  24시간 값 변경은 ADR-013 결정 3의 개정 사항이다. 덧붙여 이 보고서 작성 시점(2026-11-24 이전 판, git 이력)의 ADR-013 본문 90-95행 — 그 뒤 정정됐고 지금은 [service export 계약 §4](../architecture/service-exports.md#4-유가-수집-주기와-export-유예)에 있다 —의 틈 (1) 서술(1회 실패 → 예약으로 tick 건너뜀)은 당시 코드와 달랐다.
   지금은 실패 경로도 시작 시각 기준으로 예약한다(`transport_collection.py:1574-1580`). 이 서술도 함께 고친다.
 - **실행 소실**: run이 op 밖(worker 소실, SIGKILL)에서 죽으면 `last_error`가 남지 않는다. 그러면 관리자 '재시도'가 '호출 유예'로
   건너뛰어진다. 회수 시점에 '실행 소실'을 기록한다(G1-F5).
