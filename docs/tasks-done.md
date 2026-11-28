@@ -1,3 +1,11 @@
+## 2026-11-28 — ADR 범위 정리(ADR-SCOPE)
+
+- [x] **ADR-SCOPE-1** — `docs/adr/README.md` 작성 기준·담는 것/담지 않는 것·개정 규칙·목록 정정, CLAUDE.md 운영 PG 16(#308).
+- [x] **ADR-SCOPE-2** — ADR-013·014를 결정 수준으로(258→127, 299→137줄). 세부는 `docs/architecture/service-exports.md`(신규),
+  014 원문은 `docs/audits/2026-10-13-odroid-transition-design.md`에 그대로 보관. 날짜 절 제목과 결정 번호는 유지.
+- [x] **ADR-SCOPE-3** — ADR-004·005·006·009·016·017 정리(세부는 data-sources·architecture·collection·performance·이미지 설계 문서),
+  사후 기록 ADR-018(공용 PostgreSQL·Manager Dagster plane)·ADR-019(OpiNet 브라우저 수집).
+
 ## 2026-11-28 — 주변 유가 MCP UI 소스
 
 - [x] **FUEL-MCP-APPS-UI-SOURCE** — 공식 MCP Apps 브리지·무비밀 리소스, 네 유종·위치 동의·지도/목록·SQL 상위 목록과 목적지/공유 링크·공개 상세를 구현했다. 최종 시험/리뷰/소스 머지는 PR 원장으로, 실제 게시/운영은 별도로 구분한다. [설계·검증](reports/2026-11-28-fuel-mcp-app-ui.md).

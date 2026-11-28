@@ -4,8 +4,9 @@
 
 ## 현재 상태 — 2026-11-28 ADR 범위 정리(ADR-SCOPE, 문서만)
 
-- 1/3: `docs/adr/README.md` 기준·개정 규칙·목록 정정. 2/3: ADR-013·014 세부 이전. 3/3: 나머지 ADR 정리와 ADR-018·019 추가.
-- 배포 없음(문서·주석만). 다음 한 작업: ADR-SCOPE-2·3 리뷰·머지, 그와 별개로 JIT-OFF 배포 뒤 FUEL-HISTORY-VERIFY.
+- 1/3(#308) 기준·개정 규칙, 2·3/3 ADR-013·014 등 세부 이전과 사후 기록 ADR-018·019. 새 export 운영 계약 정본은
+  `docs/architecture/service-exports.md`. 배포 없음(문서·주석만).
+- 다음 한 작업: JIT-OFF 배포 뒤 FUEL-HISTORY-VERIFY.
 
 ## 현재 상태 — 2026-11-28 앱 DB 연결 PostgreSQL JIT 끔(JIT-OFF)
 
