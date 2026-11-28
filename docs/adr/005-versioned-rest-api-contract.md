@@ -23,12 +23,14 @@
      각 경로에 `/v1/`을 붙이는 한 곳에만 존재한다. 이렇게 해야 `NEXT_PUBLIC_API_BASE_URL`로
      프록시를 우회해 백엔드에 직접 붙는 경우(현재는 미사용, 향후 외부 소비자 시나리오)에도
      같은 `api.ts` 클라이언트가 그대로 동작한다.
-  5. (2026-11-24 추가) RFC7807 다섯 항목과 한국어 `detail`은 그대로 두고, 기계 판독 사유가 있는 응답에만 **가산
-     확장 멤버 `code`**(UPPER_SNAKE)를 싣는다. `code`가 없거나 모르는 값이면 소비자는 상태 코드만의 뜻으로 다룬다.
-     새 code 추가는 가산 변경이고, 있는 code의 뜻을 바꾸는 것은 계약 변경이다. kor-travel-common 표준
-     `docs/standards/openapi.md` M3(Common T-482)의 Transport 쪽 첫 적용이다.
+  5. (2026-11-24 추가) backend가 만드는 problem 응답은 RFC7807 다섯 항목과 한국어 `detail`을 그대로 두고, 기계
+     판독 사유가 있는 응답에만 **가산 확장 멤버 `code`**(UPPER_SNAKE)를 싣는다. `code`가 없거나 모르는 값이면
+     소비자는 상태 코드만의 뜻으로 다룬다. 새 code 추가는 가산 변경이고, 있는 code의 뜻을 바꾸는 것은 계약
+     변경이다. kor-travel-common 표준 `docs/standards/openapi.md` M3(Common T-482)를 따른다. Next.js 프록시가
+     스스로 만드는 본문의 소문자 `code`(`frontend/src/lib/full-history-proxy.ts`)는 이 규칙의 대상이 아니다.
      → 세부: [에러 응답 계약](../architecture/architecture.md#에러-응답-계약problemjson)(구현 위치·`Retry-After`·
-     프록시 `code`와의 구분·남은 정렬), [Map 인계 문서](../map-service-exports-handoff.md)(code 사전)
+     프록시 `code`와의 구분·남은 정렬), code 사전은
+     [Map 인계 문서 "503 사유 code와 Retry-After"](../map-service-exports-handoff.md#503-사유-code와-retry-after-2026-11-24)
 - **근거**: `/v1` 버저닝과 에러 포맷 통일은 breaking하지 않고도(프록시가 항상 존재하는
   현재 배포 모델에서는) 격리해서 끝낼 수 있는 범위였다. 반면 kor-travel-map의
   `{data, meta}` envelope(성공 응답 body 자체를 감싸는 것)은 23개 라우트의 반환 타입,

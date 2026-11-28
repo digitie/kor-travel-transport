@@ -174,9 +174,10 @@
 
 [ADR-004](../adr/004-krairport-provider-library.md)에서 옮긴 구현 이력이다. 결정 자체는 ADR에 있다.
 
-- **2026-08-23 최초 결정의 raw 경로**: 당시 krairport typed model(예: `ParkingFee`)이 휴일 요금·분당 추가요금을
-  담지 못하거나 검증된 필드명과 달라, KAC 주차현황/요금·IIAC 주차현황/요금 모두 `kac_raw_items`/`iiac_raw_items`
-  범용 escape hatch로 원본에 가까운 item dict를 받아 `parsers.py` 자체 파싱을 그대로 썼다.
+- **2026-08-23 최초 구현의 raw 경로**: 당시 krairport의 요금 typed model(`ParkingFee`)은 parking-radar가 실제로
+  필요한 필드(휴일 요금, 분당 추가요금)를 담지 못하거나 검증된 필드명과 달랐다. 그래서 요금은 typed model 대신
+  범용 escape hatch를 썼고, T-030 구현에서 KAC 주차현황/요금·IIAC 주차현황/요금 4개 fetch가 모두
+  `kac_raw_items`/`iiac_raw_items`로 원본에 가까운 item dict를 받아 `parsers.py` 자체 파싱을 그대로 썼다.
 - **주차 현황·주차요금 전환(T-030)**: `backend/pyproject.toml`에
   `python-krairport-api @ git+https://github.com/digitie/python-krairport-api@<sha>` PEP 508 direct reference로
   의존성을 추가했다(`[tool.uv.sources]`는 Docker 빌드가 plain `pip install -e ".[dev]"`를 써서 인식되지 않아 폐기 —

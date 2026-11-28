@@ -695,7 +695,8 @@ ADR-016 결정 갱신. 입력 revision namespace의 배포 식별자가 `RELEASE
   활성 + 지문 있음)·오프라인 준비를 쓴다.
 - **비용** — 지문은 import 때 한 번 계산한다(소스 읽기 + schema 4개 + metadata 6개, 수십 ms). 요청 경로 비용은 그대로다
   (입력 지문 memo 키의 한 값이 바뀌었을 뿐이다).
-- **이전** — 처음 배포될 때 namespace 값(`reference-input-v2`)이 한 번 바뀌어 모든 본문을 한 번 다시 만든다. 옛 본문은
+- **이전** — 처음 배포될 때 namespace 값(`reference-input-v2`)이 한 번 바뀌어 모든 본문을 한 번 다시 만든다(배포 직후 준비,
+  다음 공항 수집 준비, 첫 Map 페이지 중 하나). 옛 본문은
   남은 handle이 만료된 뒤 기존 GC가 지운다.
 - **안전장치·저하 표시** — 지문을 만들 수 없으면(소스 없는 이미지) artifact 없는 완전 구성 경로로 간다(정확하지만 느리다).
   `/health`의 `reference_artifacts: "disabled"`·`reference_payload_fingerprint: null`, 기동 WARNING 로그로 드러난다. 읽을
