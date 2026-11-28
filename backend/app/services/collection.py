@@ -81,7 +81,8 @@ SAMPLE_KAC_FEE_LOT_NAMES = {
 def _kac_fee_sample_items(airport_code: str) -> list[dict[str, str]]:
     """Sample KAC fee items using the live endpoint's real (camelCase) field
     names -- confirmed against `AirportParkingFee/parkingfee` directly (see
-    ADR-004 / T-030). Do not revert to `PARKING_BASIC_ACCOUNT`-style names;
+    ADR-004, T-030; history in docs/architecture/data-sources.md "krairport 전환 이력").
+    Do not revert to `PARKING_BASIC_ACCOUNT`-style names;
     that was never the real API shape."""
 
     airport_name, lot_names = SAMPLE_KAC_FEE_LOT_NAMES.get(airport_code, SAMPLE_KAC_FEE_LOT_NAMES["GMP"])

@@ -36,7 +36,9 @@ cross-schema FK를 만드는 것은 금지한다.
 ## 내부 일괄 export (ADR-013, 2026-10-02)
 
 Map은 marker API가 아니라 `/v1/service/exports/*`를 읽는다. 토큰(`X-Kor-Travel-Transport-Service-Token`)과
-loopback Host가 모두 맞아야 하고 아니면 404다. `fuel-stations`·`rest-areas`·`rest-area-fuel-prices`는
+주소 allowlist가 모두 맞아야 한다 — backend는 접속한 peer 주소(`Host` 헤더가 아님, 기본 loopback)를, Odroid 운영에서는
+API gateway export location이 소비자 CIDR을 검사한다. 토큰·peer가 어긋나면 404, gateway CIDR 거부는 403이다
+([service export 계약 §1](service-exports.md#1-표면과-인증-adr-013-결정-12)). `fuel-stations`·`rest-areas`·`rest-area-fuel-prices`는
 `{items, next_cursor, has_more, collection}` 페이지, `highway-incidents/active`는 마지막 성공 수집의 활성
 사건 전체(수집 실패·30분 정체면 503), `airports`는 krairport 번들의 운영 공항 전체다. 참조 데이터 셋은
 마지막 성공이 stale 기준(주유소 27.5시간(2026-11-24 전 24시간)·3일·12시간) 안이면 그 뒤 시도가 실패해도 마지막 성공 집합을 200으로 내고

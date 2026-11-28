@@ -54,7 +54,7 @@ ADR은 "나중에 코드를 본 사람이 **왜 이런 구조인지**(맥락과 
 
 | ADR | 제목 | 상태 |
 |---|---|---|
-| [ADR-001](001-postgresql-as-primary-db.md) | PostgreSQL을 운영 기준 DB로 채택 | accepted |
+| [ADR-001](001-postgresql-as-primary-db.md) | PostgreSQL을 운영 기준 DB로 채택 | accepted (운영 DB 위치·CI 버전 범위는 ADR-018이 좁힘) |
 | [ADR-002](002-dual-check-5min-cutover.md) | 5분 수집 경계의 이중 확인 컷오버(일회성 이전) | accepted |
 | [ADR-003](003-unauthenticated-backup-network-restriction.md) | 인증 없는 백업 UI의 네트워크 제한 | superseded by ADR-012 |
 | [ADR-004](004-krairport-provider-library.md) | 비행편·주차 현황·주차요금 데이터는 `python-krairport-api`를 provider 라이브러리로 사용 | accepted |
@@ -71,8 +71,10 @@ ADR은 "나중에 코드를 본 사람이 **왜 이런 구조인지**(맥락과 
 | [ADR-015](015-parking-raw-and-statistics-lifetimes.md) | 주차 원본 48시간·집계 통계 영구 보존과 삭제 전 읽기 전환·검산 | accepted |
 | [ADR-016](016-reference-export-artifact-lifetime.md) | 기준정보 불변 본문과 유한 HTTP cursor handle 수명 분리 | accepted |
 | [ADR-017](017-web-production-runner-non-root.md) | 웹 production runner의 non-root와 역할별 예외 | accepted |
+| [ADR-018](018-shared-postgres-and-dagster-plane.md) | 데이터는 공용 PostgreSQL에 두고 수집은 Manager 공용 Dagster plane의 code location으로 실행한다 | accepted |
+| [ADR-019](019-opinet-browser-collection.md) | 전국 유가(오피넷)는 공식 API가 아니라 공개 화면 브라우저 수집으로 모은다 | accepted |
 
-**다음 번호 = ADR-018.**
+**다음 번호 = ADR-020.**
 
 ## 새 ADR 작성 규약
 

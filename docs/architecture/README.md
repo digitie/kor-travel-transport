@@ -9,3 +9,4 @@
 - `backup-restore.md` — 백업·복원 계약과 운영 주의사항
 - `dependencies.md` — 확인한 최신 의존성 기준과 lock 파일
 - `transport-admin.md` — 별도 transport 운영 UI와 API/Dagster gateway 경계
+- `service-exports.md` — Map용 내부 service export의 생산자 운영 계약(신선도·503·수집 가드, ADR-013 세부)

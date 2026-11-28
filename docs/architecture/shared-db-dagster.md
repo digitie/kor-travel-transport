@@ -74,6 +74,10 @@ Manager 소유 bootstrap이 `kor_travel_transport`와 전용 role(`kor_travel_tr
 | Dagster run/event/schedule metadata(legacy-dagster profile 전용; n150에만 존재, Manager가 더 만들지 않음) | `kor_travel_transport_dagster` | `DAGSTER_POSTGRES_URL` |
 
 두 DB를 합치면 양쪽 Alembic이 `alembic_version` 테이블을 서로 덮어쓰므로 절대 합치지 않는다.
+
+엔진 버전은 Manager가 정한다. 운영 공용 instance는 `postgres:16-alpine`이고 2026-11-28 운영 진단에서 16.9를 확인했다
+(n150 시절 2026-09-28에도 16.9 — [배포 런북](../runbooks/deployment.md)). CI는 `postgres:18`(`.github/workflows/ci.yml`)이라
+16과 18의 동작 차이는 CI가 잡지 못할 수 있다([ADR-018](../adr/018-shared-postgres-and-dagster-plane.md)).
 운영 DSN은 `127.0.0.1:11000`을 사용하며, 비밀번호·service key·RustFS key는
 n150의 비추적 환경 파일에만 둔다.
 

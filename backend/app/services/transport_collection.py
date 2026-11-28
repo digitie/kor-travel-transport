@@ -1018,7 +1018,7 @@ class TransportCollectionService:
                         break
                     except Exception as exc:
                         await session.rollback()
-                        # 브라우저 수집(30~50분, 하루 최대 3회)은 이미 메모리에 있다. 저장 단계의 일시적
+                        # 브라우저 수집(odroid 실측 약 1.7시간 — 2026-10-23 성공 5,946~6,371초, 정기 하루 3회)은 이미 메모리에 있다. 저장 단계의 일시적
                         # DB 시간 초과·연결 끊김 한 번으로 그것을 버리지 않고, 공급자를 다시 부르지 않은 채
                         # 저장만 한 번 더 한다. 같은 오류가 반복되거나 다른 종류의 오류면 실패로 기록한다.
                         if attempt < FUEL_STORE_ATTEMPTS and _is_transient_database_error(exc):

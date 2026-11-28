@@ -1,9 +1,7 @@
 # ADR-008: 통합 교통정보 저장소를 `kor-travel-transport`로 개명한다
 
-## 상태
-
-accepted (아래 "운영 리소스 이름은 호환 유지" 보류는 [ADR-010](010-deploy-identity-rename-transport.md)이
-대체, 2026-09-28)
+- **상태**: accepted (아래 "운영 리소스 이름은 호환 유지" 보류는 [ADR-010](010-deploy-identity-rename-transport.md)이
+  대체, 2026-09-28)
 
 ## 맥락
 

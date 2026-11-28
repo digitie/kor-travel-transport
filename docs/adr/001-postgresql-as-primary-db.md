@@ -1,6 +1,6 @@
 # ADR-001: PostgreSQL을 운영 기준 DB로 채택
 
-- **상태**: accepted
+- **상태**: accepted (운영 DB 위치·CI 버전 범위는 ADR-018이 좁힘)
 - **날짜**: 2026-08-22
 - **결정자**: agent + human (T-002)
 - **컨텍스트**: 초기 운영 앱은 SQLite 기반이었다. ODROID 단일 프로세스 운영에서는 충분했지만,
@@ -9,6 +9,7 @@
   필요해졌다.
 - **결정**: 운영 기준 DB를 PostgreSQL 16으로 하고, SQLAlchemy 2 async + Alembic으로 스키마를
   관리한다. SQLite는 legacy import 원본 조회와 빠른 로컬 단위 테스트 호환성 용도로만 유지한다.
+  (운영 instance 위치·버전 관리와 CI 버전은 [ADR-018](018-shared-postgres-and-dagster-plane.md)이 좁힌다.)
 - **근거**: PostgreSQL은 Docker Compose 환경에서 동시 접속·트랜잭션 격리를 SQLite보다 안전하게
   처리하고, Alembic lineage(`0001_initial` → `0002_integrity_and_freshness` →
   `0003_legacy_source_identity`)로 스키마 변경 이력을 코드로 추적할 수 있다. CI에서도 동일한

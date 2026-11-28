@@ -125,11 +125,11 @@ Dagster 실패로 전파한다. 성공분과 호출 유예를 보존하며 자�
 scheduler는 DB의 남은 대기 시간을 사용해 미세한 tick 차이로 한 주기를 건너뛰지 않는다.
 유가도 성공 시 다음 예정을 수집 **시작** 시각 + 주기 - 15분으로 잡아(2026-10-23) 수집이 1~2시간 걸려도
 다음 8시간 tick을 건너뛰지 않는다. 실패 시에도 외부 조회 전 확정한 시작 기준 예약을 유지하며
-실패 완료 시각에서 주기를 다시 더하지 않는다. 정상 실패에도 같은15분 tick 여유를 두며
+실패 완료 시각에서 주기를 다시 더하지 않는다. 정상 실패에도 같은 15분 tick 여유를 두며
 in-process는 이를 되돌려 실제 시작 간격을 보존한다. 주기는 pin된 provider의 기본값(8시간,
 `sample_run_interval`)을 쓰지만 transport는 `collect_once`를 직접 부르므로 provider의 24시간 3회 throttle은
-적용되지 않는다. 하루 3회는 Dagster의 8시간 tick이 지키고(연속 24시간 창으로는 최대 15분 안쪽 네 번째 시작
-가능, ADR-013), in-process scheduler는 15분을 되돌려 기다려 시작 간격 8시간 이상을 지킨다.
+적용되지 않는다. 하루 3회는 Dagster의 8시간 tick이 지키고(실패 뒤 자동·관리자 재시도는 더할 수 있다 — [수집](collection.md); 연속 24시간 창으로는 최대 45분 안쪽 네 번째 시작
+가능, [service export 계약 §4](service-exports.md#4-유가-수집-주기와-export-유예)), in-process scheduler는 15분을 되돌려 기다려 시작 간격 8시간 이상을 지킨다.
 유가 scheduler는 다음 예정 시각까지 기다리므로 5분마다 불필요한 skipped 실행을 만들지 않는다.
 결과(성공·실패)를 남기지 못하고 끝난 Dagster 유가 시도(op 밖 프로세스 종료·실패 기록 commit 실패)는 회수 sensor가
 회수 직후 상태 행에 `실행 소실` `last_error`만 남긴다(성공 시각·예약 불변, 2026-11-24 감사 G1-F5). 관리자 재시도는 같은
@@ -215,7 +215,7 @@ PostgreSQL이며 provider의 재생 가능한 로컬 체크포인트를 API·통
 ## 분석 API
 
 모든 경로는 `/health`를 제외하고 `/v1` 아래에 있다([ADR-005](../adr/005-versioned-rest-api-contract.md)).
-에러 응답은 RFC7807 `application/problem+json`이다. 기계 정본은
+에러 응답은 RFC7807 `application/problem+json`이다([에러 응답 계약](#에러-응답-계약problemjson)). 기계 정본은
 `docs/openapi.json`(`scripts/export_openapi.py`로 재생성).
 
 - `GET /health` — 비버저닝 고정
@@ -260,6 +260,30 @@ PostgreSQL이며 provider의 재생 가능한 로컬 체크포인트를 API·통
   - TAGO 시간표를 PostgreSQL 조회 조건별 snapshot으로 저장한다. 갱신 오류나 호출 보호 중에는
     기존 저장본과 갱신 상태를 반환한다. 시외버스는 한국 시간 당일만 제공한다.
   - 여객선과 함께 TTL·LRU 항목 상한을 둔 프로세스 cache를 사용해 장기 실행 중에도 무한히 쌓이지 않게 한다.
+
+### 에러 응답 계약(problem+json)
+
+원칙은 [ADR-005](../adr/005-versioned-rest-api-contract.md) 결정 2·5다. 아래는 2026-11-24 ADR-005에서 옮긴 세부다.
+
+- **배경**: kor-travel-common 표준 `docs/standards/openapi.md` M3는 모든 4xx/5xx problem 본문에 확장 멤버
+  `code`(UPPER_SNAKE)·`request_id`·`errors[]`를 두는 것을 생태계 표준으로 정했다(Transport는 Common task T-482,
+  additive). 같은 날 Map 호출 감사(G1-F3·MC-01)는 `/v1/service/exports/*` 503이 사유를 한국어 `detail` 문장으로만
+  실어 소비자가 수 시간짜리 stale과 수 초짜리 경합을 가르지 못한다고 지적했다.
+- **형태**: RFC 7807 본문(`type`/`title`/`status`/`detail`/`instance`)과 한국어 `detail`은 그대로다. 기계 판독 사유가
+  있는 응답에만 `code`(패턴 `^[A-Z][A-Z0-9_]*$`)를 더한다. 사유가 "잠시 뒤 다시"인 503은 HTTP `Retry-After: <정수 초>`를
+  함께 준다.
+- **구현**: `backend/app/core/problems.py`(`CodedHTTPException`, `problem_body`). 공용 `HTTPException` handler는 `code`가
+  있을 때만 본문에 더한다 — `code`가 없는 응답은 키 집합까지 예전과 같다. `docs/openapi.json`의 `ProblemDetails`에 선택
+  속성 `code`를 선언하고, 내부 export 경로의 503에 `Retry-After` 헤더를 선언한다.
+- **현재 `code`를 내는 곳**: `/v1/service/exports/*` 503뿐이다. code 사전과 의미·`Retry-After` 힌트는
+  [Map 인계 문서](../map-service-exports-handoff.md)와 [ADR-013](../adr/013-internal-service-exports-for-map.md)이 정본이다.
+- **소비자 규칙**: `code`가 없거나, 모르는 값이거나, 공통 사전의 기본값(예: `SERVICE_UNAVAILABLE`)이면 상태 코드만의
+  뜻으로 다룬다. 새 code 추가는 가산, 있는 code의 뜻 변경은 계약 변경이다.
+- **프록시 `code`와 충돌 없음**: parking-radar 웹의 Next.js 프록시는 소문자 `code`(`backend_busy`·`backend_timeout`·
+  `backend_unavailable`, `frontend/src/lib/full-history-proxy.ts`)를 낸다. 프록시가 만든 본문이고 값 공간(소문자 vs
+  UPPER_SNAKE)이 겹치지 않으므로 건드리지 않았다.
+- **남은 정렬(Common T-482)**: 모든 4xx/5xx의 기본 `code`(공통 S7.1 사전), `request_id`, `errors[]{field,message}`,
+  `HTTPValidationError` 제거, `default` 응답 선언.
 
 ## 프론트 화면 구조
 

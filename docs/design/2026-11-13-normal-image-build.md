@@ -168,7 +168,8 @@ Escape 및 실제 목록 opener focus 복귀를 검사한다. 제품 CSS나 공�
   전체 node_modules/기존 start 계약을 보존한다. 실제 새 이미지의 uid/config/cache·정상 start·
   로그인fixture·worker·routes·SSR/readiness는 미실행이며 적용 전 필수다.
   backend/CS/gateway UID는 역할별 예외로 유지한다.
-  [ADR-017과 실제 probe 계약](../adr/017-web-production-runner-non-root.md)을 따른다.
+  [ADR-017](../adr/017-web-production-runner-non-root.md)과 아래
+  [경로별 권한·수용 조건](#웹-production-runner-경로별-권한과-수용-조건adr-017-세부)을 따른다.
 - B5/B6: 원 두 독립 리뷰, exact CI, 새 추적 E2E 및 기존 공식 Manager 역할별 인계·비선택 보존.
   실제 적용은 기존 런북과 SDK 절차의 별도 권한·증거로만 한다.
 - downgrade/DB rollback은 T-DOWNGRADE-GUARDS-20261113 P2 OPEN gate다.
@@ -211,3 +212,40 @@ image ID/config receipt의 정본은 기존 SDK/prebuilt 계약이다. wrapper�
 offline build CLI는 remote main 조회를 gate로 발명하지 않는다. clean canonical candidate도
 build-only 산출물이 될 수 있다. 운영 factory는 별도로 actual merged M/source 전체 tree bridge와
 정상 M build·입력·runtime·기존 공식 적용 gate를 증명해야 한다. 이 구분은 deployReady:false를 완화하지 않는다.
+
+## 웹 production runner 경로별 권한과 수용 조건(ADR-017 세부)
+
+결정은 [ADR-017](../adr/017-web-production-runner-non-root.md)에 있다. 아래는 2026-11-28 ADR에서 옮긴 이미지 세부다.
+두 웹 이미지는 기존 Node22.23.1 Alpine digest/npm12.0.1과 npm start, 공개 shared Compose의 직접 next start 명령을
+유지한다. 호스트 chmod·root ENV·volume·공유 DB·다른 역할은 바꾸지 않는다.
+
+| 경로 | 내용과 권한 |
+|---|---|
+| /app/package.json·lock·.npmrc | 기존 start/설치 메타데이터. root 소유, node 읽기 |
+| /app/node_modules | 기존 lock의 전체 설치 산출물. root 소유, node 읽기/필요 파일 실행 |
+| /app/.next | 빌드 산출물. node 소유; 서버의 cache/재검증 쓰기 계약 보존 |
+| /app/public | node 읽기. 공개는 tracked public이 없어 builder가 빈 디렉터리를 명시 생성; 관리자는 기존 worker·정적 자산 복사 |
+| /app/next.config.ts·tsconfig.json | node 읽기. 실제 Next loader로 검증 |
+| /app/proxy.ts | 관리자 기존 파일을 그대로 복사. 실제 인증/proxy 동작은 HTTP/browser QA로 별도 확인 |
+| /home/node/.npm·.cache | 이미지 안에서만 생성·node 소유. HOME/npm/XDG cache 위치를 명시 |
+
+**standalone을 쓰지 않는 근거(세부)**: 현재 Next config는 TypeScript이며 설치된 Next loader는 tsconfig와 SWC/native
+binding을 읽는 경로가 있다. Compose는 공개의 직접 next binary와 관리자의 npm start를 사용한다. 관리자 parking-ui는
+install-links=true로 설치된 package를 transpile하며 기존 worker는 prebuild가 생성한 두 public 파일을 함께 요구한다.
+이를 별도 tracing 검증 없이 server.js/의존성 prune으로 바꾸지 않는다. 원본 UI·config 내용·인증 정책·공통 C11 bytes·
+공유 frontend root context는 유지한다.
+
+**역할별 예외의 현재 계약**: backend/CS는 같은 Python 이미지를 쓰며 entrypoint·이미지 내 bootstrap과 collector-state/
+backup·root 소유 bind config 읽기 계약이 따로 있다. migrate는 이 이미지의 one-shot 역할이다. 비활성 LEGACY Dagster
+nginx gateway Dockerfile은 시작 때 /etc/nginx/.htpasswd를 작성하고 master를 실행한다. 현재 관리자 API gateway는 별도
+외부 nginx pinned ID + 추적 template/공식 SDK508 paired-role 선택이며, 비활성 소유 Dagster gateway를 현재 API gateway
+coverage로 세지 않는다. 정상 build-only wrapper는 migration/downgrade/운영 lifecycle을 실행하지 않는다.
+
+**검증과 적용 조건**: 소스 검사는 final runner 선택과 실제 image Config.User=node를 요구한다. 이미지에 포함한
+verify-web-runtime.cjs는 해당 이미지의 기본 USER로 실행해야 하며 관측 uid/gid·Node/npm·baked release·config/manifest/
+entry 파일·parking package·worker 원본 hash·cache의 실제 쓰기/삭제를 검사하고 실제 Next production loader도 실행한다
+(명령은 위 "새 웹 이미지의 production probe"). 원문 config/ENV/key나 compiled JS는 출력하지 않는다. probe의 PASS는
+파일/config/cache 범위다. 별도 새 amd64/arm64 이미지에서 정상 start·기존 Compose command·HTTP health·공개 proxy·관리자
+로그인fixture/보호 경로·logout·SSR·worker 실행/browser를 검증해야 한다. 권한을 가짜로 넘기거나 --user root로 실행한
+결과는 non-root 수용으로 쓰지 않는다. 기존 native QA/2db의100PASS는 새 Docker 이미지 수용으로 소급하지 않는다.
+Common 실제 guard ref·원2리뷰·exact CI·머지 source의 새 이미지·공식 SDK 수용 전에는 적용하지 않는다.

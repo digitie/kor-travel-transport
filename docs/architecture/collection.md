@@ -34,8 +34,9 @@
 부분 성공은 `rows_isolated` — 아래 "무효 행 격리의 상태 표시")만 외부에 노출해, 이전 성공 상태를 현재 성공으로 오인하지 않게 한다.
 
 오피넷은 병합된 provider `8708f10`의 60초 화면 대기 상한을 transport 설정과 Compose에도
-동일하게 전달한다. 8시간 간격·24시간 3회 및 자동 재시도 금지는 유지한다. 대기 상한 변경은
-수집 성공을 뜻하지 않으며 다음 정기 배치의 실제 저장 결과를 따로 확인한다.
+동일하게 전달한다. 정기 실행은 8시간 tick이다. 다만 실패한 시도는 유가 op의 일시 오류 자동 재시도(1회)와 관리자
+"재시도"로 예정 전에 다시 시작할 수 있어 24시간 안 시작 횟수가 3회를 넘을 수 있다(아래 "수집 예약과 조회 시간 상한").
+대기 상한 변경은 수집 성공을 뜻하지 않으며 다음 정기 배치의 실제 저장 결과를 따로 확인한다.
 
 여객선 시간표는 네트워크 오류 1건으로 전국 보충을 중단하지 않는다. 실패한 항구·날짜는
 빈 성공 스냅샷으로 저장하지 않고 다음 대상으로 진행한다. 실패도 280회 호출 예산에 포함하며
@@ -66,6 +67,33 @@ DB 커밋 뒤 Dagster op도 명시적인 실패로 종료한다. 이 실패의 �
 ADR-013 개정 — 한 번 다시 조회해도 비면 실패, 마지막 성공 집합 유지).
 결과 저장은 소스별 transaction으로 분리해, 뒤의 돌발/유가 저장 실패가 먼저 성공한
 소통정보를 rollback하지 않도록 한다.
+
+### 수집 예약과 조회 시간 상한(ADR-009 세부)
+
+구조는 [ADR-009](../adr/009-durable-transport-collection-reservations.md)가 정한다(짧은 DB 예약 → 트랜잭션 밖 외부 조회 →
+소스별 결과 transaction). 값과 규칙은 코드(`backend/app/services/transport_collection.py`,
+`backend/app/dagster/definitions.py`)가 정본이고 아래는 2026-11-28 코드 기준이다.
+
+- **조회 시간 상한**: 고속도로 소스별 120초(`HIGHWAY_FETCH_TIMEOUT_SECONDS`), 전국 유가 브라우저 수집 3.5시간
+  (`FUEL_FETCH_TIMEOUT_SECONDS = 12_600`). 유가는 2026-09-19 ADR-009 당시 2시간이었고, odroid(ARM)에서 성공한 수집이
+  5,946~6,371초 걸려 옛 상한 7,200초 근처에서 시간 초과가 반복되어 2026-10-23 소유자 결정으로 올렸다(ADR-013 개정).
+  유가 상한은 저장·정리 여유를 두고 job 전체 상한과 Dagster run 상한(14,400초) 안에 들어야 한다
+  (`test_fuel_fetch_timeout_fits_inside_job_budget`).
+- **외부 호출 전 예약**: 고속도로 소스의 임시 예약은 시작 + (`2 × HIGHWAY_FETCH_TIMEOUT_SECONDS` + 15분)이고, 같은 실행에서
+  유가도 due면 유가 조회 상한을 더한다. 유가 예약은 시작 + provider throttle이 정한 간격(`next_fuel_interval`, pin된
+  provider 기본 8시간·허용 8~12시간) − 15분(`FUEL_NEXT_DUE_START_SLACK`)이다. 15분은 8시간 정각 tick보다 run 시작이 매번
+  다르게 늦어 다음 tick이 "아직 이르다"로 건너뛰는 것을 막는 여유이고, Dagster 정기 실행은 여전히 8시간 tick(KST 00·08·16시)
+  마다다. tick 없이 예정 시각까지 자는 in-process scheduler는 이 여유를 되돌려 기다린다(`next_collection_delay`).
+- **고속도로 성공 뒤 다음 예정**: 정기 tick이 띄운 실행이면 그 tick 시각(`dagster/scheduled_execution_time`) + 주기 − 30초
+  (`HIGHWAY_TICK_SLACK`), tick이 없는 실행(수동·in-process scheduler·관리자 재시도)은 시작 + 주기다(`_highway_next_due`).
+- **유가 실패 재시도**: `collect(retry_failed_fuel=True)`는 직전 유가 시도가 **실패**였을 때만 예정 전이라도 실행하고, 정기
+  예약(다음 tick)은 옮기지 않는다. 이 경로는 유가 op의 자동 재시도(`FUEL_RETRY_POLICY` — 같은 run 안 step 재시도 1회, 300초
+  지수 backoff·jitter, `AUTO_RETRY_ERROR_CODES`인 브라우저 시간 초과·resource policy·DB 일시 오류만, run 상한에서 경과 시간과 재시도 대기 2×300초를 빼고도
+  2시간 이상 남았을 때만)와 관리자 "재시도"(`kortravel/admin-retry-of` 태그)가 쓴다. 브라우저는 체크포인트에서 남은 지역만 요청한다.
+  쿼터·차단·인증·파싱·전체 시간 초과는 자동 재시도하지 않는다.
+- **quota backoff**: KREX quota 초과는 해당 소스의 다음 예정을 `transport_quota_backoff_seconds` 뒤로 미루고, 다른 고속도로
+  소스가 due여도 backoff 중인 소스는 호출하지 않는다(due는 소스별로 판정).
+- **상태 API**: `last_run`은 `skipped`를 제외해 재시작·경합의 무호출 기록이 실제 실패/실행 기록을 가리지 않게 한다.
 
 ### 고속도로 소통 저장 transaction과 5분 통계(2026-11-24, WLH-06)
 
@@ -261,8 +289,8 @@ cutover 동안 HTTP read-only source로 유지하며 Docker를 조작하지 않�
   구조가 바뀌거나 자동화 차단이 발생하면 실패를 기록하고 임의의 빈 성공 데이터로
   덮어쓰지 않는다.
 - 오피넷 지역 검색의 기본 응답 대기 상한은 60초다. 이는 지연된 단일 화면 응답을
-  기다리는 시간만 늘릴 뿐 자동 재시도나 추가 수집 요청을 만들지 않으며, 기본 8시간
-  간격·24시간 최대 3회 실행 제한은 그대로 적용한다.
+  기다리는 시간만 늘릴 뿐 그 자체로 재시도나 추가 수집 요청을 만들지 않는다. 정기 실행은 8시간 tick이고, 실패 뒤의
+  자동·관리자 재시도는 위 "수집 예약과 조회 시간 상한"의 규칙을 따른다.
 
 ## 시각 기준
 
