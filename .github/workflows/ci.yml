@@ -20,9 +20,9 @@ jobs:
   common-policy:
     permissions:
       contents: read
-    uses: digitie/kor-travel-common/.github/workflows/frontend-consumer-guard.yml@309b881f8fd6d657b448f43b6fc61939fde742c2
+    uses: digitie/kor-travel-common/.github/workflows/frontend-consumer-guard.yml@73761c5d0a14e3df409e5b1c86f954eb219dae66
     with:
-      common-ref: 309b881f8fd6d657b448f43b6fc61939fde742c2
+      common-ref: 73761c5d0a14e3df409e5b1c86f954eb219dae66
       frontends: >-
         [{"package":"frontend/package.json","lock":"frontend/package-lock.json","workspace":"","profile":"web"},{"package":"packages/kor-travel-transport-admin/frontend/package.json","lock":"packages/kor-travel-transport-admin/frontend/package-lock.json","workspace":"","profile":"web"}]
       toolchain-manifests: '[]'
@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: digitie/kor-travel-common
-          ref: 309b881f8fd6d657b448f43b6fc61939fde742c2
+          ref: 73761c5d0a14e3df409e5b1c86f954eb219dae66
           path: .common-ui-policy
           persist-credentials: false
       - run: npm install --global npm@12.0.1
@@ -104,7 +104,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: digitie/kor-travel-common
-          ref: 33a42866e704b8836460197e743beab0b38d6894
+          ref: 73761c5d0a14e3df409e5b1c86f954eb219dae66
           fetch-depth: 0
           path: .common-python-policy
           persist-credentials: false
