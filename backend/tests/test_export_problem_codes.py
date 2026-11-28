@@ -324,7 +324,7 @@ def test_api_engine_bounds_connect_and_pool_wait_and_names_connections(monkeypat
     api = captured["options"]
     assert api["pool_timeout"] == 10 and api["connect_args"]["timeout"] == 10
     assert api["connect_args"]["server_settings"] == {
-        "statement_timeout": "120s", "application_name": "kor-travel-transport-api",
+        "statement_timeout": "120s", "application_name": "kor-travel-transport-api", "jit": "off",
     }
     db_session.create_engine_and_session_factory("postgresql://u:p@db/x", collector=True)
     collector = captured["options"]

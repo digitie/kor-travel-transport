@@ -13,13 +13,17 @@
 - [x] **FUEL-HISTORY / P1** — 수집 완료 시 일별 지역 통계를 좁은 표(`fuel_statistics_history`, 0049)에 같은 transaction으로 저장·영구 보존,
   `GET /v1/transport/fuel/statistics/history`(일·주·월·auto, 유종당 400점, ETag), 관리 `/fuel/statistics` 기간 30일·90일·1년·전체.
   시군구 통계 페이지 2~3초는 0050 인덱스로 공개일 항목만 읽게 했다([유가 통계](fuel-statistics.md#장기-추이)).
-- [ ] **FUEL-HISTORY-VERIFY / P1** — 배포(0049·0050) 뒤 공개 GET으로 확인: `/v1/transport/fuel/statistics?scope=sigungu&product_code=ZZZZ`가
-  0.3초 안팎(전: 2.6~3.0초), `.../statistics/history?scope=nationwide&bucket=auto`의 첫 날짜가 일별 기록 첫날과 같은지.
+- [ ] **FUEL-HISTORY-VERIFY / P1** — 2026-11-28 348048d 배포 뒤 공개 GET: 장기 추이 200·첫 날짜 2026-10-26(일별 기록 첫날, 33일) 통과.
+  시군구는 ZZZZ만 2.6~3.0→0.27초이고 실제 유종(B027·D047·K015)은 3~5초(TTFB) 그대로였다 — ZZZZ 확인 기준이 원인을 가렸다.
+  운영 읽기 전용 진단(Codex): SQL 92~96%·pool 10~35ms, EXPLAIN 3.5초인데 shared hit 351·인덱스 스캔 수 ms·상위 Sort→Unique 1.8초.
+  로컬 PG18 같은 문장은 2.3ms, JIT 강제 318ms(JIT 201ms) → 앱 연결 `jit=off`(PR JIT-OFF). 재배포 뒤 **실제 유종**
+  `/v1/transport/fuel/statistics?scope=sigungu&product_code=B027&include_history=false` TTFB 0.5초 안팎인지, backend `slow_request
+  route=/transport/fuel/statistics`가 사라지는지 확인한다. 여전하면 같은 진단 SQL의 EXPLAIN 끝 `JIT:` 절 유무를 본다.
 - [x] **FUEL-HISTORY-P2 / P2** — PR #300 보류 P2 정리(2026-11-27): 주·월 툴팁에 기록 범위·일수(James#6), 장기 추이 표 60행 쪽 나눔
   (James#12, 표준 `OffsetPager`·터치 44px), 동시 상한(Popper#10: backend 줄별 공개 6·내부 2 + 12307 BFF·직접 합계 4, 12301 2, 429 + Retry-After 2
   problem+json, probe 확장), 0047·0050 오프라인 `--sql`(Popper#9, transaction 밖 DROP/CREATE CONCURRENTLY, PG 시험), 휴게소 1억 이상
   가격이 공개를 막던 문제(Popper#3, 수집 저장 경계·통계에서 저장할 수 없는 값만 빼고 경고).
-- [ ] **FUEL-HISTORY-P2-VERIFY / P2** — 배포(fuel gateway 이미지 재빌드, 12301 재생성) 뒤 `curl -sI 'https://fuel-api.../v1/transport/fuel/statistics/history?bucket=auto'`
+- [ ] **FUEL-HISTORY-P2-VERIFY / P2** — (2026-11-28 공개 GET: 이력 API 200·ETag·CORS 노출 헤더 통과. 남은 것은 운영 로그 zone 횟수) 배포(fuel gateway 이미지 재빌드, 12301 재생성) 뒤 `curl -sI 'https://fuel-api.../v1/transport/fuel/statistics/history?bucket=auto'`
   200과 `docker logs ... | grep -c 'limiting connections by zone "fuel_history'`가 평소 0인지 확인.
 - [x] **FUEL-HISTORY-PUBLIC-UI / P3** — 2026-11-27 공개 유가 웹 `/statistics`(지역별 유가 통계): 전국·시도·시군구·고속도로(노선),
   유종, 현재 평균·최저·최고·주유소 수·최저가 주유소(공개 지도 링크)·통계 기준 시각·반영 대기·오래됨, 30일·90일·1년·전체 추이와 기간 요약,
@@ -33,7 +37,7 @@
 - [x] **FUEL-PUBLIC-MAP-PRODUCT-LINK / P2** — 2026-11-27 통계 화면 "지도에서 보기"(그 가격의 유종)·"유가 지도"(링크가 정했거나 고른 유종)가
   그 유종으로 지도를 연다(`/?product=`). 저장한 유종 선택은 덮어쓰지 않고(트리거 "링크" 표시·"저장한 유종으로 보기"), 지도에서 유종을 고르면
   저장하고 주소의 `product`를 지운다([공개 유가 서비스](design/2026-11-20-public-fuel-service.md#지역별-유가-통계-statistics)).
-- [ ] **FUEL-HISTORY-PUBLIC-UI-VERIFY / P2** — fuel web 이미지 배포 뒤 https://fuel.digitie.mywire.org/statistics 를 390·1440px에서 열어
+- [ ] **FUEL-HISTORY-PUBLIC-UI-VERIFY / P2** — (2026-11-28 1440px 통과: 시군구 서울 강남구 LPG 전체 33일, "지도에서 보기"→`/?product=K015`·"통계" 표시·LPG 고정. 390px 남음) fuel web 이미지 배포 뒤 https://fuel.digitie.mywire.org/statistics 를 390·1440px에서 열어
   전국·시군구·고속도로 LPG와 1년·전체 추이가 보이는지, 지도 아이콘·"지도에서 보기"가 지도로 돌아가는지(통계에서 고른 유종으로 열리는지) 확인.
 
 ## 2026-11-24 — Map 호출 개선 후속(MAP-CALL-REVIEW-20261124)
