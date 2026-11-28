@@ -14,3 +14,8 @@
 .station-sharing{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--surface-muted);padding-top:12px}.station-sharing h3{margin:0;font-size:14px}.map-apps{display:flex;flex-wrap:wrap;gap:4px}.station-sharing button{font-size:12px;min-height:32px}.station-sharing input{font-size:12px}
 
 .fuel-marker-host{padding:0;border:0;background:transparent;min-height:0;cursor:pointer}.fuel-origin-host{padding:0;border:0;background:transparent;min-height:0}.maplibregl-popup-content{color:var(--text-primary);background:var(--card)}
+
+#locate{align-self:flex-start;background:var(--brand);border-color:var(--brand);color:var(--brand-foreground)}
+#locate:disabled{background:var(--surface-muted);border-color:var(--control-line);color:var(--text-tertiary)}
+#location .control-row,#location #search,.comparison .filter-label{margin-top:var(--space-2)}
+.station-sharing[open]>:not(summary){margin-top:var(--space-2)}

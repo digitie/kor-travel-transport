@@ -10,7 +10,8 @@ const station = z.object({ station_key: z.string().max(200), name: z.string().ma
 const product = z.object({ product_code: code, product_name: z.string().max(100), station_count: z.number().int().nonnegative().nullable(),
     average_price: price, minimum_price: price, cheapest_station_count: z.number().int().nonnegative().nullable(), cheapest_stations: z.array(station).max(20),
     truncated: z.boolean(), ranked_stations: z.array(station).max(20).optional(), ranking_truncated: z.boolean().optional() });
-export const responseSchema = z.object({ scope: z.enum(["radius", "nationwide", "sigungu"]), latitude: z.number().finite().min(-90).max(90).nullable().optional(),
+export const responseSchema = z.object({
+    requested_product_codes: z.array(z.enum(["B027", "D047", "B034", "K015"])).min(1).max(4).optional(), scope: z.enum(["radius", "nationwide", "sigungu"]), latitude: z.number().finite().min(-90).max(90).nullable().optional(),
     longitude: z.number().finite().min(-180).max(180).nullable().optional(), radius_m: z.number().int().min(1).max(50000).nullable().optional(),
     collection: z.object({ status: z.enum(["ready", "unavailable"]), generated_at: z.iso.datetime({ offset: true }).nullable(), last_success_at: z.iso.datetime({ offset: true }).nullable(),
         stale: z.boolean(), update_pending: z.boolean(), last_attempt_failed: z.boolean(), public_source_stale: z.boolean().optional(), reason: z.string().nullable().optional() }),
@@ -43,6 +44,10 @@ export function readResult(result: {
     return parsed.data;
 }
 export function queryFromResult(result: FuelResponse): Query | null {
-    const parsed = querySchema.safeParse({ latitude: result.latitude, longitude: result.longitude, radius_m: result.radius_m ?? 5000, sort_by: result.sort_by ?? "price" });
+    const codes = PRODUCTS.map(([code]) => code).filter(code => result.products.some(p => p.product_code === code));
+    const parsed = querySchema.safeParse({
+        latitude: result.latitude, longitude: result.longitude, radius_m: result.radius_m ?? 5000,
+        sort_by: result.sort_by ?? "price", product_codes: codes.length ? codes : undefined,
+    });
     return parsed.success ? parsed.data : null;
 }
