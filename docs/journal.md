@@ -1,14 +1,16 @@
-## 2026-11-28 — 공개 유가 시군구 통계 3~5초: PostgreSQL JIT(JIT-OFF)
+## 2026-11-28 — 공개 유가 시군구 통계 3~5초: PostgreSQL JIT 가설(JIT-OFF)
 
 - 348048d 배포 뒤 공개 GET: 시군구 통계는 결과 없는 유종(ZZZZ)만 0.27초로 빨라졌고 실제 유종은 3~5초(TTFB) 그대로였다. #300의 0050
   인덱스 가설(범주마다 기본키 재하강)은 "빈 결과" 경로만 설명했다. 확인 기준을 ZZZZ로 둔 것이 원인을 가렸다 — 성능 확인은 실제 데이터 경로로 한다.
 - 두 번째 가설(30일 범위가 모든 범주에 걸림)도 로컬 PG18 운영 규모 합성 데이터 EXPLAIN에서 기각했다(계획이 이미 `day = state.day`로 좁힘, 1ms). 수정 PR을 내지 않았다.
 - 운영 읽기 전용 진단(Codex): 요청 4.0~5.7초 중 SQL 92~96%, pool 10~35ms. EXPLAIN 3.5초·계획 37ms인데 shared hit 351, 인덱스 스캔 4.6·11.1ms,
-  CTE `Sort→Unique` 상위 노드 1.8초. 표 55MB·dead 6천 행, 공개 시군구 B027 230행·metrics 254KB. I/O도 행 수도 아닌 상위 노드 CPU — JIT 모양이다.
-- 로컬 x86 PG18에서 같은 문장: JIT 끔 2.3ms, JIT 강제 318ms(Inlining 69·Optimization 69·Emission 61ms, 시간이 상위 Sort·Nested Loop에 붙음).
-  ARM odroid에서는 이 컴파일이 초 단위가 된다. 운영 계획 비용이 `jit_above_cost`(100000)를 넘는 이유(통계 추정)는 운영 EXPLAIN 원문으로만 확인할 수 있다.
+  CTE `Sort→Unique` 상위 노드 1.8초. 표 55MB·dead 6천 행, 공개 시군구 B027 230행·metrics 254KB. I/O도 행 수도 아닌 상위 노드 CPU — JIT 모양이다(운영 EXPLAIN의 `JIT:` 절은 아직 직접 보지 못했다).
+- 로컬 x86 PG18에서 같은 문장: JIT 끔 2.3ms, 세 JIT 비용 기준을 0으로 강제하면 318ms(Inlining 69·Optimization 69·Emission 61ms, 시간이
+  상위 Sort·Nested Loop에 붙음). ARM odroid에서는 초 단위가 될 수 있다(미측정). 운영에서 inlining·optimization까지 붙으려면 계획 비용이
+  `jit_inline/optimize_above_cost`(500000)를 넘어야 하는데 로컬 비용은 약 490이다 — 운영 추정이 왜 그렇게 큰지(통계·bloat)는 운영 EXPLAIN 원문으로만 안다.
+  운영은 공유 PostgreSQL 16 alpine이고, alpine 이미지도 JIT가 동작한다(리뷰 재현). 이 PR은 가설에 따른 무해한 변경이며 확정은 배포 뒤 측정이다.
 - 수정: `app/db/session.py` API·수집 엔진 `server_settings`에 `jit=off`(연결 단위, DB 전체 설정·다른 서비스는 그대로). PG 시험
-  `tests/test_db_session_jit.py`(`SHOW jit`, `jit_above_cost=0`에서도 EXPLAIN에 JIT 절 없음).
+  `tests/test_db_session_jit.py`(`SHOW jit`, 세 기준 0에서 대조 연결은 JIT 절이 있고 앱 연결은 없음 — `COSTS OFF`면 JIT 절이 안 찍혀 쓰지 않는다).
 
 ## 2026-11-28 — 주변 유가 MCP Apps UI와 주유소 공유
 

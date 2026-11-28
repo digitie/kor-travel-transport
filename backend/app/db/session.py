@@ -42,10 +42,11 @@ API_POOL_TIMEOUT_SECONDS = 10
 #: 기준정보 준비가 쓴다. API 엔진의 in_process 수집(개발 기본)은 API 이름으로 보인다.
 API_APPLICATION_NAME = "kor-travel-transport-api"
 COLLECTOR_APPLICATION_NAME = "kor-travel-transport-collector"
-#: 두 엔진 모두 PostgreSQL JIT를 끈다(2026-11-28). 이 앱의 문장은 짧은 OLTP 읽기·쓰기라 JIT로 얻는 실행 이득이 없는데,
+#: 두 엔진 모두 PostgreSQL JIT를 끈다(2026-11-28, 운영 확인 전 가설에 따른 변경). 이 앱의 문장은 짧은 OLTP 읽기·쓰기라 JIT로 얻는 실행 이득이 작은데,
 #: 계획 비용 추정이 `jit_above_cost`(기본 100000)를 넘으면 LLVM inlining·optimization 컴파일이 실행마다 붙는다.
 #: 운영(odroid ARM) 공개 유가 시군구 통계가 shared hit 351·인덱스 스캔 수 ms인데 3.5~5.7초였고(SQL 92~96%),
 #: 시간이 상위 노드(Sort→Unique)에 붙어 있었다. 같은 문장을 로컬 x86 PG18에서 JIT 강제로 돌리면 2.3ms→318ms(JIT 201ms)다.
+#: 운영 EXPLAIN의 `JIT:` 절은 아직 보지 못했다(docs/journal.md 2026-11-28).
 #: 연결 단위 설정이라 DB 전체(`postgresql.conf`)나 다른 서비스 연결은 바꾸지 않는다.
 SERVER_JIT = "off"
 # API 엔진에 서버 `lock_timeout`을 두지 않는다(감사 T1-07·WLH-09 검토, 2026-11-24). 관리자 KRIC 매핑 저장
