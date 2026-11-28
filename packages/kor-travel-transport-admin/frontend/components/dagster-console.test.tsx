@@ -72,3 +72,26 @@ describe("실행 콘솔 조회·액션 경합",()=>{
   }finally{uuid.mockRestore();}
  });
 });
+
+it("공통 오류 로그 필터를 전환해도 다음 내역을 이어서 불러온다", async () => {
+  const event = (kind: string, title: string) => ({kind, title, time: null, step: null, detail: null, warning: false, counts: {}});
+  vi.mocked(getConsoleRun)
+    .mockResolvedValueOnce({...detail(), cursor: "next", hasMore: true, events: [
+      event("RunSuccessEvent", "정상 처리 내역"),
+      event("ExecutionStepFailureEvent", "실패 처리 내역"),
+    ]})
+    .mockResolvedValueOnce({...detail(), events: [event("RunFailureEvent", "이후 실패 내역")]});
+
+  await act(async () => root.render(<DagsterRunInspector runId={id} jobLabel={jobLabel} />));
+  const list = () => host.querySelector('[aria-label="안전한 처리 내역"]')?.textContent;
+  expect(list()).toContain("정상 처리 내역");
+  await click("오류 로그만 보기");
+  expect(list()).toContain("실패 처리 내역");
+  expect(list()).not.toContain("정상 처리 내역");
+  await click("다음 내역 보기");
+  expect(vi.mocked(getConsoleRun).mock.calls.at(-1)?.slice(0,2)).toEqual([id, "next"]);
+  expect(list()).toContain("실패 처리 내역");
+  expect(list()).toContain("이후 실패 내역");
+  await click("오류 로그만 보기");
+  expect(list()).toContain("정상 처리 내역");
+});
