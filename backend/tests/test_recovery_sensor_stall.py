@@ -535,19 +535,19 @@ def test_alert_writer_logs_stable_event_without_raw_text(caplog):
     [
         ({"collector": True}, {"timeout": 10, "command_timeout": 60,
                                "server_settings": {"lock_timeout": "5s", "statement_timeout": "60s",
-                                                   "application_name": "kor-travel-transport-collector"}}),
+                                                   "application_name": "kor-travel-transport-collector", "jit": "off"}}),
         ({"collector": True, "statement_timeout_seconds": 10},
          {"timeout": 10, "command_timeout": 10,
           "server_settings": {"lock_timeout": "5s", "statement_timeout": "10s",
-                              "application_name": "kor-travel-transport-collector"}}),
+                              "application_name": "kor-travel-transport-collector", "jit": "off"}}),
         # 회수 sensor 엔진: 접속 상한도 문장 상한(5초)으로 줄어든다.
         ({"collector": True, "statement_timeout_seconds": recovery.RECOVERY_STATEMENT_TIMEOUT_SECONDS},
          {"timeout": 5, "command_timeout": 5,
           "server_settings": {"lock_timeout": "5s", "statement_timeout": "5s",
-                              "application_name": "kor-travel-transport-collector"}}),
+                              "application_name": "kor-travel-transport-collector", "jit": "off"}}),
         # API 엔진: 접속 10초(감사 T1-07), 서버 lock_timeout 없음(관리자 KRIC 저장이 수집 잠금을 기다린다).
         ({}, {"timeout": 10, "server_settings": {"statement_timeout": "120s",
-                                                 "application_name": "kor-travel-transport-api"}}),
+                                                 "application_name": "kor-travel-transport-api", "jit": "off"}}),
     ],
 )
 def test_postgres_engines_set_server_statement_timeout(monkeypatch, kwargs, expected):

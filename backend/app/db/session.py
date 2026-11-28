@@ -42,6 +42,13 @@ API_POOL_TIMEOUT_SECONDS = 10
 #: 기준정보 준비가 쓴다. API 엔진의 in_process 수집(개발 기본)은 API 이름으로 보인다.
 API_APPLICATION_NAME = "kor-travel-transport-api"
 COLLECTOR_APPLICATION_NAME = "kor-travel-transport-collector"
+#: 두 엔진 모두 PostgreSQL JIT를 끈다(2026-11-28, 운영 확인 전 가설에 따른 변경). 이 앱의 문장은 짧은 OLTP 읽기·쓰기라 JIT로 얻는 실행 이득이 작은데,
+#: 계획 비용 추정이 `jit_above_cost`(기본 100000)를 넘으면 LLVM inlining·optimization 컴파일이 실행마다 붙는다.
+#: 운영(odroid ARM) 공개 유가 시군구 통계가 shared hit 351·인덱스 스캔 수 ms인데 3.5~5.7초였고(SQL 92~96%),
+#: 시간이 상위 노드(Sort→Unique)에 붙어 있었다. 같은 문장을 로컬 x86 PG18에서 JIT 강제로 돌리면 2.3ms→318ms(JIT 201ms)다.
+#: 운영 EXPLAIN의 `JIT:` 절은 아직 보지 못했다(docs/journal.md 2026-11-28).
+#: 연결 단위 설정이라 DB 전체(`postgresql.conf`)나 다른 서비스 연결은 바꾸지 않는다.
+SERVER_JIT = "off"
 # API 엔진에 서버 `lock_timeout`을 두지 않는다(감사 T1-07·WLH-09 검토, 2026-11-24). 관리자 KRIC 매핑 저장
 # (`save_rail_station_mappings`)은 기준 역 수집과 같은 `pg_advisory_xact_lock`을 의도적으로 기다리고, 관리자 좌표
 # 보정은 수집이 잡은 행 잠금(`FOR UPDATE`)을 기다리며, in_process 수집(개발 기본)도 같은 API 엔진으로 수집 잠금을
@@ -119,13 +126,13 @@ def create_engine_and_session_factory(
             engine_options["connect_args"] = {
                 "timeout": min(10, statement_timeout), "command_timeout": statement_timeout,
                 "server_settings": {"lock_timeout": "5s", "statement_timeout": f"{statement_timeout}s",
-                                    "application_name": COLLECTOR_APPLICATION_NAME},
+                                    "application_name": COLLECTOR_APPLICATION_NAME, "jit": SERVER_JIT},
             }
         else:
             engine_options["connect_args"] = {
                 "timeout": API_CONNECT_TIMEOUT_SECONDS,
                 "server_settings": {"statement_timeout": f"{statement_timeout}s",
-                                    "application_name": API_APPLICATION_NAME},
+                                    "application_name": API_APPLICATION_NAME, "jit": SERVER_JIT},
             }
         if os.getenv("KOR_TRAVEL_TRANSPORT_TEST_DATABASE") == "1":
             engine_options["poolclass"] = NullPool

@@ -2,6 +2,13 @@
 
 네 유종 UI(등유 제외), 위치 동의·반경·가격/거리 정렬·지도/목록·지역 비교와 목적지 링크·공유를 구현했다. 로그인 없는 주유소 상세는 기존 fuel web의 고정 BFF 읽기와 저장 행 검증을 사용한다. 마이현대는 OS 장소 공유이며 차량 API·임의 deep link는 없고 실제 앱 수신은 미검증이다. WSL/Docker 집중시험과 두 독립 리뷰 수정·재확인, n150 PC/모바일 캡처를 마쳤다. [계약·검증·제한](reports/2026-11-28-fuel-mcp-app-ui.md). 다음은 최종 CI·소스 머지와 기존 개인 플러그인 게시 정산이다. Transport 운영 이미지·DB·수집·환경은 바꾸지 않았다.
 
+## 현재 상태 — 2026-11-28 앱 DB 연결 PostgreSQL JIT 끔(JIT-OFF)
+
+- backend `app/db/session.py`: API·수집 엔진 연결 `server_settings`에 `jit=off`. 공개 유가 시군구 통계 3~5초의 운영 진단(상위 노드 CPU,
+  shared hit 351)과 로컬 JIT 재현(2.3ms→318ms)에 따른 것. migration·gateway·frontend 없음.
+- 배포(Codex 담당): backend 이미지와 Dagster code-server 이미지(수집 엔진도 같은 모듈). DB 서버 설정은 바꾸지 않는다.
+- 다음 한 작업: FUEL-HISTORY-VERIFY(tasks.md) — 실제 유종 시군구 통계 TTFB와 `slow_request` 소멸 확인.
+
 ## 현재 상태 — 2026-11-27 공개 유가 지도 잔여 2건(FUEL-PUBLIC-MAP-RETRY-E2E·지도 유종 링크)
 
 - transport-admin(fuel web)만: 공개 지도 `?product=` 유종 링크와 통계 화면 링크, 공개 지도 배경지도 알림에서 "· 목록 보기" 제거,
