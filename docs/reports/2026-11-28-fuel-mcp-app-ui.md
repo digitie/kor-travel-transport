@@ -54,4 +54,4 @@ n150의 Chromium에서375/1440px 공개 상세의 네 유종·목적지 링크·
 
 최종 HTML은870305byte/SHA256 `e9df6f0aba45cc3938c64d6e826098fb99950442ff640681e6e1c3468d9b9428`이며 local WSL과 local Docker ARM64 export의 bytes가 같다. Python runtime·SDK/provider·의존성 핀은 그대로다. Sites에 같은 HTML을 전달했고 중계46개와 Worker 빌드를 통과했다. 게시 성공 전에는 게시 완료로 취급하지 않는다.
 
-첫 CI46080211943의 Node 정책 검사 실패는 실제 Node stage 투영으로 수정했다. 이전 후보33bfff59의 CI46081004852는 backend3199통과/2생략/62subtest를 포함해 전체 필수 작업 성공이었다. 새 공유 변경은 별도 최종 CI 결과를 기다린다. James/Popper 독립 검토의 응답 불일치·도구 탐색·포커스·위치 상태·공유 fallback/취소·지연 표시 지적을 수정하고 재확인했다. 최종 CI·머지·개인 Site 게시 상태는 PR/배포 원장을 정본으로 한다. Transport 운영 API·fuel web 이미지 배포·실제 MyHyundai 수신은 별도 후속이다.
+첫 CI46080211943의 Node 정책 검사 실패는 실제 Node stage 투영으로 수정했다. 이전 후보33bfff59의 CI46081004852는 backend3199통과/2생략/62subtest를 포함해 전체 필수 작업 성공이었다. 공유 후보ffc088c1의 CI46087934804에서 admin 함수 복잡도 경고가 발생했다. 가격·지도 링크·공유 카드를 분리해 경고를 해결하고 WSL/Docker 공개 상세18개·타입/lint/빌드·React Doctor와 두 독립 재확인을 통과했다. 새 후보의 최종 CI 결과는 별도로 확인한다. James/Popper 독립 검토의 응답 불일치·도구 탐색·포커스·위치 상태·공유 fallback/취소·지연 표시 지적을 수정하고 재확인했다. 최종 CI·머지·개인 Site 게시 상태는 PR/배포 원장을 정본으로 한다. Transport 운영 API·fuel web 이미지 배포·실제 MyHyundai 수신은 별도 후속이다.
