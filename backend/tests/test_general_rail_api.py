@@ -167,6 +167,9 @@ def test_daily_cap_retry_after_points_to_the_next_korean_midnight(test_settings,
     _guide_client(monkeypatch, calls, tuple(KorailGuideCategory(f"c{index}", f"권역{index}", "ktx") for index in range(100)))
     fixed = datetime(2026, 10, 27, 11, tzinfo=timezone.utc)  # KST 20:00
     monkeypatch.setattr("app.general_rail_routes.now_utc", lambda: fixed)
+    # 저장 시 32일 지난 행 정리도 같은 시각을 써야 한다. 실제 시각을 쓰면 고정 시각+32일(2026-11-28 11:00 UTC)부터
+    # 방금 저장한 kind 페이지가 지워져 요청마다 provider를 두 번 불러 상한에 일찍 걸렸다.
+    monkeypatch.setattr("app.services.general_rail_storage.now_utc", lambda: fixed)
     with TestClient(create_app(test_settings.model_copy(update={"seed_sample_data": False}))) as client:
         for index in range(95):  # kind 페이지 1회 + 권역 95회 = 일일 96회
             assert client.get("/v1/transport/rail/general/guide", params={"category_code": f"c{index}"}).status_code == 200
