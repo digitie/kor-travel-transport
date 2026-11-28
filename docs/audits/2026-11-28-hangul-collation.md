@@ -70,26 +70,35 @@
 ## 6. 운영 결과(2026-11-28, 읽기 전용)
 
 - 서버 PostgreSQL 18.6 aarch64, DB collation `en_US.utf8`(libc, collversion 2.41 일치).
-- 한글 키 4,600행 정렬: 기본 **11,678ms**, `C` 442ms, ICU 1,093ms(로컬 409 / 14 / 21ms). 기본이 `C`의 26배이고, 운영 호스트는 같은
-  일을 로컬의 약 30배 시간에 한다.
-- 주유소 시도·시군구 정렬 묶음(해시 금지): 기본 160ms, `C` 235ms — 차이 없음. 짧고 같은 값이 많아 비교가 일찍 끝난다. 느린 것은
-  `scope_key`처럼 길고 서로 다른 한글 문자열 정렬이다.
-- 후보 컬럼:
+- 한글 키 4,600행 정렬(각 1회): 기본 **11,678ms**, `C` 442ms, ICU 1,093ms(로컬 409 / 14 / 21ms). 기본이 `C`의 26배다. 운영은 같은
+  일을 로컬보다 기본·C 약 30배, ICU 약 50배 시간에 한다.
+- 주유소 시도·시군구 정렬 묶음(해시 금지, 각 1회): 기본 160ms, `C` 235ms. 계획을 남기지 않아 이유는 확인하지 못했다. 기본 collation
+  쪽은 `ix_fuel_stations_region`을 순서대로 읽어 정렬을 건너뛰었을 수 있다(`C`는 그 색인을 못 쓴다). §1 로컬(해시 금지 207 대 4ms)과
+  어긋나므로 이 비교로는 판단하지 않는다. 실제 문장(아래 B)은 해시 묶음 뒤 39행만 정렬했다.
+- 후보 컬럼(비 ASCII 비율은 진단 3에서 표본을 뜬 컬럼만):
 
 | 컬럼 | 비 ASCII 비율(표본) | 표 / 해당 색인 | 판단 |
 |---|---|---|---|
-| `fuel_statistics_daily.scope_key` | (JSON 한글) | 51MB / pkey 5.7MB | 컬럼 단위 C 가치 있음. #311 쿼리 처리로 대부분 해소 |
-| `fuel_statistics_history.scope_key` | (JSON 한글) | 7.9MB / pkey 5.6MB | daily와 함께 |
+| `fuel_statistics_daily.scope_key` | 표본 없음(JSON 한글 배열) | 51MB / pkey 5.7MB | 컬럼 단위 C 가치 있음. #311 쿼리 처리로 대부분 해소 |
+| `fuel_statistics_history.scope_key` | 표본 없음(같은 키) | 7.9MB / pkey 5.6MB | daily와 함께 |
 | `fuel_region_summaries.region_key` | 2000/2000 | 63MB / pkey 9.1MB | 후보, 우선순위 낮음 |
-| `fuel_stations.sido_value`·`sigungu_value` | 2000/2000 | 51MB / 320kB | 바꾸지 않음(묶음 차이 없음) |
+| `fuel_stations.sido_value`·`sigungu_value` | sido 2000/2000(sigungu 미표본) | 51MB / 320kB | 지금은 바꾸지 않음(실제 문장 계획이 해시 묶음) |
 | `rest_area_references.identity_key` | 215/215 | 0.4MB | 바꾸지 않음(작음) |
 | `rail_station_references.identity_key` | 1108/1466 | 3.6MB | 바꾸지 않음(작음) |
 | `fuel_stations`·`highway_traffic_current.identity_key` | 0 | - | 대상 아님(ASCII) |
 
-- `pg_stat_statements`(2026-11-17 초기화 이후): 시군구 통계 페이지 문장 평균 0.7~1.3초·최대 7.7초(#311 배포 전). 다른 유가 문장
-  "시군구 가격 목록"(평균 10.8초·최대 34초·최소 27ms)과 "지도 범위 시군구 목록"(평균 0.8~2.6초·최대 11초)은 같은 시각 EXPLAIN
-  ANALYZE에서 각각 144ms(pkey 색인 사용 — `station_key = CAST(id AS VARCHAR)`는 색인 쪽이 아니라 문제가 아니다)와 432ms(`fuel_stations`
-  51MB 순차 읽기 287ms)였다. 최소·최대 차이가 1000배 이상이라 평균을 키운 것은 같은 호스트의 무거운 작업(고속도로 5분 통계 최대
-  52초, 주차 이력 최대 25초 등)과 겹친 시간대로 본다. collation 문제는 아니다.
+- `pg_stat_statements`(2026-11-17 초기화 이후 누적, 시각 정보 없음): 시군구 통계 페이지 문장 평균 0.7~1.3초·최대 7.7초(문장 모양 2개,
+  #311 이전 코드). 다른 유가 문장 둘은 평균·최대가 컸다:
+  - A "시군구 가격 목록": 51회, 평균 10.8초·최대 34초·최소 27ms(최대/최소 약 1,300배).
+  - B "지도 범위 시군구 목록": 두 모양 75·96회, 평균 2.6·0.8초, 최대 11·5.8초(최대/최소 약 270·66배).
+- 진단 시점 1회 EXPLAIN ANALYZE(리터럴 값): A 144ms(`fuel_statistics_points` pkey 사용, `station_key = CAST(id AS VARCHAR)`는 색인
+  쪽이 아니라 막지 않는다. 384 버퍼 중 129를 디스크에서 읽었다), B 432ms(`fuel_stations` 순차 읽기 287ms, 해시 묶음 뒤 39행 정렬).
+  이 계획에서는 collation 비용이 작다.
+- 큰 평균의 원인은 **확인하지 못했다**. 가설: (1) 같은 호스트의 무거운 작업과 겹침(고속도로 5분 통계 최대 52초, 주차 이력 최대 25초 —
+  겹친 시각은 증거 없음), (2) 발행마다 세대가 바뀌어 캐시가 식음(A도 디스크 읽기 비중이 컸다), (3) prepared statement의 generic plan이
+  다른 계획(정렬 묶음 등)을 골랐을 가능성 — 리터럴 EXPLAIN으로는 시험하지 않았다. 발행은 DELETE+INSERT라 읽기가 잠금을 기다리지는
+  않는다. 후속: `pg_stat_statements`의 `shared_blks_read`·`shared_blk_read_time`, backend `slow_request` 시각과 무거운 job 시각 대조,
+  `PREPARE`/`plan_cache_mode=force_generic_plan`으로 generic plan 확인.
 - 결론: DB 기본 collation 변경은 필요 없다. 컬럼 단위 C는 유가 통계 `scope_key` 둘만 가치가 있고 #311로 급한 부분은 해소됐다.
-  남은 지연의 큰 몫은 운영 호스트 부하다. `fuel_stations` 51MB(1.6만 행, 행당 약 3KB)는 별도로 볼 만하다.
+  다른 유가 문장의 큰 평균은 위 가설로 남는다. `fuel_stations` 51MB(추정 1.6만 행, 행당 공간 약 3KB — 행 폭인지 bloat인지는
+  `n_dead_tup`으로 확인 필요)는 별도로 볼 만하다.

@@ -2,9 +2,9 @@
 
 - WSL SSH로 Odroid 공용 instance(`kor-travel-shared-postgres`, 11000)에 붙어 `scripts/diagnostics/collation-hangul-readonly.sql`과
   `pg_stat_statements`·EXPLAIN ANALYZE를 읽기 전용 transaction으로 실행했다. 쓰기 없음.
-- 한글 키 4,600행 정렬 기본 11,678ms / C 442ms / ICU 1,093ms. 주유소 시도·시군구 묶음은 차이 없음. 컬럼 단위 C는 유가 통계 `scope_key`
-  둘만 가치가 있다. "시군구 가격 목록"·"지도 범위 시군구 목록"의 큰 평균은 같은 시각 0.14·0.43초라 호스트 부하 겹침으로 본다
-  (형변환 join 가설은 틀렸다). 기록: `docs/audits/2026-11-28-hangul-collation.md` §6.
+- 한글 키 4,600행 정렬 기본 11,678ms / C 442ms / ICU 1,093ms. 주유소 시도·시군구 묶음 1회 비교는 계획 미확인이라 판단에서 뺐다. 컬럼 단위 C는 유가 통계 `scope_key`
+  둘만 가치가 있다. "시군구 가격 목록"·"지도 범위 시군구 목록"은 진단 시점 0.14·0.43초였다(형변환 join 가설은 틀렸다). 큰 평균의
+  원인은 미확인 — 부하 겹침·캐시·generic plan 가설과 후속 확인 방법을 점검 문서에 적었다. 기록: `docs/audits/2026-11-28-hangul-collation.md` §6.
 
 ## 2026-11-28 — 공개 유가 시군구 통계: JIT가 아니라 한글 collation 정렬(FUEL-SIGUNGU-COLLATION)
 
