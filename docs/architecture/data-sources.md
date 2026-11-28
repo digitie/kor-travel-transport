@@ -65,7 +65,7 @@
   `parkingParkingName`, `parkingMaxAccount`와 소형/대형·평일/휴일의 무료/기본/추가/최대 필드를 보완했다.
   Transport는 정규화된 값을 저장 도메인으로 옮기며 공급자 필드를 재파싱하지 않는다.
   원 항목은 감사용으로 보존하고 `parse_kac_fee`는 오프라인 fixture 호환에만 사용한다.
-  초기 raw 경로와 대문자 필드명 오해의 이력은 ADR-004에 보존한다.
+  초기 raw 경로와 대문자 필드명 오해의 이력은 [krairport 전환 이력](#krairport-전환-이력adr-004)에 둔다.
 - 운영 주의: `ENABLE_FEE_COLLECTION`을 켜도 요금표는 매5분 재조회하지 않는다.
   기존 공항 job에서 공항별로 성공24시간·실패4시간 뒤에만 다시 시도한다. `RawApiResponse`의
   내부 `fee_refresh_contract=kac_fee_daily:v1`·공항·처리 상태·시각을 재사용하며 새 스케줄/테이블은 없다.
@@ -169,6 +169,46 @@
 - 분석 화면에서는 원본 수집 데이터에서 10분 단위 시계열을 다시 계산해 사용한다.
 - 시계열 저장용 별도 테이블을 두기보다, 우선은 `parking_snapshots` 기반 집계를 사용한다.
 - 인증키가 없는 개발 모드에서는 샘플 클라이언트가 동작할 수 있으므로, 실데이터 여부는 `client_mode`로 반드시 확인한다.
+
+## krairport 전환 이력(ADR-004)
+
+[ADR-004](../adr/004-krairport-provider-library.md)에서 옮긴 구현 이력이다. 결정 자체는 ADR에 있다.
+
+- **2026-08-23 최초 결정의 raw 경로**: 당시 krairport typed model(예: `ParkingFee`)이 휴일 요금·분당 추가요금을
+  담지 못하거나 검증된 필드명과 달라, KAC 주차현황/요금·IIAC 주차현황/요금 모두 `kac_raw_items`/`iiac_raw_items`
+  범용 escape hatch로 원본에 가까운 item dict를 받아 `parsers.py` 자체 파싱을 그대로 썼다.
+- **주차 현황·주차요금 전환(T-030)**: `backend/pyproject.toml`에
+  `python-krairport-api @ git+https://github.com/digitie/python-krairport-api@<sha>` PEP 508 direct reference로
+  의존성을 추가했다(`[tool.uv.sources]`는 Docker 빌드가 plain `pip install -e ".[dev]"`를 써서 인식되지 않아 폐기 —
+  direct reference는 pip/uv 양쪽에서 동작한다). `backend/Dockerfile`에 `git`을 추가했다(pip의 git+https 설치용).
+  `collection.py`의 `KrairportPublicDataClient`가 4개 fetch를 대체했고 `parsers.py`는 입력 형태만(XML/JSON
+  envelope → 사전 추출된 item list) 넓혔다. WSL 1차 72 passed, Docker 2차 69 passed(`test_cutover_guards.py` 3개 제외).
+- **비행편 전환(T-029)**: `flight_status.py`의 `LiveFlightStatusClient`를 `KrairportFlightStatusClient`로 교체했다.
+  KAC ODCloud(`FlightStatusListDTL`)는 krairport에 없어 `api.odcloud.kr` 호스트를 쓰는
+  `KacClient.flight_status_detail_raw_items()`(sync/async)를 라이브러리에 추가하고 facade에
+  `kac_flight_status_detail_raw_items()`로 노출했다
+  (`python-krairport-api` PR [#7](https://github.com/digitie/python-krairport-api/pull/7), `cbe4d13`). IIAC는 기존
+  `iiac_raw_items("StatusOfPassengerFlightsDeOdp", "getPassengerDeparturesDeOdp"/"getPassengerArrivalsDeOdp", ...)`가
+  endpoint와 일치해 라이브러리 수정 없이 전환했다. `parse_incheon_flight_status_json`에 사전 추출 item list 분기
+  (`_incheon_flight_section_items`)를 더했다. 죽은 코드 `_fetch_legacy_kac_status`·`_raise_for_upstream_status`/
+  `MAX_UPSTREAM_ERROR_BODY_LENGTH`를 지웠다. 리뷰(Popper)가 지적한 rate-limit backoff 비대칭(비행편은 페이지 조회마다
+  즉시 호출)을 반영해 `KrairportRateLimitError`를 `status: "rate_limited"`로 구분하고
+  `Settings.upstream_rate_limit_backoff_seconds` 동안 `FlightStatusService._cache`에 캐시한다(DB 영속화는 없다).
+- **live smoke로 찾은 문제 2건(2026-08-23)**: 실제 `DATA_GO_KR_SERVICE_KEY`로 전체 파이프라인을 돌려 fixture로는 못
+  잡는 문제를 찾았다.
+  1. krairport가 `https://openapi.airport.co.kr`로 호출했는데 이 게이트웨이는 `http://`로만 정상 응답한다(https는 요청과
+     무관하게 `resultCode=99 "NO OPENAPI SERVICE ERROR."`). 모든 KAC endpoint가 영향받는 host-level 버그로,
+     `python-krairport-api` PR [#6](https://github.com/digitie/python-krairport-api/pull/6)(`88d47ca`)로 고치고 pin을 올렸다.
+  2. KAC 요금 파서·`_kac_fee_sample_items`·`tests/fixtures/kac_fee_gmp.xml`이 `PARKING_BASIC_ACCOUNT` 형태를 가정했지만
+     실제 API는 `parkingBasicAccount`(camelCase)다. `_append_fee_rule`의 조기 return 때문에 전환 이전부터 KAC 요금 live
+     수집이 조용히 빈 배열이었을 가능성이 높다. 실제 필드명으로 파서·sample·fixture를 고쳤다.
+  수정 뒤 `CollectionService.collect()` end-to-end: `status=success`, `raw_response_count=6`, `snapshot_count=30`,
+  `fee_rule_count=56`, `errors=[]`.
+- **함께 발견한 무관한 버그**: `backend/tests/test_cutover_guards.py`의 `Path(__file__).parents[2]`가 로컬 디렉터리
+  깊이 기준이라 Docker `/app/tests/`에서 `ModuleNotFoundError: No module named 'observe_cutover'`로 깨졌다(커밋
+  `481cb78`부터, 전환과 무관). 당시 별도 task로 넘겼다.
+- **2026-10-28 KAC 요금 typed 전환**: 형제 SDK PR #13 머지 commit `e60b5280462803d00575cf9a16911681057d5ea6`의
+  `parking_fees(airport_code=...)`와 완전한 nullable `ParkingFee`로 옮겼다(위 5절).
 
 ## 접근 상태 확인 메모
 

@@ -1,6 +1,6 @@
 # ADR-006: 공휴일 데이터는 `python-kasi-api`(kasi)를 provider 라이브러리로 사용한다
 
-- **상태**: accepted, 구현 완료
+- **상태**: accepted
 - **날짜**: 2026-08-23
 - **결정자**: agent + human
 - **컨텍스트**: `backend/app/services/holidays.py`의 `LiveHolidayClient`는 한국천문연구원

@@ -67,6 +67,23 @@ ADR-013 개정 — 한 번 다시 조회해도 비면 실패, 마지막 성공 �
 결과 저장은 소스별 transaction으로 분리해, 뒤의 돌발/유가 저장 실패가 먼저 성공한
 소통정보를 rollback하지 않도록 한다.
 
+### 수집 예약과 조회 시간 상한(ADR-009 세부)
+
+구조는 [ADR-009](../adr/009-durable-transport-collection-reservations.md)가 정한다(짧은 DB 예약 → 트랜잭션 밖 외부 조회 →
+소스별 결과 transaction). 값은 코드(`backend/app/services/transport_collection.py`)가 정본이고 아래는 2026-11-28 기준이다.
+
+- **조회 시간 상한**: 고속도로 소스별 120초(`HIGHWAY_FETCH_TIMEOUT_SECONDS`), 고속도로 provider 전체 안전 상한 240초,
+  전국 유가 브라우저 수집 3.5시간(`FUEL_FETCH_TIMEOUT_SECONDS = 12_600`). 유가는 처음 2시간이었고, odroid(ARM)에서 성공한
+  수집이 5,946~6,371초 걸려 옛 상한 7,200초 근처에서 시간 초과가 반복되어 2026-10-23 소유자 결정으로 올렸다(ADR-013 개정).
+  유가 상한은 저장·정리 여유를 두고 job 전체 상한과 Dagster run 상한(14,400초) 안에 들어야 한다
+  (`test_fuel_fetch_timeout_fits_inside_job_budget`).
+- **임시 예약 길이**: 고속도로 임시 예약은 전체 안전 상한 + 15분이고, 전체 수동 실행에서 유가가 due면 유가 조회 상한을
+  더한다. 유가 예약은 provider의 8~12시간 정책을 따른다.
+- **소통·돌발 동시 조회**: 동시에 조회하되 예정 시각과 성공/실패를 소스별로 보존한다.
+- **다음 예정 시각**: 성공 후 고속도로는 시작 시각 + 설정 주기, 유가는 실제 예정 시각까지 대기한다. quota backoff도 실제
+  예정 시각까지 대기하며, 다른 고속도로 소스가 먼저 due여도 backoff 중인 소스를 다시 호출하지 않는다.
+- **상태 API**: `last_run`은 `skipped`를 제외해 재시작·경합의 무호출 기록이 실제 실패/실행 기록을 가리지 않게 한다.
+
 ### 고속도로 소통 저장 transaction과 5분 통계(2026-11-24, WLH-06)
 
 운영 odroid에서 소통 source 저장 transaction(원본 + current + 최근 2시간 5분 통계 재구축 + 상태)이 175초를 넘겨

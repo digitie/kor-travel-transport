@@ -700,6 +700,29 @@ ADR-016 결정 갱신. 입력 revision namespace의 배포 식별자가 `RELEASE
 - **안전장치·저하 표시** — 지문을 만들 수 없으면(소스 없는 이미지) artifact 없는 완전 구성 경로로 간다(정확하지만 느리다).
   `/health`의 `reference_artifacts: "disabled"`·`reference_payload_fingerprint: null`, 기동 WARNING 로그로 드러난다. 읽을
   때의 page model 재검증은 그대로다.
+- **해시 입력의 세부(ADR-016에서 옮김)** — import 때 한 번 sha256으로 계산한다. 모듈은 함수 단위 허용 목록이 아니라
+  전체 소스(`export_references.PAYLOAD_CODE`)다. 단순 상수는 `export_references`의 source 이름·batch 크기 등 유한 float만
+  (dunder 제외), page model schema는 `BusTerminalExportPage`·`FerryPortExportPage`·`RailStationExportPage`·
+  `ParkingCurrentExportPage`의 `model_json_schema()`(중첩 `ExportAdminAddress`·`ServiceExportMeta` 포함)다. 의존성은
+  `kor-travel-common`·`python-krairport-api`·`pydantic`·`pydantic-core`·`sqlalchemy`·`asyncpg`의 설치 버전과 VCS commit
+  (`direct_url.json`)이고, commit이 없는 경로/editable 설치(개발 환경)는 형제 라이브러리의 해당 모듈 소스를 해시한다.
+  소스는 `inspect.getsource`(universal newline)로 읽어 설치 경로·줄바꿈·hash seed와 무관하다. namespace 표지는
+  `reference-input-v2`, 지문 구성 방식은 `FINGERPRINT_SCHEME`(`reference-payload-code-v2`)이다.
+- **범위 가드 세부** — `test_reference_payload_fingerprint.py`가 각 `reference_specs()`의 `payload_batches`·
+  `prepare_artifact`·`reference_payload_revision`에서 `co_names`를 따라 닿는 `app.*` 함수·모듈을 재귀로 모아,
+  `PAYLOAD_CODE`에 없고 사유가 적힌 제외 목록(`app.models`=열 값은 DB 입력 revision이 봄, `app.schemas`=page schema로 봄,
+  `app.core.problems`·`app.core.read_timing`·`app.services.export_current`=오류·계측·배관)에도 없으면 실패한다. 모든
+  spec의 builder 모듈과 page model이 지문 안에 있는지도 확인한다. 지문 입력 밖에서 envelope를 바꾸면
+  `reference-page-vN`을 올린다.
+- **배포 직후 준비의 대조** — `/health`의 `reference_payload_fingerprint`를 `scripts/post-deploy-warm.sh`가
+  `app.deploy.prepare_references --expect-payload-fingerprint`로 넘긴다. code-server 지문이 다르면 exit 4
+  (`fingerprint_mismatch`), 지문을 못 만들면 exit 6(`fingerprint_unavailable`), 플래그를 모르는 옛 code-server 이미지는
+  argparse exit 2다. `RELEASE_SHA` 대조는 없앴다(운영 절차는 배포 런북).
+- **v1/v2 공존** — 옛 code-server(v1)와 새 API(v2)가 잠깐 함께 돌면 서로 다른 namespace로 head를 짧게 주고받을 수 있다
+  (정합성은 그대로, 두 쪽이 같은 이미지가 되면 멈춘다).
+- **검증** — `tests/test_reference_payload_fingerprint.py`: builder·모듈 소스·schema·의존성 버전/commit·editable 소스·
+  Python 버전·상수가 바뀌면 지문이 바뀐다. 다른 프로세스·hash seed·`RELEASE_SHA`에서 같은 값이다. 지문이 다르면
+  artifact를 재사용하지 않고 ETag도 바뀐다. 같은 지문이면 `RELEASE_SHA`가 달라도 재사용한다.
 
 ## 유가 통계 시군구 페이지와 장기 추이(2026-11-26)
 

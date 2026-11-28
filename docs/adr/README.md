@@ -71,8 +71,10 @@ ADR은 "나중에 코드를 본 사람이 **왜 이런 구조인지**(맥락과 
 | [ADR-015](015-parking-raw-and-statistics-lifetimes.md) | 주차 원본 48시간·집계 통계 영구 보존과 삭제 전 읽기 전환·검산 | accepted |
 | [ADR-016](016-reference-export-artifact-lifetime.md) | 기준정보 불변 본문과 유한 HTTP cursor handle 수명 분리 | accepted |
 | [ADR-017](017-web-production-runner-non-root.md) | 웹 production runner의 non-root와 역할별 예외 | accepted |
+| [ADR-018](018-shared-postgres-and-dagster-plane.md) | 데이터는 공용 PostgreSQL에 두고 수집은 Manager 공용 Dagster plane의 code location으로 실행한다 | accepted |
+| [ADR-019](019-opinet-browser-collection.md) | 전국 유가(오피넷)는 공식 API가 아니라 공개 화면 브라우저 수집으로 모은다 | accepted |
 
-**다음 번호 = ADR-018.**
+**다음 번호 = ADR-020.**
 
 ## 새 ADR 작성 규약
 
