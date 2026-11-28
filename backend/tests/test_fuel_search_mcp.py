@@ -269,7 +269,7 @@ def test_widget_resource_and_data_tools_remain_separate_and_authenticated(fuel_m
     contents = rpc(client, "resources/read", {"uri": uri}).json()["result"]["contents"][0]
     assert contents["mimeType"] == "text/html;profile=mcp-app"
     assert contents["_meta"]["ui"]["permissions"] == {"geolocation": {}, "clipboardWrite": {}}
-    assert contents["_meta"]["ui"]["csp"]["connectDomains"] == ["https://tile.openstreetmap.org"]
+    assert contents["_meta"]["ui"]["csp"]["connectDomains"] == ["https://api.vworld.kr", "blob:"]
     assert "내 주변 유가" in contents["text"] and "ui/initialize" in contents["text"]
     assert TOKEN not in contents["text"] and "x-kor-travel-transport-service-token" not in contents["text"]
     denied = rpc(client, "resources/read", {"uri": uri}, headers={"Accept": "application/json, text/event-stream"})
@@ -335,3 +335,15 @@ def test_widget_omits_kerosene_without_changing_data_tool_contract():
     with pytest.raises(ValidationError):
         FuelWidgetQuery(**coords, product_codes=["C004"])
     assert NearbyFuelListQuery(**coords, product_codes=["C004"]).product_codes == ["C004"]
+
+
+def test_widget_map_key_is_runtime_only_json_and_html_escaped():
+    import json
+    from app.fuel_mcp import fuel_widget_html
+    template = '<script id="fuel-map-config" type="application/json">{}</script>'
+    key = '</script><img src=x onerror=alert(1)>'
+    rendered = fuel_widget_html(template, key)
+    assert rendered.count('</script>') == 1
+    assert '<img' not in rendered
+    assert json.loads(rendered.split('>', 1)[1].rsplit('</script>', 1)[0]) == {"apiKey": key}
+    assert json.loads(fuel_widget_html(template, None).split('>', 1)[1].rsplit('</script>', 1)[0]) == {"apiKey": ""}

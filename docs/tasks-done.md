@@ -1,3 +1,7 @@
+## 2026-11-28 — 유가 플러그인 VWorld 지도 소스
+
+- [x] **FUEL-MCP-VWORLD-SOURCE** — fuel 동일 SDK·공식 웹 브리지·worker·키 주입·입력 경계를 구현/집중검증했다. 실제 게시/Native 이미지는 별도다. [근거](reports/2026-11-28-fuel-plugin-vworld-map.md).
+
 ## 2026-11-28 — 주변 유가 MCP UI 소스
 
 - [x] **FUEL-MCP-APPS-UI-SOURCE** — 공식 MCP Apps 브리지·무비밀 리소스, 네 유종·위치 동의·지도/목록·SQL 상위 목록과 목적지/공유 링크·공개 상세를 구현했다. 최종 시험/리뷰/소스 머지는 PR 원장으로, 실제 게시/운영은 별도로 구분한다. [설계·검증](reports/2026-11-28-fuel-mcp-app-ui.md).

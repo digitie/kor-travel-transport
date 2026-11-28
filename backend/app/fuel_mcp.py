@@ -1,4 +1,5 @@
 """Transport API와 같은 프로세스·포트에서 제공하는 읽기 전용 MCP 도구."""
+import json
 from pathlib import Path
 
 from anyio import CapacityLimiter, fail_after
@@ -16,6 +17,14 @@ from app.services.fuel_search_location import FuelLocationResolver, published_re
 
 
 FUEL_WIDGET_URI = "ui://transport-fuel/v1.html"
+
+
+def fuel_widget_html(html: str, api_key: str | None) -> str:
+    marker = '<script id="fuel-map-config" type="application/json">{}</script>'
+    if html.count(marker) != 1:
+        raise ToolError("fuel_ui_unavailable")
+    config = json.dumps({"apiKey": (api_key or "").strip()}, ensure_ascii=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    return html.replace(marker, '<script id="fuel-map-config" type="application/json">' + config + '</script>')
 
 
 class ServiceTokenGate:
@@ -109,13 +118,13 @@ def build_fuel_mcp(settings, session_factory):
     @server.resource(FUEL_WIDGET_URI, name="nearby-fuel", title="내 주변 유가",
                      mime_type="text/html;profile=mcp-app", meta={"ui": {
                          "prefersBorder": True, "permissions": {"geolocation": {}, "clipboardWrite": {}},
-                         "csp": {"connectDomains": ["https://tile.openstreetmap.org"],
-                                 "resourceDomains": ["https://tile.openstreetmap.org"]},
+                         "csp": {"connectDomains": ["https://api.vworld.kr", "blob:"],
+                                 "resourceDomains": ["https://api.vworld.kr", "blob:"]},
                      }})
     def fuel_widget() -> str:
-        """토큰·좌표·사용자 데이터가 없는 공용 UI 번들. 리소스 읽기도 기존 서비스 인증을 적용한다."""
+        """정적 UI에 지도용 공개 키만 실행 시 주입한다. 서비스 토큰·좌표는 포함하지 않는다."""
         try:
-            return (Path(__file__).parent / "fuel_widget" / "index.html").read_text(encoding="utf-8")
+            return fuel_widget_html((Path(__file__).parent / "fuel_widget" / "index.html").read_text(encoding="utf-8"), settings.vworld_api_key)
         except OSError:
             raise ToolError("fuel_ui_unavailable") from None
 

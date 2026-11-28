@@ -2,6 +2,7 @@
 FROM --platform=$BUILDPLATFORM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS fuel-mcp-ui
 WORKDIR /ui/packages/kor-travel-fuel-mcp-ui
 COPY packages/kor-travel-fuel-mcp-ui/package.json packages/kor-travel-fuel-mcp-ui/package-lock.json packages/kor-travel-fuel-mcp-ui/.npmrc ./
+COPY packages/kor-travel-transport-admin/frontend/vendor/vworld-map-core-1.0.1.tgz packages/kor-travel-transport-admin/frontend/vendor/vworld-map-web-1.0.4.tgz /ui/packages/kor-travel-transport-admin/frontend/vendor/
 RUN --mount=type=cache,id=kor-travel-web-npm-v2,target=/root/.npm,sharing=locked \
     npm install --global npm@12.0.1 \
     && npm ci --engine-strict --prefer-offline --no-audit --no-fund
